@@ -50,6 +50,7 @@ import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
+import { addSkyline, addWarmAmbience, makeSkylineTexture } from '../render/ambience';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -84,8 +85,12 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.map = buildWorldMap();
+    makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
+    this.placeStringLights();
+    addSkyline(this, -70);
+    addWarmAmbience(this);
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
     this.gatherView = new GatherView(this);
@@ -533,11 +538,14 @@ export class WorldScene extends Phaser.Scene {
         }
 
         let fill: number;
-        if (plazaDist <= plaza.radius) {
+        const inPlaza = plazaDist <= plaza.radius;
+        if (inPlaza) {
           // Warm decking on the plaza — the amber heart of the district.
           fill = mixPalette('groundAccent', 'warmGlow', 0.06 + rng() * 0.1);
         } else {
-          // Mauve plating outward, cooling gently toward the fringe.
+          // Mauve plating outward, cooling gently toward the fringe. The
+          // Filament's hue leans amber north / rose south-east (one dominant
+          // hue per district, varied inside it).
           const accent = Math.max(0, 0.26 - edgeness * 0.2) * rng();
           const coolShift = Math.max(0, edgeness - 0.55) * 0.5;
           fill =
@@ -550,10 +558,29 @@ export class WorldScene extends Phaser.Scene {
         this.traceDiamond(g, x, y);
         g.fillPath();
 
+        // Plaza decking planks (subtle seams along the NE facet).
+        if (inPlaza && (tx + ty) % 2 === 0) {
+          g.lineStyle(1, mixPalette('groundAccent', 'ink', 0.3), 0.16);
+          g.lineBetween(x - TILE_W / 4, y - TILE_H / 4 + 2, x + TILE_W / 4, y + TILE_H / 4 + 2);
+        }
+
         // Subtle plating seam so the grid reads without shouting.
         g.lineStyle(1, mixPalette('groundBase', 'ink', 0.55), 0.18);
         this.traceDiamond(g, x, y);
         g.strokePath();
+
+        // Wet-sheen glaze: a soft highlight streak catching nearby neon
+        // (ART-DIRECTION §3 — damp and shiny, never drenched).
+        if (rng() < 0.14) {
+          const nearCanal = tx >= CONFIG.canal.xMin - 2 && tx <= CONFIG.canal.xMax + 3;
+          const sheenTint = nearCanal
+            ? mixPalette('neonCyan', 'groundBase', 0.55)
+            : mixPalette('warmGlow', 'groundBase', 0.6);
+          g.lineStyle(1.5, sheenTint, 0.14 + rng() * 0.08);
+          const sx = x - 10 + rng() * 8;
+          const sy = y - 3 + rng() * 6;
+          g.lineBetween(sx, sy, sx + 14, sy - 5);
+        }
 
         // Occasional rivets on the plating.
         if (rng() < 0.07 && plazaDist > plaza.radius) {
@@ -587,20 +614,47 @@ export class WorldScene extends Phaser.Scene {
         case 'dynamo': {
           const img = this.add.image(x, y + 10, 'tex-dynamo');
           img.setOrigin(0.5, 1);
-          img.setScale(TEX_SCALE * 1.35);
+          img.setScale(TEX_SCALE * 1.7);
           img.setDepth(depthForWorldY(y));
-          // Warm halo — the city's hearth glow.
-          const halo = this.add.image(x, y - 150, 'fx-glow');
+          // Hearth halo + coil blooms — the hum of the city.
+          const halo = this.add.image(x, y - 190, 'fx-glow');
           halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(0.22);
-          halo.setScale(0.85);
+          halo.setAlpha(0.26);
+          halo.setScale(1.15);
           halo.setBlendMode(Phaser.BlendModes.ADD);
           halo.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
             targets: halo,
-            alpha: { from: 0.18, to: 0.26 },
-            scale: { from: 0.8, to: 0.92 },
+            alpha: { from: 0.2, to: 0.3 },
+            scale: { from: 1.08, to: 1.24 },
             duration: 2200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          [-236, -168, -100].forEach((dy, i) => {
+            const coil = this.add.image(x - 8, y + dy, 'fx-glow');
+            coil.setTint(PALETTE_INT.neonAmber);
+            coil.setBlendMode(Phaser.BlendModes.ADD);
+            coil.setAlpha(0.3);
+            coil.setScale(0.34, 0.14);
+            coil.setDepth(depthForWorldY(y) + 2);
+            this.tweens.add({
+              targets: coil,
+              alpha: { from: 0.22, to: 0.42 },
+              duration: 1500,
+              delay: i * 380,
+              yoyo: true,
+              repeat: -1,
+              ease: 'sine.inout',
+            });
+          });
+          // The hum: a barely-there breathing of the whole machine.
+          this.tweens.add({
+            targets: img,
+            scaleX: { from: TEX_SCALE * 1.7, to: TEX_SCALE * 1.712 },
+            scaleY: { from: TEX_SCALE * 1.7, to: TEX_SCALE * 1.694 },
+            duration: 1900,
             yoyo: true,
             repeat: -1,
             ease: 'sine.inout',
@@ -646,6 +700,63 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+      }
+    }
+  }
+
+  /**
+   * Overhead string lights (ART-DIRECTION §4/§5): catenaries strung between
+   * the Dynamo, the stall row, and the planter ring, drawn above the player
+   * plane with warm bulb glows.
+   */
+  private placeStringLights(): void {
+    const dynamo = this.map.props.find((p) => p.kind === 'dynamo');
+    const stalls = this.map.props.filter((p) => p.kind === 'stall');
+    const planters = this.map.props.filter((p) => p.kind === 'planter');
+    if (dynamo === undefined) return;
+    const da = this.propAnchor(dynamo);
+    const dTop = { x: da.x, y: da.y - 360 };
+
+    const lines: Array<[{ x: number; y: number }, { x: number; y: number }]> = [];
+    for (const st of stalls) {
+      const a = this.propAnchor(st);
+      lines.push([dTop, { x: a.x, y: a.y - 92 }]);
+    }
+    for (let i = 0; i + 1 < planters.length; i += 2) {
+      const a = this.propAnchor(planters[i] as Prop);
+      const b = this.propAnchor(planters[i + 1] as Prop);
+      lines.push([
+        { x: a.x, y: a.y - 64 },
+        { x: b.x, y: b.y - 64 },
+      ]);
+    }
+
+    const g = this.add.graphics();
+    g.setDepth(1e5);
+    const bulbTints = [PALETTE_INT.neonAmber, PALETTE_INT.neonRose, PALETTE_INT.neonTeal];
+    let bulbIdx = 0;
+    for (const [a, b] of lines) {
+      const sag = Math.min(60, Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y) * 0.12);
+      const mid = { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + sag };
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(a.x, a.y),
+        new Phaser.Math.Vector2(mid.x, mid.y),
+        new Phaser.Math.Vector2(b.x, b.y),
+      );
+      g.lineStyle(1.5, mixPalette('ink', 'structureMid', 0.5), 0.85);
+      curve.draw(g, 24);
+      const bulbs = Math.max(3, Math.floor(curve.getLength() / 34));
+      for (let i = 1; i < bulbs; i++) {
+        const p = curve.getPoint(i / bulbs);
+        const tint = bulbTints[bulbIdx++ % bulbTints.length] as number;
+        g.fillStyle(tint, 0.95);
+        g.fillCircle(p.x, p.y + 2, 2.2);
+        const glow = this.add.image(p.x, p.y + 2, 'fx-glow');
+        glow.setTint(tint);
+        glow.setBlendMode(Phaser.BlendModes.ADD);
+        glow.setScale(0.035);
+        glow.setAlpha(0.5);
+        glow.setDepth(1e5 + 1);
       }
     }
   }
