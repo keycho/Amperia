@@ -1,8 +1,16 @@
 import Phaser from 'phaser';
 import { PALETTE } from '@shared/palette';
 import { BootScene } from './scenes/BootScene';
+import { WorldScene } from './scenes/WorldScene';
 
-new Phaser.Game({
+declare global {
+  interface Window {
+    /** Debug/verification handle (screenshot harness, manual poking). */
+    __amperia?: { game: Phaser.Game };
+  }
+}
+
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   backgroundColor: PALETTE.duskSky,
@@ -14,5 +22,7 @@ new Phaser.Game({
     antialias: true,
     roundPixels: false,
   },
-  scene: [BootScene],
+  scene: [BootScene, WorldScene],
 });
+
+window.__amperia = { game };

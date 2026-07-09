@@ -1,0 +1,127 @@
+import Phaser from 'phaser';
+import { mixPalette, PALETTE_INT } from '@shared/palette';
+
+/**
+ * Procedural palette placeholders, generated once at boot. Everything is
+ * drawn at 2× and rendered at scale 0.5 so sprites stay crisp at zoom 2.
+ */
+export const TEX_SCALE = 0.5;
+
+function g2(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+  return scene.make.graphics({ x: 0, y: 0 }, false);
+}
+
+/** The Great Dynamo — the humming heart of the city (placeholder rig). */
+export function makeDynamoTexture(scene: Phaser.Scene): void {
+  const W = 400;
+  const H = 520;
+  const g = g2(scene);
+  const cx = W / 2;
+
+  // Base plinth (two stacked slabs).
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.45));
+  g.fillEllipse(cx, H - 40, 340, 130);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.2));
+  g.fillEllipse(cx, H - 60, 300, 110);
+
+  // Main cylinder body with fake rounding (vertical bands, lit from left).
+  const bodyTop = 120;
+  const bodyBot = H - 70;
+  const bands = [
+    { x: cx - 110, w: 40, t: 0.55 },
+    { x: cx - 70, w: 60, t: 0.3 },
+    { x: cx - 10, w: 60, t: 0.12 },
+    { x: cx + 50, w: 40, t: 0.35 },
+    { x: cx + 90, w: 24, t: 0.6 },
+  ];
+  for (const b of bands) {
+    g.fillStyle(mixPalette('structureMid', 'ink', b.t));
+    g.fillRect(b.x, bodyTop, b.w, bodyBot - bodyTop);
+  }
+  // Warm rim light on the left edge.
+  g.fillStyle(mixPalette('warmGlow', 'structureMid', 0.35), 0.9);
+  g.fillRect(cx - 114, bodyTop + 6, 7, bodyBot - bodyTop - 12);
+
+  // Coil rings (the amber life of the machine).
+  for (const ry of [bodyTop + 70, bodyTop + 150, bodyTop + 230]) {
+    g.fillStyle(mixPalette('neonAmber', 'ink', 0.35));
+    g.fillEllipse(cx - 10, ry + 5, 232, 40);
+    g.fillStyle(PALETTE_INT.neonAmber);
+    g.fillEllipse(cx - 10, ry, 232, 36);
+    g.fillStyle(PALETTE_INT.warmGlow);
+    g.fillEllipse(cx - 10, ry - 4, 200, 20);
+  }
+
+  // Glow windows between coils.
+  g.fillStyle(PALETTE_INT.warmGlow, 0.95);
+  for (const wy of [bodyTop + 105, bodyTop + 185]) {
+    g.fillRoundedRect(cx - 52, wy, 24, 30, 6);
+    g.fillRoundedRect(cx + 8, wy, 24, 30, 6);
+  }
+
+  // Dome + beacon.
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.1));
+  g.fillEllipse(cx - 10, bodyTop, 224, 80);
+  g.fillStyle(mixPalette('structureMid', 'warmGlow', 0.25));
+  g.fillEllipse(cx - 10, bodyTop - 8, 170, 54);
+  g.fillStyle(PALETTE_INT.neonTeal);
+  g.fillRect(cx - 14, bodyTop - 66, 8, 46);
+  g.fillCircle(cx - 10, bodyTop - 70, 12);
+
+  g.generateTexture('tex-dynamo', W, H);
+  g.destroy();
+}
+
+/** Barrel planter with hanging greens — decor, never terrain. */
+export function makePlanterTexture(scene: Phaser.Scene): void {
+  const W = 72;
+  const H = 96;
+  const g = g2(scene);
+  // Barrel pot.
+  g.fillStyle(mixPalette('groundAccent', 'ink', 0.35));
+  g.fillRect(14, 52, 44, 34);
+  g.fillStyle(mixPalette('groundAccent', 'ink', 0.15));
+  g.fillRect(18, 52, 28, 34);
+  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.3));
+  g.fillEllipse(36, 52, 44, 16);
+  // Leafy top (clustered blobs).
+  const leaf = (x: number, y: number, r: number, t: number) => {
+    g.fillStyle(mixPalette('solarGreen', 'ink', t));
+    g.fillCircle(x, y, r);
+  };
+  leaf(24, 40, 14, 0.35);
+  leaf(48, 38, 15, 0.25);
+  leaf(36, 26, 16, 0.1);
+  leaf(52, 24, 10, 0.05);
+  leaf(20, 24, 9, 0.15);
+  g.generateTexture('tex-planter', W, H);
+  g.destroy();
+}
+
+/** Neon-teal diamond outline used for hover / click feedback. */
+export function makeTileMarkerTextures(scene: Phaser.Scene): void {
+  const W = 128;
+  const H = 64;
+  const g = g2(scene);
+  g.lineStyle(5, PALETTE_INT.neonTeal, 1);
+  g.beginPath();
+  g.moveTo(W / 2, 3);
+  g.lineTo(W - 3, H / 2);
+  g.lineTo(W / 2, H - 3);
+  g.lineTo(3, H / 2);
+  g.closePath();
+  g.strokePath();
+  g.generateTexture('tex-tile-marker', W, H);
+  g.clear();
+  // Filled soft diamond for the click pulse.
+  g.fillStyle(PALETTE_INT.neonTeal, 0.55);
+  g.beginPath();
+  g.moveTo(W / 2, 6);
+  g.lineTo(W - 6, H / 2);
+  g.lineTo(W / 2, H - 6);
+  g.lineTo(6, H / 2);
+  g.closePath();
+  g.fillPath();
+  g.generateTexture('tex-tile-pulse', W, H);
+  g.destroy();
+}
