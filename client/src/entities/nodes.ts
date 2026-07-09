@@ -4,6 +4,7 @@ import { targetFrequencyAt, tensionValue } from '@shared/minigames';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
+import { bloom, gradeSpriteTint, STYLE } from '../render/styleConfig';
 import { TINTS } from '../render/tints';
 
 /** Common surface the WorldScene talks to. */
@@ -42,7 +43,7 @@ export class BrassSeamNode implements NodeView {
     this.image.setTexture('ore-brass');
     this.image.setOrigin(0.5, 1);
     this.image.setScale(TILE_W / 111);
-    this.image.setTint(TINTS.oreRock);
+    this.image.setTint(gradeSpriteTint(TINTS.oreRock));
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
@@ -94,7 +95,7 @@ export class BrassSeamNode implements NodeView {
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
     this.hideFork();
-    this.image.setTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock);
+    this.image.setTint(gradeSpriteTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock));
     if (depleted) this.image.disableInteractive();
     else {
       this.image.setInteractive({ useHandCursor: true });
@@ -124,7 +125,7 @@ export class AmperiteNode implements NodeView {
     this.image = scene.add.image(x, y, 'ore-amperite');
     this.image.setOrigin(0.5, 1);
     this.image.setScale(TILE_W / 111);
-    this.image.setTint(TINTS.oreRock);
+    this.image.setTint(gradeSpriteTint(TINTS.oreRock));
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
@@ -144,7 +145,7 @@ export class AmperiteNode implements NodeView {
     const startDelay = ((phaseSeconds % periodSeconds) + periodSeconds) % periodSeconds;
     this.pulseTween = this.scene.tweens.add({
       targets: this.glow,
-      alpha: { from: 0.05, to: 0.6 },
+      alpha: { from: bloom(0.05), to: bloom(0.6) },
       scale: { from: 0.12, to: 0.22 },
       delay: startDelay * 1000 - periodMs / 4,
       duration: periodMs / 2,
@@ -178,7 +179,7 @@ export class AmperiteNode implements NodeView {
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
     this.stopPulse();
-    this.image.setTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock);
+    this.image.setTint(gradeSpriteTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock));
     if (depleted) this.image.disableInteractive();
     else {
       this.image.setInteractive({ useHandCursor: true });
@@ -353,16 +354,24 @@ export class AntennaNode implements NodeView {
     this.beaconGlow.setTint(PALETTE_INT.neonTeal);
     this.beaconGlow.setBlendMode(Phaser.BlendModes.ADD);
     this.beaconGlow.setScale(0.22);
-    this.beaconGlow.setAlpha(0.55);
+    this.beaconGlow.setAlpha(bloom(0.55));
     this.beaconGlow.setDepth(depthForWorldY(y) + 2);
     scene.tweens.add({
       targets: this.beaconGlow,
-      alpha: { from: 0.25, to: 0.5 },
+      alpha: { from: bloom(0.25), to: bloom(0.5) },
       duration: 1400,
       yoyo: true,
       repeat: -1,
       ease: 'sine.inout',
     });
+    if (STYLE.mode !== 'A') {
+      const pool = scene.add.image(x, y - 4, 'fx-glow');
+      pool.setTint(PALETTE_INT.neonTeal);
+      pool.setBlendMode(Phaser.BlendModes.ADD);
+      pool.setScale(0.3, 0.13);
+      pool.setAlpha(0.14);
+      pool.setDepth(depthForWorldY(y) - 1);
+    }
   }
 
   setDepleted(depleted: boolean): void {

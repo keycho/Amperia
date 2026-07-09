@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { PALETTE_INT } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
+import { worldSpriteTint } from '../render/styleConfig';
 import { TEX_SCALE } from '../render/textures';
 
 /**
@@ -30,6 +31,8 @@ export class JunkHeapNode {
     this.image = scene.add.image(x, anchorY, 'tex-junk-heap');
     this.image.setOrigin(0.5, 1);
     this.image.setScale(TEX_SCALE * 1.35);
+    const wt = worldSpriteTint();
+    if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(anchorY));
     this.image.setInteractive({ useHandCursor: true });
 

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
+import { addWarmAmbience } from '../render/ambience';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
@@ -35,6 +36,9 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Below every UI widget (chips at 890+), above the world render.
+    addWarmAmbience(this);
+
     const onStripPointerDown = (strip: SlotStrip, pointer: Phaser.Input.Pointer) =>
       this.beginDrag(strip, pointer);
 

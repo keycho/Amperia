@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { mixPalette, PALETTE_INT } from '@shared/palette';
+import { STYLE } from './styleConfig';
 
 /**
  * The golden-dusk ambience (ART-DIRECTION §3): a breathing warm wash over
@@ -23,7 +24,10 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
       );
       const plum = Phaser.Display.Color.IntegerToColor(mixPalette('duskSky', 'ink', 0.6));
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(${plum.red},${plum.green},${plum.blue},0.42)`);
+      grad.addColorStop(
+        1,
+        `rgba(${plum.red},${plum.green},${plum.blue},${Math.min(1, 0.42 * STYLE.vignetteScale)})`,
+      );
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, size, size);
       canvas.refresh();
@@ -33,20 +37,20 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
   // The golden wash: one broad breathing glow + a lamplight pool low-center.
   const wash = scene.add.image(0, 0, 'fx-glow');
   wash.setScrollFactor(0);
-  wash.setDepth(9000);
+  wash.setDepth(10);
   wash.setTint(PALETTE_INT.warmGlow);
   wash.setBlendMode(Phaser.BlendModes.ADD);
 
   const pool = scene.add.image(0, 0, 'fx-glow');
   pool.setScrollFactor(0);
-  pool.setDepth(9000);
+  pool.setDepth(10);
   pool.setTint(mixPalette('warmGlow', 'neonAmber', 0.4));
   pool.setBlendMode(Phaser.BlendModes.ADD);
-  pool.setAlpha(0.05);
+  pool.setAlpha(0.05 * STYLE.washScale);
 
   const vignette = scene.add.image(0, 0, 'tex-vignette');
   vignette.setScrollFactor(0);
-  vignette.setDepth(9002);
+  vignette.setDepth(12);
 
   const layout = () => {
     const w = scene.scale.width;
@@ -63,7 +67,7 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
 
   scene.tweens.add({
     targets: wash,
-    alpha: { from: 0.07, to: 0.115 },
+    alpha: { from: 0.07 * STYLE.washScale, to: 0.115 * STYLE.washScale },
     duration: 3600,
     yoyo: true,
     repeat: -1,

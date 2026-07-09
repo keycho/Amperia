@@ -3,6 +3,7 @@ import { CONFIG } from '@shared/config';
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
+import { worldSpriteTint } from '../render/styleConfig';
 import { TEX_SCALE } from '../render/textures';
 
 /**
@@ -28,6 +29,8 @@ export class Spark {
     this.image = scene.add.image(x, y, 'tex-spark');
     this.image.setOrigin(0.5, 0.9);
     this.image.setScale(TEX_SCALE * 1.45);
+    const wt = worldSpriteTint();
+    if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     if (name !== undefined) this.setNameLabel(name);
   }

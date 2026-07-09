@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE } from '@shared/palette';
+import { STYLE } from './render/styleConfig';
 import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
@@ -13,19 +14,36 @@ declare global {
   }
 }
 
+// Style C: low internal resolution with nearest-neighbour upscale.
+const pixelScale =
+  STYLE.pixelHeight !== null
+    ? {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: Math.round((STYLE.pixelHeight * 16) / 9),
+        height: STYLE.pixelHeight,
+      }
+    : {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+      };
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   backgroundColor: PALETTE.duskSky,
-  scale: {
-    mode: Phaser.Scale.RESIZE,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-  },
+  scale: pixelScale,
   render: {
-    antialias: true,
-    roundPixels: false,
+    antialias: STYLE.pixelHeight === null,
+    pixelArt: STYLE.pixelHeight !== null,
+    roundPixels: STYLE.pixelHeight !== null,
   },
   scene: [BootScene, LoginScene, WorldScene, UIScene],
 });
+
+if (STYLE.pixelHeight !== null) {
+  // Nearest-neighbour CSS upscale for the canvas.
+  game.canvas.style.imageRendering = 'pixelated';
+}
 
 window.__amperia = { game, gameState };

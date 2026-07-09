@@ -50,7 +50,8 @@ import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
-import { addSkyline, addWarmAmbience, makeSkylineTexture } from '../render/ambience';
+import { addSkyline, makeSkylineTexture } from '../render/ambience';
+import { bloom, gradeGround, gradeSpriteTint, STYLE, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -90,7 +91,8 @@ export class WorldScene extends Phaser.Scene {
     this.placeProps();
     this.placeStringLights();
     addSkyline(this, -70);
-    addWarmAmbience(this);
+    // Warm ambience overlays live in the UI scene: its camera never zooms,
+    // so the grade can't shrink/scale with world zoom (or pixel modes).
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
     this.gatherView = new GatherView(this);
@@ -521,7 +523,7 @@ export class WorldScene extends Phaser.Scene {
 
         // Coolant canal: a dark built channel with cyan glints.
         if (this.map.canal[ty]?.[tx] === true) {
-          g.fillStyle(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1));
+          g.fillStyle(gradeGround(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1)));
           this.traceDiamond(g, x, y);
           g.fillPath();
           if (rng() < 0.22) {
@@ -551,7 +553,7 @@ export class WorldScene extends Phaser.Scene {
               : mixPalette('groundBase', 'groundAccent', accent);
         }
 
-        g.fillStyle(fill);
+        g.fillStyle(gradeGround(fill));
         this.traceDiamond(g, x, y);
         g.fillPath();
 
@@ -590,6 +592,20 @@ export class WorldScene extends Phaser.Scene {
     g.closePath();
   }
 
+  /**
+   * Warm pool of lamplight on the ground (style B/C: the dark street reads
+   * through what the lamps claim back).
+   */
+  private addGroundPool(x: number, y: number, tint: number, scale: number): void {
+    if (STYLE.mode === 'A') return;
+    const pool = this.add.image(x, y, 'fx-glow');
+    pool.setTint(tint);
+    pool.setBlendMode(Phaser.BlendModes.ADD);
+    pool.setScale(scale, scale * 0.42);
+    pool.setAlpha(0.17);
+    pool.setDepth(DEPTH_FLOOR + 4);
+  }
+
   /** Anchor world position for a prop: bottom corner of its footprint. */
   private propAnchor(p: Prop): { x: number; y: number } {
     const nw = tileToWorld(p.x, p.y);
@@ -605,17 +621,19 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add.image(x, y + 10, 'tex-dynamo');
           img.setOrigin(0.5, 1);
           img.setScale(TEX_SCALE * 1.7);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
           // Hearth halo + coil blooms — the hum of the city.
           const halo = this.add.image(x, y - 190, 'fx-glow');
           halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(0.34);
+          halo.setAlpha(bloom(0.34));
           halo.setScale(1.3);
           halo.setBlendMode(Phaser.BlendModes.ADD);
           halo.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
             targets: halo,
-            alpha: { from: 0.2, to: 0.3 },
+            alpha: { from: bloom(0.2), to: bloom(0.3) },
             scale: { from: 1.08, to: 1.24 },
             duration: 2200,
             yoyo: true,
@@ -626,12 +644,12 @@ export class WorldScene extends Phaser.Scene {
             const coil = this.add.image(x - 8, y + dy, 'fx-glow');
             coil.setTint(PALETTE_INT.neonAmber);
             coil.setBlendMode(Phaser.BlendModes.ADD);
-            coil.setAlpha(0.42);
+            coil.setAlpha(bloom(0.42));
             coil.setScale(0.42, 0.17);
             coil.setDepth(depthForWorldY(y) + 2);
             this.tweens.add({
               targets: coil,
-              alpha: { from: 0.22, to: 0.42 },
+              alpha: { from: bloom(0.22), to: bloom(0.42) },
               duration: 1500,
               delay: i * 380,
               yoyo: true,
@@ -639,6 +657,7 @@ export class WorldScene extends Phaser.Scene {
               ease: 'sine.inout',
             });
           });
+          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.15);
           // The hum: a barely-there breathing of the whole machine.
           this.tweens.add({
             targets: img,
@@ -656,22 +675,23 @@ export class WorldScene extends Phaser.Scene {
           img.setOrigin(0.5, 1);
           // Building art is 132px wide for a 2-tile (128px) footprint.
           img.setScale((TILE_W * 2) / 132);
-          img.setTint(TINTS.building);
+          img.setTint(gradeSpriteTint(TINTS.building));
           img.setDepth(depthForWorldY(y));
           // A little lantern dot by the door so stalls read as "market".
           const lantern = this.add.image(x + 14, y - 30, 'fx-glow');
           lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);
-          lantern.setAlpha(0.75);
+          lantern.setAlpha(bloom(0.75));
           lantern.setScale(0.13);
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
+          this.addGroundPool(x + 10, y - 4, PALETTE_INT.neonAmber, 0.38);
           break;
         }
         case 'crate': {
           const img = this.add.image(x, y, `crate-${p.variant % 2}`);
           img.setOrigin(0.5, 1);
           img.setScale((TILE_W * 0.78) / 111);
-          img.setTint(TINTS.crate);
+          img.setTint(gradeSpriteTint(TINTS.crate));
           img.setDepth(depthForWorldY(y));
           break;
         }
@@ -679,7 +699,7 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add.image(x, y, `block-${p.variant % 4}`);
           img.setOrigin(0.5, 1);
           img.setScale(TILE_W / 111);
-          img.setTint(TINTS.block);
+          img.setTint(gradeSpriteTint(TINTS.block));
           img.setDepth(depthForWorldY(y));
           break;
         }
@@ -687,6 +707,8 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add.image(x, y, 'tex-planter');
           img.setOrigin(0.5, 0.92);
           img.setScale(TEX_SCALE * 1.3);
+          const pt = worldSpriteTint();
+          if (pt !== null) img.setTint(pt);
           img.setDepth(depthForWorldY(y));
           break;
         }
@@ -745,8 +767,9 @@ export class WorldScene extends Phaser.Scene {
         glow.setTint(tint);
         glow.setBlendMode(Phaser.BlendModes.ADD);
         glow.setScale(0.05);
-        glow.setAlpha(0.68);
+        glow.setAlpha(bloom(0.68));
         glow.setDepth(1e5 + 1);
+        if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
       }
     }
   }
