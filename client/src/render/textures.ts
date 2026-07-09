@@ -98,6 +98,54 @@ export function makePlanterTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/**
+ * The Spark — chunky capsule scavenger-tinker with a warm rim-light and a
+ * teal goggle band (drawn facing right; flipX for left).
+ */
+export function makeSparkTexture(scene: Phaser.Scene): void {
+  const W = 64;
+  const H = 96;
+  const g = g2(scene);
+  const cx = W / 2;
+
+  // Ground shadow.
+  g.fillStyle(PALETTE_INT.ink, 0.35);
+  g.fillEllipse(cx, H - 8, 44, 14);
+
+  // Silhouette outline (ink), then fills inset by 3px.
+  g.fillStyle(PALETTE_INT.ink);
+  g.fillRoundedRect(cx - 17, 26, 34, 58, 16);
+  g.fillCircle(cx, 19, 15);
+
+  // Body: warm patched jacket.
+  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.4));
+  g.fillRoundedRect(cx - 14, 29, 28, 52, 13);
+  // Lower half slightly darker (worn trousers).
+  g.fillStyle(mixPalette('groundAccent', 'structureMid', 0.45));
+  g.fillRoundedRect(cx - 14, 58, 28, 23, { tl: 4, tr: 4, bl: 13, br: 13 });
+  // Tool-belt.
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.2));
+  g.fillRect(cx - 14, 54, 28, 5);
+  g.fillStyle(PALETTE_INT.neonAmber);
+  g.fillRect(cx + 4, 54, 6, 5);
+
+  // Head with goggle band.
+  g.fillStyle(mixPalette('warmGlow', 'groundAccent', 0.25));
+  g.fillCircle(cx, 19, 12);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.1));
+  g.fillRect(cx - 12, 12, 24, 7);
+  g.fillStyle(PALETTE_INT.neonTeal);
+  g.fillCircle(cx + 7, 15.5, 4.5);
+
+  // Warm rim-light along the left edge.
+  g.fillStyle(PALETTE_INT.warmGlow, 0.85);
+  g.fillRoundedRect(cx - 16, 32, 4, 44, 2);
+  g.fillCircle(cx - 9, 11, 3);
+
+  g.generateTexture('tex-spark', W, H);
+  g.destroy();
+}
+
 /** Neon-teal diamond outline used for hover / click feedback. */
 export function makeTileMarkerTextures(scene: Phaser.Scene): void {
   const W = 128;

@@ -2,8 +2,17 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
 import { mixPalette, PALETTE_INT } from '@shared/palette';
+import { findPath } from '@shared/pathfinding';
 import { makeRng, type Rng } from '@shared/rng';
-import { depthForWorldY, mapWorldBounds, TILE_H, TILE_W, tileToWorld } from '../iso/project';
+import { Spark } from '../entities/Spark';
+import {
+  depthForWorldY,
+  mapWorldBounds,
+  TILE_H,
+  TILE_W,
+  tileToWorld,
+  worldToTileFloor,
+} from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { CameraController } from '../systems/CameraController';
@@ -14,6 +23,8 @@ const DEPTH_FLOOR = -100000;
 export class WorldScene extends Phaser.Scene {
   private map!: WorldMap;
   private cameraCtl!: CameraController;
+  private spark!: Spark;
+  private hoverMarker!: Phaser.GameObjects.Image;
 
   constructor() {
     super('world');
@@ -25,10 +36,78 @@ export class WorldScene extends Phaser.Scene {
     this.placeProps();
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
+    this.spawnSpark();
+    this.setupMoveInput();
   }
 
   update(_time: number, deltaMs: number): void {
     this.cameraCtl.update(deltaMs);
+    this.updateHoverMarker();
+  }
+
+  private spawnSpark(): void {
+    this.spark = new Spark(this, CONFIG.player.spawn);
+    this.cameraCtl.followTarget(this.spark.image);
+
+    this.hoverMarker = this.add.image(0, 0, 'tex-tile-marker');
+    this.hoverMarker.setScale(TEX_SCALE);
+    this.hoverMarker.setAlpha(0.4);
+    this.hoverMarker.setVisible(false);
+    this.hoverMarker.setDepth(DEPTH_FLOOR + 1);
+  }
+
+  private setupMoveInput(): void {
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return;
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const t = worldToTileFloor(world.x, world.y);
+      this.walkTo(t.tx, t.ty);
+    });
+  }
+
+  /** Path the Spark to a walkable tile; pulses the destination marker. */
+  private walkTo(tx: number, ty: number): boolean {
+    if (this.map.walkable[ty]?.[tx] !== true) return false;
+    const path = findPath(
+      { size: this.map.size, walkable: this.map.walkable },
+      this.spark.settledTile,
+      { x: tx, y: ty },
+    );
+    if (path === null) return false;
+    this.spark.walk(path);
+    this.cameraCtl.followTarget(this.spark.image);
+    this.pulseTile(tx, ty);
+    return true;
+  }
+
+  /** neonTeal click feedback pulse at a tile. */
+  private pulseTile(tx: number, ty: number): void {
+    const { x, y } = tileToWorld(tx, ty);
+    const pulse = this.add.image(x, y, 'tex-tile-pulse');
+    pulse.setScale(TEX_SCALE * 0.55);
+    pulse.setAlpha(0.85);
+    pulse.setDepth(DEPTH_FLOOR + 2);
+    this.tweens.add({
+      targets: pulse,
+      scale: TEX_SCALE * 1.05,
+      alpha: 0,
+      duration: 420,
+      ease: 'quad.out',
+      onComplete: () => pulse.destroy(),
+    });
+  }
+
+  private updateHoverMarker(): void {
+    const pointer = this.input.activePointer;
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const { tx, ty } = worldToTileFloor(world.x, world.y);
+    if (this.map.walkable[ty]?.[tx] === true) {
+      const { x, y } = tileToWorld(tx, ty);
+      this.hoverMarker.setPosition(x, y);
+      this.hoverMarker.setVisible(true);
+    } else {
+      this.hoverMarker.setVisible(false);
+    }
   }
 
   /**

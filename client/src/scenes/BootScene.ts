@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
-import { makeDynamoTexture, makePlanterTexture, makeTileMarkerTextures } from '../render/textures';
+import {
+  makeDynamoTexture,
+  makePlanterTexture,
+  makeSparkTexture,
+  makeTileMarkerTextures,
+} from '../render/textures';
 
 /**
  * Loads curated Kenney sprites, generates procedural palette placeholders,
@@ -20,6 +25,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     makeDynamoTexture(this);
     makePlanterTexture(this);
+    makeSparkTexture(this);
     makeTileMarkerTextures(this);
     this.scene.start('world');
   }
