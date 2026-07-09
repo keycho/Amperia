@@ -3,7 +3,7 @@ import { CONFIG } from '@shared/config';
 import { PALETTE_INT } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
 import { worldSpriteTint } from '../render/styleConfig';
-import { TEX_SCALE } from '../render/textures';
+import { addVoxelSprite, applyVoxelTexture } from '../render/voxel';
 
 /**
  * A clickable junk heap in the world. Handles its own visuals (full/depleted,
@@ -28,9 +28,7 @@ export class JunkHeapNode {
     const { x, y } = tileToWorld(tx, ty);
     const anchorY = y + TILE_H / 2;
 
-    this.image = scene.add.image(x, anchorY, 'tex-junk-heap');
-    this.image.setOrigin(0.5, 1);
-    this.image.setScale(TEX_SCALE * 1.35);
+    this.image = addVoxelSprite(scene, 'junk-heap', x, anchorY);
     const wt = worldSpriteTint();
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(anchorY));
@@ -60,9 +58,9 @@ export class JunkHeapNode {
 
   /** Show the glint spot at a random offset on the heap. Returns the sprite. */
   showGlint(rngValue: number): Phaser.GameObjects.Image {
-    const offsetX = -22 + rngValue * 44;
+    const offsetX = -20 + rngValue * 40;
     const baseX = this.image.x + offsetX;
-    const baseY = this.image.y - 26 - rngValue * 14;
+    const baseY = this.image.y - 18 - rngValue * 12;
     this.glintImage.setPosition(baseX, baseY);
     this.glintHalo.setPosition(baseX, baseY);
     this.glintImage.setVisible(true);
@@ -107,7 +105,7 @@ export class JunkHeapNode {
 
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
-    this.image.setTexture(depleted ? 'tex-junk-heap-depleted' : 'tex-junk-heap');
+    applyVoxelTexture(this.image, depleted ? 'junk-heap-depleted' : 'junk-heap');
     if (depleted) {
       this.hideGlint();
       this.image.disableInteractive();

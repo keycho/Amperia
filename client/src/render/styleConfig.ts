@@ -66,12 +66,6 @@ export function gradeGround(color: number): number {
   return mixInt(color, mixPalette('duskSky', 'ink', 0.55), STYLE.groundInkMix);
 }
 
-/** Grade a sprite's multiply-tint through the style (no-tint = pass white). */
-export function gradeSpriteTint(tint: number): number {
-  if (STYLE.spriteInkMix <= 0) return tint;
-  return mixInt(tint, mixPalette('duskSky', 'ink', 0.35), STYLE.spriteInkMix);
-}
-
 /** Neutral world-sprite tint for otherwise-untinted sprites. */
 export function worldSpriteTint(): number | null {
   if (STYLE.spriteInkMix <= 0) return null;

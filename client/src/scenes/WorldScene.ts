@@ -49,10 +49,9 @@ import {
 import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
-import { TINTS } from '../render/tints';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
-import { bloom, gradeGround, gradeSpriteTint, worldSpriteTint } from '../render/styleConfig';
+import { bloom, gradeGround, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -546,6 +545,20 @@ export class WorldScene extends Phaser.Scene {
         const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
         const edgeness = Math.min(1, plazaDist / (size / 2));
 
+        // Curb lips where walkable plating meets the coolant channel.
+        if (this.map.canal[ty]?.[tx] !== true) {
+          const curb = (x1: number, y1: number, x2: number, y2: number) => {
+            g.lineStyle(2.5, mixPalette('structureMid', 'groundAccent', 0.35), 0.95);
+            g.lineBetween(x1, y1, x2, y2);
+            g.lineStyle(1.5, mixPalette('duskSky', 'ink', 0.4), 0.9);
+            g.lineBetween(x1 + (y2 > y1 ? 2 : -2), y1 + 2, x2 + (y2 > y1 ? 2 : -2), y2 + 2);
+          };
+          if (this.map.canal[ty]?.[tx + 1] === true) curb(x, y - TILE_H / 2, x + TILE_W / 2, y);
+          if (this.map.canal[ty]?.[tx - 1] === true) curb(x - TILE_W / 2, y, x, y + TILE_H / 2);
+          if (this.map.canal[ty + 1]?.[tx] === true) curb(x, y + TILE_H / 2, x + TILE_W / 2, y);
+          if (this.map.canal[ty - 1]?.[tx] === true) curb(x - TILE_W / 2, y, x, y - TILE_H / 2);
+        }
+
         // Coolant canal: a dark built channel with cyan glints.
         if (this.map.canal[ty]?.[tx] === true) {
           g.fillStyle(gradeGround(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1)));
@@ -647,38 +660,37 @@ export class WorldScene extends Phaser.Scene {
       const { x, y } = this.propAnchor(p);
       switch (p.kind) {
         case 'dynamo': {
-          const img = this.add.image(x, y + 10, 'tex-dynamo');
-          img.setOrigin(0.5, 1);
-          img.setScale(TEX_SCALE * 1.7);
+          const img = addVoxelSprite(this, 'dynamo', x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
-          // Hearth halo + coil blooms — the hum of the city.
-          const halo = this.add.image(x, y - 190, 'fx-glow');
+          // Crown halo — the biggest light in the city.
+          const halo = this.add.image(x, y - 168, 'fx-glow');
           halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(bloom(0.46));
-          halo.setScale(1.42);
+          halo.setAlpha(bloom(0.44));
+          halo.setScale(1.35);
           halo.setBlendMode(Phaser.BlendModes.ADD);
           halo.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
             targets: halo,
-            alpha: { from: bloom(0.34), to: bloom(0.5) },
-            scale: { from: 1.08, to: 1.24 },
+            alpha: { from: bloom(0.36), to: bloom(0.52) },
+            scale: { from: 1.28, to: 1.42 },
             duration: 2200,
             yoyo: true,
             repeat: -1,
             ease: 'sine.inout',
           });
-          [-236, -168, -100].forEach((dy, i) => {
-            const coil = this.add.image(x - 8, y + dy, 'fx-glow');
+          // Coil-ring blooms aligned to the baked rings.
+          [-52, -92, -132].forEach((dy, i) => {
+            const coil = this.add.image(x, y + dy, 'fx-glow');
             coil.setTint(PALETTE_INT.neonAmber);
             coil.setBlendMode(Phaser.BlendModes.ADD);
-            coil.setAlpha(bloom(0.58));
-            coil.setScale(0.46, 0.19);
+            coil.setAlpha(bloom(0.5));
+            coil.setScale(0.5, 0.2);
             coil.setDepth(depthForWorldY(y) + 2);
             this.tweens.add({
               targets: coil,
-              alpha: { from: bloom(0.4), to: bloom(0.6) },
+              alpha: { from: bloom(0.38), to: bloom(0.58) },
               duration: 1500,
               delay: i * 380,
               yoyo: true,
@@ -686,17 +698,15 @@ export class WorldScene extends Phaser.Scene {
               ease: 'sine.inout',
             });
           });
-          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.6);
-          // The hum: a barely-there breathing of the whole machine.
-          this.tweens.add({
-            targets: img,
-            scaleX: { from: TEX_SCALE * 1.7, to: TEX_SCALE * 1.712 },
-            scaleY: { from: TEX_SCALE * 1.7, to: TEX_SCALE * 1.694 },
-            duration: 1900,
-            yoyo: true,
-            repeat: -1,
-            ease: 'sine.inout',
-          });
+          // Teal beacon glint on the cap.
+          const beacon = this.add.image(x, y - 210, 'fx-glow');
+          beacon.setTint(PALETTE_INT.neonTeal);
+          beacon.setBlendMode(Phaser.BlendModes.ADD);
+          beacon.setScale(0.12);
+          beacon.setAlpha(bloom(0.6));
+          beacon.setDepth(depthForWorldY(y) + 2);
+          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
+          this.placeDynamoCables(x, y);
           break;
         }
         case 'stall': {
@@ -729,10 +739,10 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'block': {
-          const img = this.add.image(x, y, `block-${p.variant % 4}`);
-          img.setOrigin(0.5, 1);
-          img.setScale(TILE_W / 111);
-          img.setTint(gradeSpriteTint(TINTS.block));
+          const name = p.variant % 4 === 3 ? 'drums' : `container-${p.variant % 3}`;
+          const img = addVoxelSprite(this, name, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
           break;
         }
@@ -808,6 +818,36 @@ export class WorldScene extends Phaser.Scene {
         glow.setDepth(1e5 + 1);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
       }
+    }
+  }
+
+  /** Thick cables running from the Dynamo's base across the plaza floor. */
+  private placeDynamoCables(cx: number, cy: number): void {
+    const g = this.add.graphics();
+    g.setDepth(DEPTH_FLOOR + 3);
+    const targets: Array<[number, number]> = [
+      [cx - 260, cy + 130],
+      [cx + 250, cy + 120],
+      [cx - 60, cy + 250],
+      [cx + 130, cy - 210],
+    ];
+    for (const [txp, typ] of targets) {
+      const midX = (cx + txp) / 2 + (typ > cy ? 24 : -18);
+      const midY = (cy + typ) / 2 + 14;
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(cx + (txp > cx ? 60 : -60), cy - 4),
+        new Phaser.Math.Vector2(midX, midY),
+        new Phaser.Math.Vector2(txp, typ),
+      );
+      g.lineStyle(7, mixPalette('duskSky', 'ink', 0.35), 1);
+      curve.draw(g, 20);
+      g.lineStyle(2.5, mixPalette('neonAmber', 'structureMid', 0.55), 0.5);
+      curve.draw(g, 20);
+      // Junction box at the far end.
+      g.fillStyle(mixPalette('structureMid', 'ink', 0.25), 1);
+      g.fillRect(txp - 7, typ - 5, 14, 10);
+      g.fillStyle(PALETTE_INT.neonAmber, 0.9);
+      g.fillRect(txp + 2, typ - 3, 3, 3);
     }
   }
 

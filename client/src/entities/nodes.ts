@@ -2,10 +2,10 @@ import Phaser from 'phaser';
 import { CONFIG, type NodeKind } from '@shared/config';
 import { targetFrequencyAt, tensionValue } from '@shared/minigames';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
-import { depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
+import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
-import { bloom, gradeSpriteTint } from '../render/styleConfig';
-import { TINTS } from '../render/tints';
+import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { addVoxelSprite, applyVoxelTexture } from '../render/voxel';
 
 /** Common surface the WorldScene talks to. */
 export interface NodeView {
@@ -39,16 +39,14 @@ export class BrassSeamNode implements NodeView {
   ) {
     this.scene = scene;
     const { x, y } = anchorFor(tx, ty);
-    this.image = scene.add.image(x, y, 'block-0');
-    this.image.setTexture('ore-brass');
-    this.image.setOrigin(0.5, 1);
-    this.image.setScale(TILE_W / 111);
-    this.image.setTint(gradeSpriteTint(TINTS.oreRock));
+    this.image = addVoxelSprite(scene, 'brass-node', x, y);
+    const wt = worldSpriteTint();
+    if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
     const mkFork = (side: 0 | 1): Phaser.GameObjects.Image => {
-      const fx = scene.add.image(x + (side === 0 ? -34 : 34), y - 36, 'fx-spark');
+      const fx = scene.add.image(x + (side === 0 ? -26 : 26), y - 26, 'fx-spark');
       fx.setBlendMode(Phaser.BlendModes.ADD);
       fx.setScale(0.1);
       fx.setDepth(depthForWorldY(y) + 3);
@@ -95,7 +93,7 @@ export class BrassSeamNode implements NodeView {
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
     this.hideFork();
-    this.image.setTint(gradeSpriteTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock));
+    applyVoxelTexture(this.image, depleted ? 'brass-node-depleted' : 'brass-node');
     if (depleted) this.image.disableInteractive();
     else {
       this.image.setInteractive({ useHandCursor: true });
@@ -122,14 +120,13 @@ export class AmperiteNode implements NodeView {
   ) {
     this.scene = scene;
     const { x, y } = anchorFor(tx, ty);
-    this.image = scene.add.image(x, y, 'ore-amperite');
-    this.image.setOrigin(0.5, 1);
-    this.image.setScale(TILE_W / 111);
-    this.image.setTint(gradeSpriteTint(TINTS.oreRock));
+    this.image = addVoxelSprite(scene, 'amperite-node', x, y);
+    const wt = worldSpriteTint();
+    if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
-    this.glow = scene.add.image(x, y - 26, 'fx-glow');
+    this.glow = scene.add.image(x, y - 34, 'fx-glow');
     this.glow.setTint(PALETTE_INT.neonTeal);
     this.glow.setBlendMode(Phaser.BlendModes.ADD);
     this.glow.setScale(0.16);
@@ -162,7 +159,7 @@ export class AmperiteNode implements NodeView {
   }
 
   flashStrike(onPulse: boolean): void {
-    const burst = this.scene.add.image(this.image.x, this.image.y - 26, 'fx-spark');
+    const burst = this.scene.add.image(this.image.x, this.image.y - 34, 'fx-spark');
     burst.setTint(onPulse ? PALETTE_INT.neonTeal : mixPalette('structureMid', 'ink', 0.1));
     burst.setBlendMode(onPulse ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
     burst.setScale(onPulse ? 0.14 : 0.08);
@@ -179,7 +176,7 @@ export class AmperiteNode implements NodeView {
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
     this.stopPulse();
-    this.image.setTint(gradeSpriteTint(depleted ? mixPalette('structureMid', 'ink', 0.35) : TINTS.oreRock));
+    applyVoxelTexture(this.image, depleted ? 'amperite-node-depleted' : 'amperite-node');
     if (depleted) this.image.disableInteractive();
     else {
       this.image.setInteractive({ useHandCursor: true });
@@ -344,13 +341,13 @@ export class AntennaNode implements NodeView {
     ty: number,
   ) {
     const { x, y } = anchorFor(tx, ty);
-    this.image = scene.add.image(x, y, 'tex-antenna');
-    this.image.setOrigin(0.5, 1);
-    this.image.setScale(TEX_SCALE * 1.5);
+    this.image = addVoxelSprite(scene, 'antenna', x, y);
+    const wt = worldSpriteTint();
+    if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
-    this.beaconGlow = scene.add.image(x, y - 96, 'fx-glow');
+    this.beaconGlow = scene.add.image(x, y - 108, 'fx-glow');
     this.beaconGlow.setTint(PALETTE_INT.neonTeal);
     this.beaconGlow.setBlendMode(Phaser.BlendModes.ADD);
     this.beaconGlow.setScale(0.26);

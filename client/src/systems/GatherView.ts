@@ -37,7 +37,11 @@ export class GatherView {
     if (this.node === null) return;
     const progress = Math.min(1, (this.scene.time.now - this.startedAt) / 1000 / this.seconds);
     const x = this.node.image.x - 24;
-    const y = this.node.image.y - 66;
+    // Hover just above the model; cap so tall models (antenna) keep the bar
+    // near the Spark instead of at the mast top.
+    const img = this.node.image;
+    const above = Math.min(img.displayHeight * img.originY, 72);
+    const y = img.y - above - 14;
     this.bar.clear();
     this.bar.fillStyle(PALETTE_INT.ink, 0.6);
     this.bar.fillRoundedRect(x, y, 48, 8, 4);

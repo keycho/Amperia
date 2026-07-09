@@ -1,20 +1,16 @@
 import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
 import { bakeCoreVoxelModels } from '../render/voxelModels';
+import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
 import {
-  makeAntennaTexture,
-  makeDynamoTexture,
   makeItemIconTextures,
-  makeJunkHeapTextures,
   makeKoiTextures,
-  makePlanterTexture,
-  makeSparkTexture,
   makeTileMarkerTextures,
 } from '../render/textures';
 
 /**
- * Loads curated Kenney sprites, generates procedural palette placeholders,
- * then starts the world.
+ * Loads curated Kenney UI/icon/particle sprites, bakes the voxel world set
+ * and the remaining procedural fx textures, then starts the world.
  */
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -28,15 +24,11 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    makeDynamoTexture(this);
-    makePlanterTexture(this);
-    makeSparkTexture(this);
     makeTileMarkerTextures(this);
-    makeJunkHeapTextures(this);
     makeItemIconTextures(this);
-    makeAntennaTexture(this);
     makeKoiTextures(this);
     bakeCoreVoxelModels(this);
+    bakeWorldVoxelModels(this);
     this.scene.start('login');
   }
 }

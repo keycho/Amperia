@@ -189,7 +189,18 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
   const existing = registry.get(model.name);
   if (existing !== undefined && scene.textures.exists(key)) return existing;
 
-  const sorted = [...model.voxels].sort(
+  // Cull voxels with all three visible faces covered (exact for this
+  // projection: +x, +y and +z neighbours hide a cube completely).
+  const occupied = new Set(model.voxels.map((v) => `${v.x},${v.y},${v.z}`));
+  const visible = model.voxels.filter(
+    (v) =>
+      !(
+        occupied.has(`${v.x + 1},${v.y},${v.z}`) &&
+        occupied.has(`${v.x},${v.y + 1},${v.z}`) &&
+        occupied.has(`${v.x},${v.y},${v.z + 1}`)
+      ),
+  );
+  const sorted = [...visible].sort(
     (a, b) => a.x + a.y - (b.x + b.y) || a.z - b.z,
   );
   const proj = project(sorted);
@@ -249,4 +260,15 @@ export function addVoxelSprite(
   img.setOrigin(baked.originX, baked.originY);
   img.setScale(baked.scale);
   return img;
+}
+
+/**
+ * Swap an image to another baked model (e.g. depleted variants). Origin and
+ * scale are re-applied because each bake has its own bounding box.
+ */
+export function applyVoxelTexture(img: Phaser.GameObjects.Image, name: string): void {
+  const baked = voxelSprite(name);
+  img.setTexture(baked.key);
+  img.setOrigin(baked.originX, baked.originY);
+  img.setScale(baked.scale);
 }
