@@ -52,7 +52,7 @@ import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
-import { bloom, gradeGround, gradeSpriteTint, STYLE, worldSpriteTint } from '../render/styleConfig';
+import { bloom, gradeGround, gradeSpriteTint, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -516,6 +516,30 @@ export class WorldScene extends Phaser.Scene {
     g.setDepth(DEPTH_FLOOR);
     const rng: Rng = makeRng(CONFIG.map.seed ^ 0x5eed);
 
+    // Where lamplight lands (tile coords) — the wet glaze catches it there.
+    const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
+    for (const p of this.map.props) {
+      if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
+      if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
+      if (p.kind === 'planter') lightSpots.push({ x: p.x, y: p.y, cool: false });
+    }
+    for (const n of this.map.nodes) {
+      if (n.kind === 'antenna') lightSpots.push({ x: n.x, y: n.y, cool: true });
+      if (n.kind === 'glowkoi') lightSpots.push({ x: n.x, y: n.y, cool: true });
+    }
+    const nearestLight = (tx: number, ty: number) => {
+      let best = Infinity;
+      let cool = false;
+      for (const sp of lightSpots) {
+        const d = Math.max(Math.abs(sp.x - tx), Math.abs(sp.y - ty));
+        if (d < best) {
+          best = d;
+          cool = sp.cool;
+        }
+      }
+      return { d: best, cool };
+    };
+
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
         const { x, y } = tileToWorld(tx, ty);
@@ -540,13 +564,13 @@ export class WorldScene extends Phaser.Scene {
         let fill: number;
         const inPlaza = plazaDist <= plaza.radius;
         if (inPlaza) {
-          // Plaza decking: mid-value warm plum — objects must sit LIGHTER
-          // than the ground (contrast by value separation, not darkness).
-          fill = mixPalette('groundBase', 'groundAccent', 0.22 + rng() * 0.1);
+          // Night market at night: even the plaza is deep plum — the warmth
+          // on it comes from lamplight pools, not from the ground color.
+          fill = mixPalette('duskSky', 'groundBase', 0.24 + rng() * 0.08);
         } else {
-          // Streets: dark-mid plum, darkening gently toward the fringe.
-          const t = 0.42 + edgeness * 0.2 + rng() * 0.08;
-          fill = mixPalette('groundBase', 'duskSky', Math.min(0.75, t));
+          // Streets: deep ink-plum, sinking toward ink at the fringe.
+          const t = 0.12 + edgeness * 0.3 + rng() * 0.06;
+          fill = mixPalette('duskSky', 'ink', Math.min(0.55, t));
         }
 
         g.fillStyle(gradeGround(fill));
@@ -562,12 +586,22 @@ export class WorldScene extends Phaser.Scene {
         // No grid strokes — the floor reads through shading variation only
         // (ART-DIRECTION §7: kill visual noise; grid lines read as noise).
 
-        // Wet-sheen glaze: a soft warm highlight streak, barely there.
-        if (rng() < 0.1) {
-          g.lineStyle(1.5, mixPalette('warmGlow', 'groundBase', 0.68), 0.1 + rng() * 0.05);
-          const sx = x - 10 + rng() * 8;
-          const sy = y - 3 + rng() * 6;
-          g.lineBetween(sx, sy, sx + 14, sy - 5);
+        // Wet-sheen glaze — now visibly catching the lamplight pools:
+        // bright warm streaks inside pool range, near-nothing in the dark.
+        {
+          const light = nearestLight(tx, ty);
+          const inPool = light.d <= 2.5;
+          if (rng() < (inPool ? 0.5 : 0.02)) {
+            const sheen = inPool
+              ? light.cool
+                ? mixPalette('neonCyan', 'duskSky', 0.45)
+                : mixPalette('warmGlow', 'duskSky', 0.3)
+              : mixPalette('groundBase', 'duskSky', 0.55);
+            g.lineStyle(1.5, sheen, inPool ? 0.2 + rng() * 0.12 : 0.05);
+            const sx = x - 10 + rng() * 8;
+            const sy = y - 3 + rng() * 6;
+            g.lineBetween(sx, sy, sx + 14, sy - 5);
+          }
         }
 
         // Occasional rivets on the plating.
@@ -593,12 +627,11 @@ export class WorldScene extends Phaser.Scene {
    * through what the lamps claim back).
    */
   private addGroundPool(x: number, y: number, tint: number, scale: number): void {
-    if (STYLE.mode === 'A') return;
     const pool = this.add.image(x, y, 'fx-glow');
     pool.setTint(tint);
     pool.setBlendMode(Phaser.BlendModes.ADD);
     pool.setScale(scale, scale * 0.42);
-    pool.setAlpha(0.17);
+    pool.setAlpha(0.24);
     pool.setDepth(DEPTH_FLOOR + 4);
   }
 
@@ -623,13 +656,13 @@ export class WorldScene extends Phaser.Scene {
           // Hearth halo + coil blooms — the hum of the city.
           const halo = this.add.image(x, y - 190, 'fx-glow');
           halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(bloom(0.34));
-          halo.setScale(1.3);
+          halo.setAlpha(bloom(0.46));
+          halo.setScale(1.42);
           halo.setBlendMode(Phaser.BlendModes.ADD);
           halo.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
             targets: halo,
-            alpha: { from: bloom(0.2), to: bloom(0.3) },
+            alpha: { from: bloom(0.34), to: bloom(0.5) },
             scale: { from: 1.08, to: 1.24 },
             duration: 2200,
             yoyo: true,
@@ -640,12 +673,12 @@ export class WorldScene extends Phaser.Scene {
             const coil = this.add.image(x - 8, y + dy, 'fx-glow');
             coil.setTint(PALETTE_INT.neonAmber);
             coil.setBlendMode(Phaser.BlendModes.ADD);
-            coil.setAlpha(bloom(0.42));
-            coil.setScale(0.42, 0.17);
+            coil.setAlpha(bloom(0.58));
+            coil.setScale(0.46, 0.19);
             coil.setDepth(depthForWorldY(y) + 2);
             this.tweens.add({
               targets: coil,
-              alpha: { from: bloom(0.22), to: bloom(0.42) },
+              alpha: { from: bloom(0.4), to: bloom(0.6) },
               duration: 1500,
               delay: i * 380,
               yoyo: true,
@@ -653,7 +686,7 @@ export class WorldScene extends Phaser.Scene {
               ease: 'sine.inout',
             });
           });
-          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.15);
+          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.6);
           // The hum: a barely-there breathing of the whole machine.
           this.tweens.add({
             targets: img,
@@ -674,15 +707,15 @@ export class WorldScene extends Phaser.Scene {
           // Lantern glow on the baked lantern voxel (right post, mid-height).
           const lantern = this.add.image(x + 34, y - 58, 'fx-glow');
           lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);
-          lantern.setAlpha(bloom(0.7));
-          lantern.setScale(0.11);
+          lantern.setAlpha(bloom(0.88));
+          lantern.setScale(0.14);
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
           // Sign glyph glow (left of center, under the awning).
           const sign = this.add.image(x - 6, y - 62, 'fx-glow');
           sign.setTint(PALETTE_INT.neonAmber);
-          sign.setAlpha(bloom(0.4));
-          sign.setScale(0.06);
+          sign.setAlpha(bloom(0.55));
+          sign.setScale(0.07);
           sign.setBlendMode(Phaser.BlendModes.ADD);
           sign.setDepth(depthForWorldY(y) + 1);
           this.addGroundPool(x + 10, y - 4, PALETTE_INT.neonAmber, 0.38);
@@ -743,7 +776,13 @@ export class WorldScene extends Phaser.Scene {
 
     const g = this.add.graphics();
     g.setDepth(1e5);
-    const bulbTints = [PALETTE_INT.neonAmber, PALETTE_INT.neonRose, PALETTE_INT.neonTeal];
+    // ~70% warm / 30% cool: amber, rose, amber, teal.
+    const bulbTints = [
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.neonRose,
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.neonTeal,
+    ];
     let bulbIdx = 0;
     for (const [a, b] of lines) {
       const sag = Math.min(60, Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y) * 0.12);
@@ -764,8 +803,8 @@ export class WorldScene extends Phaser.Scene {
         const glow = this.add.image(p.x, p.y + 2, 'fx-glow');
         glow.setTint(tint);
         glow.setBlendMode(Phaser.BlendModes.ADD);
-        glow.setScale(0.05);
-        glow.setAlpha(bloom(0.68));
+        glow.setScale(0.062);
+        glow.setAlpha(bloom(0.85));
         glow.setDepth(1e5 + 1);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
       }

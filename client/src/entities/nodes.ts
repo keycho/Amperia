@@ -4,7 +4,7 @@ import { targetFrequencyAt, tensionValue } from '@shared/minigames';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
-import { bloom, gradeSpriteTint, STYLE } from '../render/styleConfig';
+import { bloom, gradeSpriteTint } from '../render/styleConfig';
 import { TINTS } from '../render/tints';
 
 /** Common surface the WorldScene talks to. */
@@ -145,7 +145,7 @@ export class AmperiteNode implements NodeView {
     const startDelay = ((phaseSeconds % periodSeconds) + periodSeconds) % periodSeconds;
     this.pulseTween = this.scene.tweens.add({
       targets: this.glow,
-      alpha: { from: bloom(0.05), to: bloom(0.6) },
+      alpha: { from: bloom(0.08), to: bloom(0.78) },
       scale: { from: 0.12, to: 0.22 },
       delay: startDelay * 1000 - periodMs / 4,
       duration: periodMs / 2,
@@ -353,8 +353,8 @@ export class AntennaNode implements NodeView {
     this.beaconGlow = scene.add.image(x, y - 96, 'fx-glow');
     this.beaconGlow.setTint(PALETTE_INT.neonTeal);
     this.beaconGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.beaconGlow.setScale(0.22);
-    this.beaconGlow.setAlpha(bloom(0.55));
+    this.beaconGlow.setScale(0.26);
+    this.beaconGlow.setAlpha(bloom(0.75));
     this.beaconGlow.setDepth(depthForWorldY(y) + 2);
     scene.tweens.add({
       targets: this.beaconGlow,
@@ -364,12 +364,12 @@ export class AntennaNode implements NodeView {
       repeat: -1,
       ease: 'sine.inout',
     });
-    if (STYLE.mode !== 'A') {
+    {
       const pool = scene.add.image(x, y - 4, 'fx-glow');
       pool.setTint(PALETTE_INT.neonTeal);
       pool.setBlendMode(Phaser.BlendModes.ADD);
-      pool.setScale(0.3, 0.13);
-      pool.setAlpha(0.14);
+      pool.setScale(0.34, 0.15);
+      pool.setAlpha(0.2);
       pool.setDepth(depthForWorldY(y) - 1);
     }
   }

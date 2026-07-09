@@ -3,9 +3,9 @@ import { mixPalette, PALETTE_INT } from '@shared/palette';
 import { STYLE } from './styleConfig';
 
 /**
- * The golden-dusk ambience (ART-DIRECTION §3): a breathing warm wash over
- * the whole view plus gently darkened corners, all screen-space. Subtle by
- * design — the world should feel lamplit, never fogged.
+ * "Night market at night" (ART-DIRECTION v2.3 §3): NO global warm wash —
+ * warmth comes from light sources only. Screen-space keeps just the dusk
+ * vignette so the backdrop stays the darkest value in frame (§12A.5).
  */
 export function addWarmAmbience(scene: Phaser.Scene): void {
   // Radial dusk vignette baked once from palette colors.
@@ -34,20 +34,6 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
     }
   }
 
-  // The golden wash: one broad breathing glow + a lamplight pool low-center.
-  const wash = scene.add.image(0, 0, 'fx-glow');
-  wash.setScrollFactor(0);
-  wash.setDepth(10);
-  wash.setTint(PALETTE_INT.warmGlow);
-  wash.setBlendMode(Phaser.BlendModes.ADD);
-
-  const pool = scene.add.image(0, 0, 'fx-glow');
-  pool.setScrollFactor(0);
-  pool.setDepth(10);
-  pool.setTint(mixPalette('warmGlow', 'neonAmber', 0.4));
-  pool.setBlendMode(Phaser.BlendModes.ADD);
-  pool.setAlpha(0.05 * STYLE.washScale);
-
   const vignette = scene.add.image(0, 0, 'tex-vignette');
   vignette.setScrollFactor(0);
   vignette.setDepth(12);
@@ -55,24 +41,11 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
   const layout = () => {
     const w = scene.scale.width;
     const h = scene.scale.height;
-    wash.setPosition(w / 2, h * 0.42);
-    wash.setDisplaySize(w * 1.7, h * 1.6);
-    pool.setPosition(w / 2, h * 0.72);
-    pool.setDisplaySize(w * 1.2, h * 0.9);
     vignette.setPosition(w / 2, h / 2);
     vignette.setDisplaySize(w * 1.06, h * 1.12);
   };
   layout();
   scene.scale.on('resize', layout);
-
-  scene.tweens.add({
-    targets: wash,
-    alpha: { from: 0.07 * STYLE.washScale, to: 0.115 * STYLE.washScale },
-    duration: 3600,
-    yoyo: true,
-    repeat: -1,
-    ease: 'sine.inout',
-  });
 }
 
 /**
