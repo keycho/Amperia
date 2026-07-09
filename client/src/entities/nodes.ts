@@ -352,8 +352,8 @@ export class AntennaNode implements NodeView {
     this.beaconGlow = scene.add.image(x, y - 96, 'fx-glow');
     this.beaconGlow.setTint(PALETTE_INT.neonTeal);
     this.beaconGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.beaconGlow.setScale(0.16);
-    this.beaconGlow.setAlpha(0.4);
+    this.beaconGlow.setScale(0.22);
+    this.beaconGlow.setAlpha(0.55);
     this.beaconGlow.setDepth(depthForWorldY(y) + 2);
     scene.tweens.add({
       targets: this.beaconGlow,

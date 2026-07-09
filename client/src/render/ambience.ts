@@ -7,36 +7,63 @@ import { mixPalette, PALETTE_INT } from '@shared/palette';
  * design — the world should feel lamplit, never fogged.
  */
 export function addWarmAmbience(scene: Phaser.Scene): void {
+  // Radial dusk vignette baked once from palette colors.
+  if (!scene.textures.exists('tex-vignette')) {
+    const size = 512;
+    const canvas = scene.textures.createCanvas('tex-vignette', size, size);
+    if (canvas !== null) {
+      const ctx = canvas.getContext();
+      const grad = ctx.createRadialGradient(
+        size / 2,
+        size / 2,
+        size * 0.28,
+        size / 2,
+        size / 2,
+        size * 0.72,
+      );
+      const plum = Phaser.Display.Color.IntegerToColor(mixPalette('duskSky', 'ink', 0.6));
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, `rgba(${plum.red},${plum.green},${plum.blue},0.42)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+      canvas.refresh();
+    }
+  }
+
+  // The golden wash: one broad breathing glow + a lamplight pool low-center.
   const wash = scene.add.image(0, 0, 'fx-glow');
   wash.setScrollFactor(0);
   wash.setDepth(9000);
   wash.setTint(PALETTE_INT.warmGlow);
   wash.setBlendMode(Phaser.BlendModes.ADD);
-  wash.setAlpha(0.055);
 
-  const corner = scene.add.graphics();
-  corner.setScrollFactor(0);
-  corner.setDepth(9001);
+  const pool = scene.add.image(0, 0, 'fx-glow');
+  pool.setScrollFactor(0);
+  pool.setDepth(9000);
+  pool.setTint(mixPalette('warmGlow', 'neonAmber', 0.4));
+  pool.setBlendMode(Phaser.BlendModes.ADD);
+  pool.setAlpha(0.05);
+
+  const vignette = scene.add.image(0, 0, 'tex-vignette');
+  vignette.setScrollFactor(0);
+  vignette.setDepth(9002);
 
   const layout = () => {
     const w = scene.scale.width;
     const h = scene.scale.height;
-    wash.setPosition(w / 2, h / 2 - h * 0.08);
-    wash.setDisplaySize(w * 1.6, h * 1.5);
-    // Dusk pools in the corners (multiply-ish via low-alpha plum fills).
-    corner.clear();
-    corner.fillStyle(mixPalette('duskSky', 'ink', 0.5), 0.16);
-    corner.fillTriangle(0, 0, w * 0.3, 0, 0, h * 0.3);
-    corner.fillTriangle(w, 0, w - w * 0.3, 0, w, h * 0.3);
-    corner.fillTriangle(0, h, w * 0.32, h, 0, h - h * 0.32);
-    corner.fillTriangle(w, h, w - w * 0.32, h, w, h - h * 0.32);
+    wash.setPosition(w / 2, h * 0.42);
+    wash.setDisplaySize(w * 1.7, h * 1.6);
+    pool.setPosition(w / 2, h * 0.72);
+    pool.setDisplaySize(w * 1.2, h * 0.9);
+    vignette.setPosition(w / 2, h / 2);
+    vignette.setDisplaySize(w * 1.06, h * 1.12);
   };
   layout();
   scene.scale.on('resize', layout);
 
   scene.tweens.add({
     targets: wash,
-    alpha: { from: 0.04, to: 0.075 },
+    alpha: { from: 0.07, to: 0.115 },
     duration: 3600,
     yoyo: true,
     repeat: -1,
@@ -79,14 +106,14 @@ export function makeSkylineTexture(scene: Phaser.Scene): void {
       for (let c = 0; c < cols; c++) {
         for (let r = 0; r < Math.floor(bh / 22); r++) {
           if (rand() < 0.24) {
-            g.fillStyle(PALETTE_INT.warmGlow, 0.7);
+            g.fillStyle(PALETTE_INT.warmGlow, 0.45);
             g.fillRect(x + 6 + c * 14, row.base - bh + 8 + r * 22, 3.5, 5);
           }
         }
       }
       // The odd neon sign smear.
       if (rand() < 0.16) {
-        g.fillStyle(rand() < 0.5 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose, 0.5);
+        g.fillStyle(rand() < 0.5 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose, 0.35);
         g.fillRect(x + bw * 0.2, row.base - bh + 4, 5, 18);
       }
       x += bw + 6 + rand() * 18;
@@ -103,6 +130,6 @@ export function addSkyline(scene: Phaser.Scene, mapTopY: number): void {
     img.setOrigin(0.5, 1);
     img.setScrollFactor(0.35, 0.5);
     img.setDepth(-1e6);
-    img.setAlpha(0.9);
+    img.setAlpha(0.7);
   }
 }

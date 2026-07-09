@@ -524,16 +524,13 @@ export class WorldScene extends Phaser.Scene {
           g.fillStyle(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1));
           this.traceDiamond(g, x, y);
           g.fillPath();
-          if (rng() < 0.4) {
-            g.lineStyle(1.5, PALETTE_INT.neonCyan, 0.35 + rng() * 0.25);
-            const gx = x - 12 + rng() * 24;
-            const gy = y - 4 + rng() * 8;
-            g.lineBetween(gx - 5, gy, gx + 5, gy);
+          if (rng() < 0.22) {
+            // Faint coolant ripple, barely catching the neon.
+            g.lineStyle(1, mixPalette('neonCyan', 'duskSky', 0.72), 0.16 + rng() * 0.06);
+            const gx = x - 10 + rng() * 20;
+            const gy = y - 3 + rng() * 6;
+            g.lineBetween(gx - 8, gy, gx + 8, gy);
           }
-          // Channel rim on the banks.
-          g.lineStyle(1.5, mixPalette('structureMid', 'ink', 0.2), 0.8);
-          this.traceDiamond(g, x, y);
-          g.strokePath();
           continue;
         }
 
@@ -541,16 +538,16 @@ export class WorldScene extends Phaser.Scene {
         const inPlaza = plazaDist <= plaza.radius;
         if (inPlaza) {
           // Warm decking on the plaza — the amber heart of the district.
-          fill = mixPalette('groundAccent', 'warmGlow', 0.06 + rng() * 0.1);
+          fill = mixPalette('groundAccent', 'warmGlow', 0.12 + rng() * 0.12);
         } else {
           // Mauve plating outward, cooling gently toward the fringe. The
           // Filament's hue leans amber north / rose south-east (one dominant
           // hue per district, varied inside it).
-          const accent = Math.max(0, 0.26 - edgeness * 0.2) * rng();
-          const coolShift = Math.max(0, edgeness - 0.55) * 0.5;
+          const accent = 0.08 + Math.max(0, 0.3 - edgeness * 0.2) * rng();
+          const coolShift = Math.max(0, edgeness - 0.62) * 0.4;
           fill =
             coolShift > 0.01
-              ? mixPalette('groundBase', 'structureMid', coolShift + rng() * 0.08)
+              ? mixPalette('groundBase', 'structureMid', coolShift + rng() * 0.06)
               : mixPalette('groundBase', 'groundAccent', accent);
         }
 
@@ -560,23 +557,16 @@ export class WorldScene extends Phaser.Scene {
 
         // Plaza decking planks (subtle seams along the NE facet).
         if (inPlaza && (tx + ty) % 2 === 0) {
-          g.lineStyle(1, mixPalette('groundAccent', 'ink', 0.3), 0.16);
+          g.lineStyle(1, mixPalette('groundAccent', 'ink', 0.3), 0.1);
           g.lineBetween(x - TILE_W / 4, y - TILE_H / 4 + 2, x + TILE_W / 4, y + TILE_H / 4 + 2);
         }
 
-        // Subtle plating seam so the grid reads without shouting.
-        g.lineStyle(1, mixPalette('groundBase', 'ink', 0.55), 0.18);
-        this.traceDiamond(g, x, y);
-        g.strokePath();
+        // No grid strokes — the floor reads through shading variation only
+        // (ART-DIRECTION §7: kill visual noise; grid lines read as noise).
 
-        // Wet-sheen glaze: a soft highlight streak catching nearby neon
-        // (ART-DIRECTION §3 — damp and shiny, never drenched).
-        if (rng() < 0.14) {
-          const nearCanal = tx >= CONFIG.canal.xMin - 2 && tx <= CONFIG.canal.xMax + 3;
-          const sheenTint = nearCanal
-            ? mixPalette('neonCyan', 'groundBase', 0.55)
-            : mixPalette('warmGlow', 'groundBase', 0.6);
-          g.lineStyle(1.5, sheenTint, 0.14 + rng() * 0.08);
+        // Wet-sheen glaze: a soft warm highlight streak, barely there.
+        if (rng() < 0.1) {
+          g.lineStyle(1.5, mixPalette('warmGlow', 'groundBase', 0.68), 0.1 + rng() * 0.05);
           const sx = x - 10 + rng() * 8;
           const sy = y - 3 + rng() * 6;
           g.lineBetween(sx, sy, sx + 14, sy - 5);
@@ -619,8 +609,8 @@ export class WorldScene extends Phaser.Scene {
           // Hearth halo + coil blooms — the hum of the city.
           const halo = this.add.image(x, y - 190, 'fx-glow');
           halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(0.26);
-          halo.setScale(1.15);
+          halo.setAlpha(0.34);
+          halo.setScale(1.3);
           halo.setBlendMode(Phaser.BlendModes.ADD);
           halo.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
@@ -636,8 +626,8 @@ export class WorldScene extends Phaser.Scene {
             const coil = this.add.image(x - 8, y + dy, 'fx-glow');
             coil.setTint(PALETTE_INT.neonAmber);
             coil.setBlendMode(Phaser.BlendModes.ADD);
-            coil.setAlpha(0.3);
-            coil.setScale(0.34, 0.14);
+            coil.setAlpha(0.42);
+            coil.setScale(0.42, 0.17);
             coil.setDepth(depthForWorldY(y) + 2);
             this.tweens.add({
               targets: coil,
@@ -671,8 +661,8 @@ export class WorldScene extends Phaser.Scene {
           // A little lantern dot by the door so stalls read as "market".
           const lantern = this.add.image(x + 14, y - 30, 'fx-glow');
           lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);
-          lantern.setAlpha(0.55);
-          lantern.setScale(0.09);
+          lantern.setAlpha(0.75);
+          lantern.setScale(0.13);
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
           break;
@@ -754,8 +744,8 @@ export class WorldScene extends Phaser.Scene {
         const glow = this.add.image(p.x, p.y + 2, 'fx-glow');
         glow.setTint(tint);
         glow.setBlendMode(Phaser.BlendModes.ADD);
-        glow.setScale(0.035);
-        glow.setAlpha(0.5);
+        glow.setScale(0.05);
+        glow.setAlpha(0.68);
         glow.setDepth(1e5 + 1);
       }
     }
