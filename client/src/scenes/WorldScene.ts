@@ -1,8 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
-import { ITEMS } from '@shared/items';
-import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { mixPalette, PALETTE_INT } from '@shared/palette';
 import { findPath } from '@shared/pathfinding';
 import { makeRng, type Rng } from '@shared/rng';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
@@ -19,7 +18,6 @@ import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { CameraController } from '../systems/CameraController';
 import { GatherController } from '../systems/GatherController';
-import { gameState, GameEvents } from '../state/GameState';
 
 /** Depth floor for the ground layer; entities use their anchor world-Y. */
 const DEPTH_FLOOR = -100000;
@@ -31,7 +29,6 @@ export class WorldScene extends Phaser.Scene {
   private hoverMarker!: Phaser.GameObjects.Image;
   private gatherCtl!: GatherController;
   private nodes: JunkHeapNode[] = [];
-  private lootHud!: Phaser.GameObjects.Text;
 
   constructor() {
     super('world');
@@ -46,7 +43,7 @@ export class WorldScene extends Phaser.Scene {
     this.spawnSpark();
     this.spawnJunkHeaps();
     this.setupMoveInput();
-    this.setupLootHud();
+    this.scene.launch('ui');
   }
 
   update(_time: number, deltaMs: number): void {
@@ -96,28 +93,6 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private setupLootHud(): void {
-    this.lootHud = this.add.text(12, 10, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: UI_TEXT_WARM,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
-    this.lootHud.setScrollFactor(0);
-    this.lootHud.setDepth(1e9);
-    const refresh = () => {
-      const salvage = gameState.count('salvage');
-      const gilded = gameState.count('gildedScrap');
-      this.lootHud.setText(
-        `${ITEMS.salvage.name} × ${salvage}` +
-          (gilded > 0 ? `   ${ITEMS.gildedScrap.name} × ${gilded}` : ''),
-      );
-    };
-    gameState.events.on(GameEvents.inventoryChanged, refresh);
-    refresh();
-  }
-
   private spawnSpark(): void {
     this.spark = new Spark(this, CONFIG.player.spawn);
     this.cameraCtl.followTarget(this.spark.image);
@@ -147,6 +122,8 @@ export class WorldScene extends Phaser.Scene {
       { x: tx, y: ty },
     );
     if (path === null) return false;
+    // Walking away abandons any gather in progress.
+    this.gatherCtl.cancel();
     this.spark.walk(path);
     this.cameraCtl.followTarget(this.spark.image);
     this.pulseTile(tx, ty);

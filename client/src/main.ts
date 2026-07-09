@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { PALETTE } from '@shared/palette';
 import { BootScene } from './scenes/BootScene';
+import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
+import { gameState } from './state/GameState';
 
 declare global {
   interface Window {
     /** Debug/verification handle (screenshot harness, manual poking). */
-    __amperia?: { game: Phaser.Game };
+    __amperia?: { game: Phaser.Game; gameState: typeof gameState };
   }
 }
 
@@ -22,7 +24,7 @@ const game = new Phaser.Game({
     antialias: true,
     roundPixels: false,
   },
-  scene: [BootScene, WorldScene],
+  scene: [BootScene, WorldScene, UIScene],
 });
 
-window.__amperia = { game };
+window.__amperia = { game, gameState };

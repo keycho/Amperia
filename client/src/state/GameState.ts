@@ -31,8 +31,9 @@ class GameStateStore {
     return r.added;
   }
 
+  /** Total across pack + hotbar (what the player "has"). */
   count(itemId: ItemId): number {
-    return countItem(this.inventory, itemId);
+    return countItem(this.inventory, itemId) + countItem(this.hotbar, itemId);
   }
 
   /** Move/merge/swap between inventory and/or hotbar containers. */
