@@ -33,6 +33,21 @@ describe('buildWorldMap', () => {
     expect(map.walkable[y]?.[x]).toBe(true);
   });
 
+  it('places the three salvage-shack landmarks', () => {
+    const shacks = map.props.filter((p) => p.kind === 'shack');
+    expect(shacks.length).toBe(3);
+    expect(shacks.every((s) => s.w === 2 && s.h === 2)).toBe(true);
+  });
+
+  it('keeps the plaza-axis lanes clear of scatter clutter', () => {
+    const c = Math.floor(map.size / 2);
+    for (const p of map.props) {
+      if (p.kind !== 'crate' && p.kind !== 'block') continue;
+      const onLane = Math.abs(p.x - c) <= 1 || Math.abs(p.y - c) <= 1;
+      expect(onLane).toBe(false);
+    }
+  });
+
   it('places the configured node count per kind, all blocked', () => {
     const counts: Record<NodeKind, number> = {
       junkHeap: 0,

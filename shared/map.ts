@@ -8,7 +8,7 @@ import { makeRng, randInt, type Rng } from './rng';
  * the edges. Deterministic from CONFIG.map.seed so client and server agree.
  */
 
-export type PropKind = 'dynamo' | 'stall' | 'crate' | 'block' | 'planter';
+export type PropKind = 'dynamo' | 'stall' | 'crate' | 'block' | 'planter' | 'shack';
 
 export interface Prop {
   kind: PropKind;
@@ -128,7 +128,8 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     blockFootprint(walkable, stall);
   }
 
-  // Planters dotting the plaza ring (greenery as decor, never terrain).
+  // Planters dotting the plaza ring, plus twin rows framing the south
+  // approach lane (greenery as decor, never terrain).
   const planterSpots: Array<[number, number]> = [
     [c - plaza.radius, c - 2],
     [c - plaza.radius, c + 2],
@@ -136,6 +137,10 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     [c + plaza.radius, c + 2],
     [c - 2, c + plaza.radius],
     [c + 2, c + plaza.radius],
+    [c - 2, c + plaza.radius + 3],
+    [c + 2, c + plaza.radius + 3],
+    [c - 2, c + plaza.radius + 5],
+    [c + 2, c + plaza.radius + 5],
   ];
   for (const [px, py] of planterSpots) {
     const planter: Prop = { kind: 'planter', x: px, y: py, w: 1, h: 1, variant: randInt(rng, 0, 1) };
@@ -143,10 +148,30 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     blockFootprint(walkable, planter);
   }
 
+  // Salvage shacks — landmark anchors for the fringe vignettes: one by the
+  // NE brass workings, one on the SW towpath, one toward the amperite field.
+  const shackSpots: Array<[number, number]> = [
+    [29, 8],
+    [10, 29],
+    [30, 27],
+  ];
+  shackSpots.forEach(([sx, sy], i) => {
+    if (!isAreaFree(walkable, sx, sy, 2, 2)) return; // ring rule keeps reachability
+    const shack: Prop = { kind: 'shack', x: sx, y: sy, w: 2, h: 2, variant: i };
+    props.push(shack);
+    blockFootprint(walkable, shack);
+  });
+
   // Scrappy fringe: crates and salvage blocks scattered outside the plaza,
-  // denser toward the map edge. Spacing rule (no two scatter props within
-  // 2 tiles, checked via the free-area ring) guarantees no walkable pocket
-  // can be sealed off, so every walkable tile stays reachable.
+  // pulled into vignette clusters around the shacks and stall row, with the
+  // plaza-axis lanes kept clear as open sightlines out of the market.
+  // Spacing rule (no two scatter props within 2 tiles, checked via the
+  // free-area ring) guarantees no walkable pocket can be sealed off, so
+  // every walkable tile stays reachable.
+  const magnets: Array<[number, number]> = [
+    ...shackSpots.map(([sx, sy]) => [sx + 1, sy + 1] as [number, number]),
+    ...props.filter((p) => p.kind === 'stall').map((p) => [p.x, p.y + 1] as [number, number]),
+  ];
   const scatterTarget = Math.floor(size * size * 0.024);
   let placed = 0;
   let attempts = 0;
@@ -158,9 +183,14 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     if (distToPlaza <= plaza.radius + 1) continue;
     // Keep the canal banks clear so the towpath stays walkable.
     if (x >= cv.xMin - 1 && x <= cv.xMax + 1 && y >= cv.yMin - 1 && y <= cv.yMax + 1) continue;
-    // Denser clutter further out.
+    // Lanes stay open along both plaza axes.
+    if (Math.abs(x - c) <= 1 || Math.abs(y - c) <= 1) continue;
+    // Cluster near a magnet; thin out in the open mid-ground.
+    const nearMagnet = magnets.some(
+      ([mx, my]) => Math.max(Math.abs(x - mx), Math.abs(y - my)) <= 3,
+    );
     const edgeness = distToPlaza / (size / 2);
-    if (rng() > edgeness * 0.7) continue;
+    if (rng() > (nearMagnet ? 0.92 : edgeness * 0.45)) continue;
     if (!isAreaFree(walkable, x, y, 1, 1)) continue;
     const kind: PropKind = rng() < 0.45 ? 'crate' : 'block';
     // Variant 3 (the dark scorched block) stays rare so the fringe reads

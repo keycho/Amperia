@@ -753,6 +753,31 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+        case 'shack': {
+          const img = addVoxelSprite(this, `shack-${p.variant % 3}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          const signTint = [PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.neonTeal][
+            p.variant % 3
+          ] as number;
+          // Neon sign over the door (front-left face) + warm window spill.
+          const sign = this.add.image(x - 22, y - 34, 'fx-glow');
+          sign.setTint(signTint);
+          sign.setBlendMode(Phaser.BlendModes.ADD);
+          sign.setAlpha(bloom(0.66));
+          sign.setScale(0.1);
+          sign.setDepth(depthForWorldY(y) + 1);
+          const win = this.add.image(x + 20, y - 24, 'fx-glow');
+          win.setTint(PALETTE_INT.warmGlow);
+          win.setBlendMode(Phaser.BlendModes.ADD);
+          win.setAlpha(bloom(0.42));
+          win.setScale(0.09);
+          win.setDepth(depthForWorldY(y) + 1);
+          this.addGroundPool(x - 12, y - 2, signTint, 0.5);
+          this.addGroundPool(x + 16, y - 2, PALETTE_INT.warmGlow, 0.34);
+          break;
+        }
       }
     }
   }

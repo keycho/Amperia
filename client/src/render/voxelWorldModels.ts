@@ -181,7 +181,7 @@ function shackModel(variant: number): Voxel[] {
   // Door (front face, +y side) and two lit windows.
   v.push(...box(3, 11, 0, 3, 1, 6, door));
   v.push(...box(8, 11, 4, 3, 1, 3, window));
-  v.push(...box(11, 5, 5, 1, 3, 3, window)); // side window (+x face)
+  v.push(...box(13, 5, 5, 1, 3, 3, window)); // side window (+x face)
   // Neon sign board above the door.
   v.push(...box(2, 11, 8, 5, 1, 2, mixPalette('ink', 'structureMid', 0.2)));
   v.push({ x: 3, y: 11, z: 9, c: signC });
