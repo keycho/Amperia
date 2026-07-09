@@ -1,3 +1,4 @@
+import { CONFIG } from './config';
 import type { ItemId } from './items';
 
 /**
@@ -19,6 +20,15 @@ export interface Inventory {
 
 export function makeInventory(slotCount: number): Inventory {
   return { slots: Array(slotCount).fill(null) };
+}
+
+/** New Sparks start with the tool belt on the hotbar (Game Bible B3). */
+export function makeStarterHotbar(): Inventory {
+  const inv = makeInventory(CONFIG.inventory.hotbarSlots);
+  CONFIG.tools.starterHotbar.forEach((tool, i) => {
+    if (i < inv.slots.length) inv.slots[i] = { itemId: tool as ItemId, qty: 1 };
+  });
+  return inv;
 }
 
 function clone(inv: Inventory): Inventory {

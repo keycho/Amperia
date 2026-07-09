@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG } from './config';
+import { CONFIG, type NodeKind } from './config';
 import { buildWorldMap, reachableTiles } from './map';
 
 describe('buildWorldMap', () => {
@@ -8,6 +8,7 @@ describe('buildWorldMap', () => {
   it('is deterministic for a given seed', () => {
     const again = buildWorldMap();
     expect(again.props).toEqual(map.props);
+    expect(again.nodes).toEqual(map.nodes);
     expect(again.walkable).toEqual(map.walkable);
   });
 
@@ -32,17 +33,53 @@ describe('buildWorldMap', () => {
     expect(map.walkable[y]?.[x]).toBe(true);
   });
 
-  it('scatters the configured junk-heap count, spaced and blocked', () => {
-    const cfg = CONFIG.gathering.junkHeap;
-    expect(map.junkNodes).toHaveLength(cfg.nodeCount);
-    for (const n of map.junkNodes) {
+  it('places the configured node count per kind, all blocked', () => {
+    const counts: Record<NodeKind, number> = {
+      junkHeap: 0,
+      brassSeam: 0,
+      amperite: 0,
+      glowkoi: 0,
+      antenna: 0,
+    };
+    for (const n of map.nodes) {
+      counts[n.kind]++;
       expect(map.walkable[n.y]?.[n.x]).toBe(false);
-      for (const other of map.junkNodes) {
-        if (other.id === n.id) continue;
-        const d = Math.max(Math.abs(other.x - n.x), Math.abs(other.y - n.y));
-        expect(d).toBeGreaterThanOrEqual(cfg.minNodeSpacing);
+    }
+    const g = CONFIG.gathering;
+    expect(counts.junkHeap).toBe(g.junkHeap.nodeCount);
+    expect(counts.brassSeam).toBe(g.brassSeam.nodeCount);
+    expect(counts.amperite).toBe(g.amperite.nodeCount);
+    expect(counts.glowkoi).toBe(g.glowkoi.spotCount);
+    expect(counts.antenna).toBe(g.antenna.shrineCount);
+  });
+
+  it('node ids are unique and sequential', () => {
+    map.nodes.forEach((n, i) => expect(n.id).toBe(i));
+  });
+
+  it('glowkoi spots sit on canal tiles; every node kind is gatherable from an adjacent walkable tile', () => {
+    for (const n of map.nodes) {
+      if (n.kind === 'glowkoi') expect(map.canal[n.y]?.[n.x]).toBe(true);
+      const adjacent = [
+        [n.x + 1, n.y],
+        [n.x - 1, n.y],
+        [n.x, n.y + 1],
+        [n.x, n.y - 1],
+      ].some(([x, y]) => map.walkable[y as number]?.[x as number] === true);
+      expect(adjacent).toBe(true);
+    }
+  });
+
+  it('the canal is a built channel with walkable bridge rows', () => {
+    const cv = CONFIG.canal;
+    for (const y of cv.bridgeRows) {
+      for (let x = cv.xMin; x <= cv.xMax; x++) {
+        expect(map.walkable[y]?.[x]).toBe(true);
       }
     }
+    let canalTiles = 0;
+    for (const row of map.canal) for (const t of row) if (t) canalTiles++;
+    expect(canalTiles).toBeGreaterThan(20);
   });
 
   it('every walkable tile is reachable from spawn (no sealed pockets)', () => {

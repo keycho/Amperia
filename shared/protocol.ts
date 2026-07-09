@@ -12,6 +12,8 @@ export const MSG = {
   move: 'move',
   gather: 'gather',
   glintClick: 'glintClick',
+  nodeAction: 'nodeAction',
+  selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
   // server → client (results/events)
@@ -20,6 +22,7 @@ export const MSG = {
   gatherStop: 'gatherStop',
   glintShow: 'glintShow',
   glintHide: 'glintHide',
+  nodeEvent: 'nodeEvent',
   loot: 'loot',
   inventory: 'inventory',
   chatMsg: 'chatMsg',
@@ -49,6 +52,58 @@ export interface MoveStackIntent {
 export interface ChatIntent {
   text: string;
 }
+
+/** Kind-specific minigame inputs, validated against the server's own clock. */
+export type NodeActionIntent =
+  | { nodeId: number; action: 'forkPick'; side: 0 | 1 }
+  | { nodeId: number; action: 'strike' }
+  | { nodeId: number; action: 'cast' }
+  | { nodeId: number; action: 'reel' }
+  | { nodeId: number; action: 'tune'; needle: number };
+
+export interface SelectSlotIntent {
+  slot: number;
+}
+
+/** Kind-specific minigame cues/results (server → the gathering client). */
+export type NodeEventPayload =
+  | { type: 'brassSegment'; nodeId: number; segment: number; amount: number }
+  | { type: 'brassFork'; nodeId: number; liveSide: 0 | 1; cueSeconds: number }
+  | { type: 'brassEnd'; nodeId: number; total: number; completed: boolean }
+  | {
+      type: 'amperiteStart';
+      nodeId: number;
+      periodSeconds: number;
+      phaseSeconds: number;
+      windowSeconds: number;
+      strikes: number;
+    }
+  | {
+      type: 'amperiteStrike';
+      nodeId: number;
+      onPulse: boolean;
+      amount: number;
+      strikesLeft: number;
+    }
+  | { type: 'koiShadow'; nodeId: number; sizeIdx: number; rare: boolean; shadowSeconds: number }
+  | {
+      type: 'koiTension';
+      nodeId: number;
+      periodSeconds: number;
+      sweetStart: number;
+      sweetLen: number;
+    }
+  | { type: 'koiResult'; nodeId: number; caught: boolean }
+  | {
+      type: 'tuneStart';
+      nodeId: number;
+      seconds: number;
+      phase: number;
+      driftSpeed: number;
+      amplitude: number;
+      tolerance: number;
+    }
+  | { type: 'tuneResult'; nodeId: number; lockRatio: number };
 
 export interface MoveAcceptedEvent {
   sessionId: string;
