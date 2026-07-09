@@ -76,6 +76,11 @@ export const CONFIG = {
     stackMax: 999,
     hotbarSlots: 6,
   },
+
+  chat: {
+    /** Chebyshev tile radius reported by /near. */
+    nearRadiusTiles: 8,
+  },
 } as const;
 
 export type GameConfig = typeof CONFIG;

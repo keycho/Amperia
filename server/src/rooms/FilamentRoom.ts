@@ -121,13 +121,21 @@ export class FilamentRoom extends Room<FilamentState> {
     this.state.players.set(client.sessionId, ps);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
+    this.broadcast(
+      MSG.notice,
+      { text: `${character.sparkName} stepped off the tram.` },
+      { except: client },
+    );
   }
 
   async onLeave(client: Client): Promise<void> {
     const rt = this.runtimes.get(client.sessionId);
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
-    if (rt !== undefined) await this.persist(rt);
+    if (rt !== undefined) {
+      this.broadcast(MSG.notice, { text: `${rt.sparkName} rode the tram out.` });
+      await this.persist(rt);
+    }
   }
 
   async onDispose(): Promise<void> {
@@ -229,8 +237,33 @@ export class FilamentRoom extends Room<FilamentState> {
     const text = msg.text.trim().slice(0, CHAT_LIMITS.maxLength);
     if (text.length === 0) return;
     rt.lastChatAtMs = now;
+    if (text.startsWith('/')) {
+      this.handleCommand(client, rt, text);
+      return;
+    }
     const out: ChatBroadcast = { from: rt.sparkName, text, ts: now };
     this.broadcast(MSG.chatMsg, out);
+  }
+
+  /** Slash commands (CLAUDE.md world nouns: /near /help for now). */
+  private handleCommand(client: Client, rt: PlayerRuntime, text: string): void {
+    const cmd = text.split(/\s+/)[0];
+    if (cmd === '/near') {
+      const me = rt.move.tile;
+      const near: string[] = [];
+      for (const [sid, other] of this.runtimes) {
+        if (sid === client.sessionId) continue;
+        const d = Math.max(Math.abs(other.move.tile.x - me.x), Math.abs(other.move.tile.y - me.y));
+        if (d <= CONFIG.chat.nearRadiusTiles) near.push(`${other.sparkName} (${d} tiles)`);
+      }
+      client.send(MSG.notice, {
+        text: near.length > 0 ? `Nearby Sparks: ${near.join(', ')}` : 'No Sparks nearby.',
+      });
+    } else if (cmd === '/help') {
+      client.send(MSG.notice, { text: 'Commands: /near /help — more as the city grows.' });
+    } else {
+      client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
+    }
   }
 
   // ── simulation ─────────────────────────────────────────────────────────

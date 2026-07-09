@@ -1,4 +1,20 @@
+import Phaser from 'phaser';
 import type { FilamentRoom } from './NetClient';
 
-/** The active room connection, shared by scenes (set on join). */
-export const session: { room: FilamentRoom | null } = { room: null };
+/**
+ * The active room connection + a client-side event bus for net events that
+ * cross scenes (chat, presence, notices). Set on join, cleared on leave.
+ */
+export const session: {
+  room: FilamentRoom | null;
+  events: Phaser.Events.EventEmitter;
+} = {
+  room: null,
+  events: new Phaser.Events.EventEmitter(),
+};
+
+export const SessionEvents = {
+  chat: 'chat',
+  presence: 'presence',
+  notice: 'notice',
+} as const;

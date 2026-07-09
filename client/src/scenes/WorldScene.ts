@@ -5,6 +5,7 @@ import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
 import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   ChatBroadcast,
+  NoticeEvent,
   GatherStartEvent,
   GatherStopEvent,
   GlintHideEvent,
@@ -34,7 +35,7 @@ import {
   TOKEN_KEY,
   type FilamentRoom,
 } from '../net/NetClient';
-import { session } from '../net/session';
+import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
@@ -139,6 +140,7 @@ export class WorldScene extends Phaser.Scene {
     $state.players.onAdd((p: PlayerStateShape, sessionId: string) => {
       const spark = new Spark(this, { x: p.tileX, y: p.tileY }, p.sparkName);
       this.sparks.set(sessionId, spark);
+      session.events.emit(SessionEvents.presence, this.sparks.size);
       if (sessionId === room.sessionId) {
         this.cameraCtl.followTarget(spark.image);
       }
@@ -156,6 +158,7 @@ export class WorldScene extends Phaser.Scene {
     $state.players.onRemove((_p: PlayerStateShape, sessionId: string) => {
       this.sparks.get(sessionId)?.destroy();
       this.sparks.delete(sessionId);
+      session.events.emit(SessionEvents.presence, this.sparks.size);
     });
 
     $state.nodes.onAdd((n: NodeStateShape, key: string) => {
@@ -201,8 +204,10 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
-    // Chat UI lands with the chat commit; drain quietly until then.
-    room.onMessage(MSG.chatMsg, (_m: ChatBroadcast) => undefined);
+    room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => session.events.emit(SessionEvents.chat, m));
+    room.onMessage(MSG.notice, (n: NoticeEvent) =>
+      session.events.emit(SessionEvents.notice, n.text),
+    );
 
     room.onLeave(() => {
       session.room = null;

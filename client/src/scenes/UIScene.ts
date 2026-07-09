@@ -3,8 +3,9 @@ import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
-import { session } from '../net/session';
+import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
+import { ChatUI } from '../ui/ChatUI';
 import { SlotStrip } from '../ui/SlotStrip';
 
 interface DragState {
@@ -24,6 +25,8 @@ export class UIScene extends Phaser.Scene {
   private hotbar!: SlotStrip;
   private drag: DragState | null = null;
   private lootChip!: Phaser.GameObjects.Text;
+  private presenceChip!: Phaser.GameObjects.Text;
+  private chat!: ChatUI;
 
   constructor() {
     super('ui');
@@ -57,9 +60,28 @@ export class UIScene extends Phaser.Scene {
     });
     this.lootChip.setDepth(900);
 
+    this.presenceChip = this.add.text(0, 10, '', {
+      fontFamily: 'monospace',
+      fontSize: '13px',
+      color: PALETTE.warmGlow,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.presenceChip.setDepth(900);
+    session.events.on(SessionEvents.presence, (n: number) => {
+      this.presenceChip.setText(`Sparks in the city: ${n}`);
+      this.presenceChip.setX(this.scale.width - this.presenceChip.width - 12);
+    });
+
+    this.chat = new ChatUI(this);
+
     this.layout();
     this.refreshAll();
-    this.scale.on('resize', () => this.layout());
+    this.scale.on('resize', () => {
+      this.layout();
+      this.chat.layout();
+      this.presenceChip.setX(this.scale.width - this.presenceChip.width - 12);
+    });
     gameState.events.on(GameEvents.inventoryChanged, () => this.refreshAll());
     gameState.events.on(GameEvents.hotbarChanged, () => this.refreshAll());
 
@@ -98,15 +120,27 @@ export class UIScene extends Phaser.Scene {
   private setupKeys(): void {
     const kb = this.input.keyboard;
     if (kb === null) return;
+    // Never react to game keys while the player is typing in a DOM field.
+    const typing = () =>
+      this.chat.typing || document.activeElement instanceof HTMLInputElement;
     kb.on('keydown-I', () => {
+      if (typing()) return;
       this.inventoryPanel.setVisible(!this.inventoryPanel.visible);
     });
     kb.on('keydown-ESC', () => {
+      if (typing()) return;
       if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
+    });
+    kb.on('keydown-ENTER', () => {
+      if (typing()) return;
+      this.chat.openInput();
     });
     const keyNames = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX'];
     keyNames.slice(0, CONFIG.inventory.hotbarSlots).forEach((name, i) => {
-      kb.on(`keydown-${name}`, () => gameState.setActiveHotbarSlot(i));
+      kb.on(`keydown-${name}`, () => {
+        if (typing()) return;
+        gameState.setActiveHotbarSlot(i);
+      });
     });
   }
 

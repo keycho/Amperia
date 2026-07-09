@@ -45,6 +45,11 @@ export function hexToInt(hex: string): number {
   return parseInt(hex.slice(1), 16);
 }
 
+/** Format a 0xRRGGBB integer back to '#RRGGBB' (CSS/DOM contexts). */
+export function intToHex(color: number): string {
+  return `#${color.toString(16).padStart(6, '0')}`;
+}
+
 /** Locked palette as 0xRRGGBB integers, for Phaser fill/tint APIs. */
 export const PALETTE_INT: Readonly<Record<PaletteKey, number>> = Object.freeze(
   Object.fromEntries(
