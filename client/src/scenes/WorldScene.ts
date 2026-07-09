@@ -6,12 +6,14 @@ import { makeRng, type Rng } from '@shared/rng';
 import { depthForWorldY, mapWorldBounds, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
+import { CameraController } from '../systems/CameraController';
 
 /** Depth floor for the ground layer; entities use their anchor world-Y. */
 const DEPTH_FLOOR = -100000;
 
 export class WorldScene extends Phaser.Scene {
   private map!: WorldMap;
+  private cameraCtl!: CameraController;
 
   constructor() {
     super('world');
@@ -22,6 +24,11 @@ export class WorldScene extends Phaser.Scene {
     this.drawFloor();
     this.placeProps();
     this.setupCamera();
+    this.cameraCtl = new CameraController(this);
+  }
+
+  update(_time: number, deltaMs: number): void {
+    this.cameraCtl.update(deltaMs);
   }
 
   /**
