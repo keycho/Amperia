@@ -146,6 +146,89 @@ export function makeSparkTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** Junk heap gather node: a mound of scrap (full + picked-clean variants). */
+export function makeJunkHeapTextures(scene: Phaser.Scene): void {
+  const W = 104;
+  const H = 84;
+  const draw = (depleted: boolean, key: string) => {
+    const g = g2(scene);
+    const cx = W / 2;
+    const base = H - 18;
+    // Ground shadow.
+    g.fillStyle(PALETTE_INT.ink, 0.3);
+    g.fillEllipse(cx, base + 6, 88, 22);
+    // Mound lumps (fewer/flatter when picked clean).
+    const lumps: Array<[number, number, number, number]> = depleted
+      ? [
+          [cx - 20, base - 6, 22, 0.5],
+          [cx + 14, base - 4, 18, 0.55],
+          [cx - 2, base - 12, 16, 0.42],
+        ]
+      : [
+          [cx - 24, base - 10, 26, 0.45],
+          [cx + 20, base - 8, 24, 0.5],
+          [cx - 4, base - 24, 26, 0.32],
+          [cx + 8, base - 30, 16, 0.4],
+          [cx - 26, base - 26, 13, 0.5],
+        ];
+    for (const [x, y, r, t] of lumps) {
+      g.fillStyle(mixPalette('structureMid', 'ink', t + 0.12));
+      g.fillCircle(x + 2, y + 3, r);
+      g.fillStyle(mixPalette('structureMid', 'groundAccent', 0.55 - t));
+      g.fillCircle(x, y, r);
+    }
+    if (!depleted) {
+      // Poking scrap plates + a warm sign chip (readability accent).
+      g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.35));
+      g.fillRect(cx - 14, base - 44, 16, 10);
+      g.fillStyle(mixPalette('groundAccent', 'structureMid', 0.3));
+      g.fillRect(cx + 8, base - 20, 20, 8);
+      g.fillStyle(PALETTE_INT.neonAmber);
+      g.fillRect(cx + 18, base - 38, 9, 7);
+      // A pipe stub.
+      g.fillStyle(mixPalette('structureMid', 'ink', 0.05));
+      g.fillRect(cx - 34, base - 20, 10, 16);
+    }
+    g.generateTexture(key, W, H);
+    g.destroy();
+  };
+  draw(false, 'tex-junk-heap');
+  draw(true, 'tex-junk-heap-depleted');
+}
+
+/** Inventory icons for M0 items (drawn, palette-only). */
+export function makeItemIconTextures(scene: Phaser.Scene): void {
+  const S = 56;
+  // Salvage: a plate with a big bolt.
+  let g = g2(scene);
+  g.fillStyle(mixPalette('groundAccent', 'structureMid', 0.25));
+  g.fillRoundedRect(8, 14, 34, 30, 6);
+  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.35));
+  g.fillRoundedRect(12, 18, 26, 22, 4);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.15));
+  g.fillCircle(38, 38, 11);
+  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.5));
+  g.fillCircle(38, 38, 7);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.35));
+  g.fillRect(35, 36.5, 6, 3);
+  g.generateTexture('icon-salvage', S, S);
+  g.destroy();
+  // Gilded Scrap: the same plate, gone gold.
+  g = g2(scene);
+  g.fillStyle(mixPalette('neonAmber', 'ink', 0.35));
+  g.fillRoundedRect(8, 14, 34, 30, 6);
+  g.fillStyle(PALETTE_INT.neonAmber);
+  g.fillRoundedRect(12, 18, 26, 22, 4);
+  g.fillStyle(PALETTE_INT.warmGlow);
+  g.fillCircle(38, 38, 10);
+  g.fillStyle(PALETTE_INT.neonAmber);
+  g.fillCircle(38, 38, 6);
+  g.fillStyle(PALETTE_INT.warmGlow, 0.9);
+  g.fillTriangle(16, 10, 20, 18, 12, 18);
+  g.generateTexture('icon-gilded-scrap', S, S);
+  g.destroy();
+}
+
 /** Neon-teal diamond outline used for hover / click feedback. */
 export function makeTileMarkerTextures(scene: Phaser.Scene): void {
   const W = 128;

@@ -32,6 +32,19 @@ describe('buildWorldMap', () => {
     expect(map.walkable[y]?.[x]).toBe(true);
   });
 
+  it('scatters the configured junk-heap count, spaced and blocked', () => {
+    const cfg = CONFIG.gathering.junkHeap;
+    expect(map.junkNodes).toHaveLength(cfg.nodeCount);
+    for (const n of map.junkNodes) {
+      expect(map.walkable[n.y]?.[n.x]).toBe(false);
+      for (const other of map.junkNodes) {
+        if (other.id === n.id) continue;
+        const d = Math.max(Math.abs(other.x - n.x), Math.abs(other.y - n.y));
+        expect(d).toBeGreaterThanOrEqual(cfg.minNodeSpacing);
+      }
+    }
+  });
+
   it('every walkable tile is reachable from spawn (no sealed pockets)', () => {
     const { x, y } = CONFIG.player.spawn;
     const reached = reachableTiles(map, x, y);

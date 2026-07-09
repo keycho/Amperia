@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
 import {
   makeDynamoTexture,
+  makeItemIconTextures,
+  makeJunkHeapTextures,
   makePlanterTexture,
   makeSparkTexture,
   makeTileMarkerTextures,
@@ -27,6 +29,8 @@ export class BootScene extends Phaser.Scene {
     makePlanterTexture(this);
     makeSparkTexture(this);
     makeTileMarkerTextures(this);
+    makeJunkHeapTextures(this);
+    makeItemIconTextures(this);
     this.scene.start('world');
   }
 }

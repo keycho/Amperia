@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
-import { mixPalette, PALETTE_INT } from '@shared/palette';
+import { ITEMS } from '@shared/items';
+import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { findPath } from '@shared/pathfinding';
 import { makeRng, type Rng } from '@shared/rng';
+import { JunkHeapNode } from '../entities/JunkHeapNode';
 import { Spark } from '../entities/Spark';
 import {
   depthForWorldY,
@@ -16,6 +18,8 @@ import {
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { CameraController } from '../systems/CameraController';
+import { GatherController } from '../systems/GatherController';
+import { gameState, GameEvents } from '../state/GameState';
 
 /** Depth floor for the ground layer; entities use their anchor world-Y. */
 const DEPTH_FLOOR = -100000;
@@ -25,6 +29,9 @@ export class WorldScene extends Phaser.Scene {
   private cameraCtl!: CameraController;
   private spark!: Spark;
   private hoverMarker!: Phaser.GameObjects.Image;
+  private gatherCtl!: GatherController;
+  private nodes: JunkHeapNode[] = [];
+  private lootHud!: Phaser.GameObjects.Text;
 
   constructor() {
     super('world');
@@ -37,12 +44,78 @@ export class WorldScene extends Phaser.Scene {
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
     this.spawnSpark();
+    this.spawnJunkHeaps();
     this.setupMoveInput();
+    this.setupLootHud();
   }
 
   update(_time: number, deltaMs: number): void {
     this.cameraCtl.update(deltaMs);
     this.updateHoverMarker();
+    this.gatherCtl.update(deltaMs);
+  }
+
+  private spawnJunkHeaps(): void {
+    this.gatherCtl = new GatherController(
+      this,
+      this.spark,
+      { size: this.map.size, walkable: this.map.walkable },
+      // Session seed: value rolls should differ between sessions.
+      Date.now() >>> 0,
+    );
+    for (const n of this.map.junkNodes) {
+      const node = new JunkHeapNode(this, n.id, n.x, n.y);
+      node.image.on(
+        'pointerdown',
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          if (!pointer.leftButtonDown()) return;
+          event.stopPropagation();
+          this.gatherCtl.requestGather(node);
+        },
+      );
+      // The glint is its own hit target, above the heap.
+      node.glintImage.on(
+        'pointerdown',
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          if (!pointer.leftButtonDown()) return;
+          event.stopPropagation();
+          this.gatherCtl.onGlintClicked(node);
+        },
+      );
+      this.nodes.push(node);
+    }
+  }
+
+  private setupLootHud(): void {
+    this.lootHud = this.add.text(12, 10, '', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: UI_TEXT_WARM,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.lootHud.setScrollFactor(0);
+    this.lootHud.setDepth(1e9);
+    const refresh = () => {
+      const salvage = gameState.count('salvage');
+      const gilded = gameState.count('gildedScrap');
+      this.lootHud.setText(
+        `${ITEMS.salvage.name} × ${salvage}` +
+          (gilded > 0 ? `   ${ITEMS.gildedScrap.name} × ${gilded}` : ''),
+      );
+    };
+    gameState.events.on(GameEvents.inventoryChanged, refresh);
+    refresh();
   }
 
   private spawnSpark(): void {

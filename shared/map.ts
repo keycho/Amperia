@@ -27,6 +27,8 @@ export interface WorldMap {
   /** walkable[y][x] — true = a Spark can stand here. */
   walkable: boolean[][];
   props: Prop[];
+  /** Junk-heap gather nodes (blocked tiles; gathered from adjacent). */
+  junkNodes: Array<{ id: number; x: number; y: number }>;
   /** Tiles inside the plaza decking (warmer floor variant). */
   plaza: { cx: number; cy: number; radius: number };
 }
@@ -114,7 +116,28 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     placed++;
   }
 
-  return { size, walkable, props, plaza };
+  // Junk-heap nodes: Scavving lives in the fringe, spaced apart so routes
+  // between heaps are short walks (same free-ring rule keeps connectivity).
+  const junkNodes: WorldMap['junkNodes'] = [];
+  const heapCfg = CONFIG.gathering.junkHeap;
+  attempts = 0;
+  while (junkNodes.length < heapCfg.nodeCount && attempts < heapCfg.nodeCount * 400) {
+    attempts++;
+    const x = randInt(rng, 2, size - 3);
+    const y = randInt(rng, 2, size - 3);
+    const distToPlaza = Math.max(Math.abs(x - c), Math.abs(y - c));
+    if (distToPlaza <= plaza.radius + 1) continue;
+    if (!isAreaFree(walkable, x, y, 1, 1)) continue;
+    const tooClose = junkNodes.some(
+      (n) => Math.max(Math.abs(n.x - x), Math.abs(n.y - y)) < heapCfg.minNodeSpacing,
+    );
+    if (tooClose) continue;
+    const node = { id: junkNodes.length, x, y };
+    junkNodes.push(node);
+    blockFootprint(walkable, { kind: 'block', x, y, w: 1, h: 1, variant: 0 });
+  }
+
+  return { size, walkable, props, junkNodes, plaza };
 }
 
 /** Flood-fill reachability from a start tile (4-directional). */
