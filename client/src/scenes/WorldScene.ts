@@ -5,6 +5,7 @@ import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
 import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   ChatBroadcast,
+  NodeEventPayload,
   NoticeEvent,
   GatherStartEvent,
   GatherStopEvent,
@@ -18,6 +19,14 @@ import type {
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
+import {
+  AmperiteNode,
+  AntennaNode,
+  BrassSeamNode,
+  KoiSpotNode,
+  TunerPanel,
+  type NodeView,
+} from '../entities/nodes';
 import { Spark } from '../entities/Spark';
 import {
   depthForWorldY,
@@ -56,7 +65,8 @@ export class WorldScene extends Phaser.Scene {
   private cameraCtl!: CameraController;
   private hoverMarker!: Phaser.GameObjects.Image;
   private gatherView!: GatherView;
-  private nodes = new Map<number, JunkHeapNode>();
+  private tuner!: TunerPanel;
+  private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
   private room: FilamentRoom | null = null;
   private token = '';
@@ -77,6 +87,10 @@ export class WorldScene extends Phaser.Scene {
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
     this.gatherView = new GatherView(this);
+    this.tuner = new TunerPanel(this);
+    this.tuner.onNeedle = (nodeId, needle) => {
+      if (this.room !== null) send.nodeAction(this.room, { nodeId, action: 'tune', needle });
+    };
     this.spawnNodes();
     this.setupInput();
 
@@ -99,6 +113,10 @@ export class WorldScene extends Phaser.Scene {
     this.cameraCtl.update(deltaMs);
     this.updateHoverMarker();
     this.gatherView.update();
+    this.tuner.update();
+    for (const node of this.nodes.values()) {
+      if (node instanceof KoiSpotNode) node.update();
+    }
   }
 
   // ── networking ─────────────────────────────────────────────────────────
@@ -178,14 +196,29 @@ export class WorldScene extends Phaser.Scene {
 
     room.onMessage(MSG.gatherStart, (e: GatherStartEvent) => {
       const node = this.nodes.get(e.nodeId);
+      this.activeSessionNode = e.nodeId;
       if (node !== undefined) this.gatherView.start(node, e.seconds);
     });
-    room.onMessage(MSG.gatherStop, (_e: GatherStopEvent) => this.gatherView.stop());
+    room.onMessage(MSG.gatherStop, (e: GatherStopEvent) => {
+      this.gatherView.stop();
+      this.tuner.stop();
+      this.activeSessionNode = null;
+      const view = this.nodes.get(e.nodeId);
+      if (view instanceof BrassSeamNode) view.hideFork();
+      if (view instanceof AmperiteNode) view.stopPulse();
+      if (view instanceof KoiSpotNode) {
+        view.stopTension();
+        view.hideShadow();
+      }
+    });
+    room.onMessage(MSG.nodeEvent, (e: NodeEventPayload) => this.handleNodeEvent(e));
     room.onMessage(MSG.glintShow, (e: GlintShowEvent) => {
-      this.nodes.get(e.nodeId)?.showGlint(e.offset);
+      const view = this.nodes.get(e.nodeId);
+      if (view instanceof JunkHeapNode) view.showGlint(e.offset);
     });
     room.onMessage(MSG.glintHide, (e: GlintHideEvent) => {
-      this.nodes.get(e.nodeId)?.hideGlint();
+      const view = this.nodes.get(e.nodeId);
+      if (view instanceof JunkHeapNode) view.hideGlint();
     });
 
     room.onMessage(MSG.loot, (e: LootEvent) => {
@@ -233,36 +266,185 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnNodes(): void {
-    for (const n of this.map.junkNodes) {
-      const node = new JunkHeapNode(this, n.id, n.x, n.y);
-      node.image.on(
+    const clickGuard = (
+      handler: (pointer: Phaser.Input.Pointer) => void,
+    ): ((
+      pointer: Phaser.Input.Pointer,
+      lx: number,
+      ly: number,
+      event: Phaser.Types.Input.EventData,
+    ) => void) => {
+      return (pointer, _lx, _ly, event) => {
+        if (!pointer.leftButtonDown() || this.room === null) return;
+        event.stopPropagation();
+        handler(pointer);
+      };
+    };
+
+    for (const n of this.map.nodes) {
+      let view: NodeView;
+      switch (n.kind) {
+        case 'junkHeap': {
+          const node = new JunkHeapNode(this, n.id, n.x, n.y);
+          node.glintImage.on(
+            'pointerdown',
+            clickGuard(() => {
+              if (this.room === null) return;
+              send.glintClick(this.room, { nodeId: node.id });
+              node.flashGlintHit();
+            }),
+          );
+          view = node;
+          break;
+        }
+        case 'brassSeam': {
+          const node = new BrassSeamNode(this, n.id, n.x, n.y);
+          node.forkZones.forEach((fx, side) => {
+            fx.on(
+              'pointerdown',
+              clickGuard(() => {
+                if (this.room === null) return;
+                send.nodeAction(this.room, {
+                  nodeId: node.id,
+                  action: 'forkPick',
+                  side: side as 0 | 1,
+                });
+                node.hideFork();
+              }),
+            );
+          });
+          view = node;
+          break;
+        }
+        case 'amperite': {
+          const node = new AmperiteNode(this, n.id, n.x, n.y);
+          view = node;
+          break;
+        }
+        case 'glowkoi': {
+          view = new KoiSpotNode(this, n.id, n.x, n.y);
+          break;
+        }
+        case 'antenna': {
+          view = new AntennaNode(this, n.id, n.x, n.y);
+          break;
+        }
+      }
+
+      // Main click: gather intent — or the kind's mid-session action.
+      view.image.on(
         'pointerdown',
-        (
-          pointer: Phaser.Input.Pointer,
-          _lx: number,
-          _ly: number,
-          event: Phaser.Types.Input.EventData,
-        ) => {
-          if (!pointer.leftButtonDown() || this.room === null) return;
-          event.stopPropagation();
-          send.gather(this.room, { nodeId: node.id });
-        },
+        clickGuard(() => {
+          if (this.room === null) return;
+          if (view instanceof AmperiteNode && this.activeSessionNode === view.id) {
+            send.nodeAction(this.room, { nodeId: view.id, action: 'strike' });
+            return;
+          }
+          if (view instanceof KoiSpotNode && this.activeSessionNode === view.id) {
+            send.nodeAction(this.room, {
+              nodeId: view.id,
+              action: view.inTension ? 'reel' : 'cast',
+            });
+            return;
+          }
+          send.gather(this.room, { nodeId: view.id });
+        }),
       );
-      node.glintImage.on(
-        'pointerdown',
-        (
-          pointer: Phaser.Input.Pointer,
-          _lx: number,
-          _ly: number,
-          event: Phaser.Types.Input.EventData,
-        ) => {
-          if (!pointer.leftButtonDown() || this.room === null) return;
-          event.stopPropagation();
-          send.glintClick(this.room, { nodeId: node.id });
-          node.flashGlintHit();
-        },
-      );
-      this.nodes.set(n.id, node);
+      this.nodes.set(n.id, view);
+    }
+  }
+
+  /** Node id of the session this client is currently working (UI routing). */
+  private activeSessionNode: number | null = null;
+
+  private handleNodeEvent(e: NodeEventPayload): void {
+    const view = this.nodes.get(e.nodeId);
+    if (view === undefined) return;
+    switch (e.type) {
+      case 'brassSegment': {
+        this.activeSessionNode = e.nodeId;
+        floatText(this, view.image.x, view.image.y - 64, `+${e.amount} vein…`, PALETTE.warmGlow);
+        break;
+      }
+      case 'brassFork': {
+        if (view instanceof BrassSeamNode) view.showFork(e.liveSide, e.cueSeconds);
+        break;
+      }
+      case 'brassEnd': {
+        if (view instanceof BrassSeamNode) view.hideFork();
+        this.activeSessionNode = null;
+        if (!e.completed && e.total > 0) {
+          floatText(this, view.image.x, view.image.y - 80, 'the vein goes cold', PALETTE.neonRose);
+        }
+        break;
+      }
+      case 'amperiteStart': {
+        this.activeSessionNode = e.nodeId;
+        if (view instanceof AmperiteNode) view.startPulse(e.periodSeconds, e.phaseSeconds);
+        floatText(this, view.image.x, view.image.y - 70, 'strike on the pulse!', PALETTE.neonCyan);
+        break;
+      }
+      case 'amperiteStrike': {
+        if (view instanceof AmperiteNode) {
+          view.flashStrike(e.onPulse);
+          if (!e.onPulse) {
+            floatText(this, view.image.x, view.image.y - 60, 'lattice shatters…', PALETTE.neonRose);
+          }
+        }
+        if (e.strikesLeft <= 0) {
+          this.activeSessionNode = null;
+          if (view instanceof AmperiteNode) view.stopPulse();
+        }
+        break;
+      }
+      case 'koiShadow': {
+        this.activeSessionNode = e.nodeId;
+        if (view instanceof KoiSpotNode) view.showShadow(e.sizeIdx, e.rare);
+        floatText(this, view.image.x, view.image.y - 48, 'a shadow stirs — click to cast', PALETTE.neonCyan);
+        break;
+      }
+      case 'koiTension': {
+        if (view instanceof KoiSpotNode) {
+          view.startTension(e.periodSeconds, e.sweetStart, e.sweetLen);
+        }
+        break;
+      }
+      case 'koiResult': {
+        this.activeSessionNode = null;
+        if (view instanceof KoiSpotNode) {
+          view.stopTension();
+          view.hideShadow();
+          view.splash(e.caught);
+          if (!e.caught) {
+            floatText(this, view.image.x, view.image.y - 48, 'it slips away…', PALETTE.neonRose);
+          }
+        }
+        break;
+      }
+      case 'tuneStart': {
+        this.activeSessionNode = e.nodeId;
+        this.tuner.start({
+          nodeId: e.nodeId,
+          seconds: e.seconds,
+          phase: e.phase,
+          driftSpeed: e.driftSpeed,
+          amplitude: e.amplitude,
+          tolerance: e.tolerance,
+        });
+        break;
+      }
+      case 'tuneResult': {
+        this.activeSessionNode = null;
+        this.tuner.stop();
+        floatText(
+          this,
+          view.image.x,
+          view.image.y - 96,
+          `lock ${(e.lockRatio * 100).toFixed(0)}%`,
+          e.lockRatio > 0.6 ? PALETTE.neonTeal : PALETTE.warmGlow,
+        );
+        break;
+      }
     }
   }
 
@@ -321,6 +503,24 @@ export class WorldScene extends Phaser.Scene {
         const { x, y } = tileToWorld(tx, ty);
         const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
         const edgeness = Math.min(1, plazaDist / (size / 2));
+
+        // Coolant canal: a dark built channel with cyan glints.
+        if (this.map.canal[ty]?.[tx] === true) {
+          g.fillStyle(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1));
+          this.traceDiamond(g, x, y);
+          g.fillPath();
+          if (rng() < 0.4) {
+            g.lineStyle(1.5, PALETTE_INT.neonCyan, 0.35 + rng() * 0.25);
+            const gx = x - 12 + rng() * 24;
+            const gy = y - 4 + rng() * 8;
+            g.lineBetween(gx - 5, gy, gx + 5, gy);
+          }
+          // Channel rim on the banks.
+          g.lineStyle(1.5, mixPalette('structureMid', 'ink', 0.2), 0.8);
+          this.traceDiamond(g, x, y);
+          g.strokePath();
+          continue;
+        }
 
         let fill: number;
         if (plazaDist <= plaza.radius) {

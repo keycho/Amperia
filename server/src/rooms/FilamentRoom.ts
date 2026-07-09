@@ -1,8 +1,25 @@
 import { Client, Room } from 'colyseus';
-import { CONFIG } from '@shared/config';
+import { CONFIG, type ToolId } from '@shared/config';
 import { rollGather, rollGlintTime } from '@shared/gathering';
-import { addItem, makeInventory, transfer, type Inventory } from '@shared/inventory';
+import { addItem, makeInventory, makeStarterHotbar, transfer, type Inventory } from '@shared/inventory';
+import type { ItemId } from '@shared/items';
 import { buildWorldMap, type WorldMap } from '@shared/map';
+import {
+  amperiteStrikeYield,
+  inSweetZone,
+  koiYield,
+  pickLiveFork,
+  pulseIsOn,
+  rollBrassRare,
+  rollBrassSegmentYield,
+  rollKoi,
+  rollSignalRare,
+  rollSweetZoneStart,
+  signalYield,
+  targetFrequencyAt,
+  tensionValue,
+  type KoiRoll,
+} from '@shared/minigames';
 import { advanceMovement, makeMoveState, setPath, type MoveState } from '@shared/movement';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
 import {
@@ -15,20 +32,59 @@ import {
   type InventorySync,
   type MoveIntent,
   type MoveStackIntent,
+  type NodeActionIntent,
+  type NodeEventPayload,
+  type SelectSlotIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { ledger } from '../services/ledger.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
+import { FilamentState, NodeState, PlayerState } from './state.js';
 
-interface GatherSession {
-  nodeId: number;
-  elapsed: number;
-  glintAt: number;
-  glintShownAtMs: number | null;
-  glintExpired: boolean;
-  glintHit: boolean;
-}
+type Session =
+  | {
+      kind: 'junkHeap';
+      nodeId: number;
+      elapsed: number;
+      glintAt: number;
+      glintShownAtMs: number | null;
+      glintExpired: boolean;
+      glintHit: boolean;
+    }
+  | {
+      kind: 'brassSeam';
+      nodeId: number;
+      phase: 'digging' | 'fork';
+      elapsed: number;
+      segment: number;
+      total: number;
+      liveSide: 0 | 1;
+    }
+  | {
+      kind: 'amperite';
+      nodeId: number;
+      elapsed: number;
+      phaseSeconds: number;
+      strikesLeft: number;
+      total: number;
+    }
+  | {
+      kind: 'glowkoi';
+      nodeId: number;
+      phase: 'shadow' | 'casting' | 'tension';
+      elapsed: number;
+      koi: KoiRoll;
+      sweetStart: number;
+    }
+  | {
+      kind: 'antenna';
+      nodeId: number;
+      elapsed: number;
+      wavePhase: number;
+      needle: number;
+      lockSeconds: number;
+    };
 
 /** Server-side per-player runtime (never synced). */
 interface PlayerRuntime {
@@ -38,18 +94,18 @@ interface PlayerRuntime {
   move: MoveState;
   pack: Inventory;
   hotbar: Inventory;
+  activeSlot: number;
   gatherTargetNode: number | null;
-  session: GatherSession | null;
+  session: Session | null;
   lastChatAtMs: number;
-  /** Glint reaction deltas (ms) — behavioral-entropy logging habit (C7). */
+  /** Cue reaction deltas (ms) — behavioral-entropy logging habit (C7). */
   glintReactionsMs: number[];
 }
 
-import { FilamentState, NodeState, PlayerState } from './state.js';
-
 /**
  * The Filament — hub district room. One room instance per ~40 Sparks; the
- * server owns movement, gathering, inventories, and node lifecycles.
+ * server owns movement, gathering (all five resources), inventories, and
+ * node lifecycles. Clients send intents and render results.
  */
 export class FilamentRoom extends Room<FilamentState> {
   maxClients = 40;
@@ -65,7 +121,7 @@ export class FilamentRoom extends Room<FilamentState> {
     this.state = new FilamentState();
     this.map = buildWorldMap();
     this.grid = { size: this.map.size, walkable: this.map.walkable };
-    for (const n of this.map.junkNodes) {
+    for (const n of this.map.nodes) {
       this.state.nodes.set(String(n.id), new NodeState());
     }
 
@@ -74,6 +130,15 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<GlintClickIntent>(MSG.glintClick, (client, msg) =>
       this.handleGlintClick(client, msg),
     );
+    this.onMessage<NodeActionIntent>(MSG.nodeAction, (client, msg) =>
+      this.handleNodeAction(client, msg),
+    );
+    this.onMessage<SelectSlotIntent>(MSG.selectSlot, (client, msg) => {
+      const rt = this.runtimes.get(client.sessionId);
+      if (rt === undefined || !Number.isInteger(msg.slot)) return;
+      if (msg.slot < 0 || msg.slot >= CONFIG.inventory.hotbarSlots) return;
+      rt.activeSlot = msg.slot;
+    });
     this.onMessage<MoveStackIntent>(MSG.moveStack, (client, msg) =>
       this.handleMoveStack(client, msg),
     );
@@ -106,7 +171,8 @@ export class FilamentRoom extends Room<FilamentState> {
       sparkName: character.sparkName,
       move: makeMoveState(spawn),
       pack: character.pack ?? makeInventory(CONFIG.inventory.slots),
-      hotbar: character.hotbar ?? makeInventory(CONFIG.inventory.hotbarSlots),
+      hotbar: character.hotbar ?? makeStarterHotbar(),
+      activeSlot: 0,
       gatherTargetNode: null,
       session: null,
       lastChatAtMs: 0,
@@ -133,6 +199,8 @@ export class FilamentRoom extends Room<FilamentState> {
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     if (rt !== undefined) {
+      // Partial veins/strikes pay out what was worked.
+      this.settleSession(client, rt, false);
       this.broadcast(MSG.notice, { text: `${rt.sparkName} rode the tram out.` });
       await this.persist(rt);
     }
@@ -149,7 +217,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const rt = this.runtimes.get(client.sessionId);
     if (rt === undefined || !this.isValidTile(msg)) return;
     if (this.map.walkable[msg.y]?.[msg.x] !== true) return;
-    const path = findPath(this.grid, this.settledTile(rt), { x: msg.x, y: msg.y });
+    const path = findPath(this.grid, rt.move.tile, { x: msg.x, y: msg.y });
     if (path === null) return;
     this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
@@ -159,14 +227,24 @@ export class FilamentRoom extends Room<FilamentState> {
 
   private handleGather(client: Client, msg: GatherIntent): void {
     const rt = this.runtimes.get(client.sessionId);
-    const node = this.map.junkNodes.find((n) => n.id === msg.nodeId);
+    const node = this.map.nodes.find((n) => n.id === msg.nodeId);
     const nodeState = this.state.nodes.get(String(msg.nodeId));
     if (rt === undefined || node === undefined || nodeState === undefined) return;
     if (nodeState.depleted) return;
     if (rt.session?.nodeId === msg.nodeId) return;
-    this.cancelGather(client, rt);
 
-    const path = findPathAdjacent(this.grid, this.settledTile(rt), {
+    // The right tool must be in the ACTIVE hotbar slot (config-driven).
+    const required = CONFIG.tools.requiredByNode[node.kind] as ToolId;
+    const held = rt.hotbar.slots[rt.activeSlot];
+    if (held === null || held === undefined || held.itemId !== required) {
+      client.send(MSG.notice, {
+        text: `You need your ${required.charAt(0).toUpperCase()}${required.slice(1)} in hand for that.`,
+      });
+      return;
+    }
+
+    this.cancelGather(client, rt);
+    const path = findPathAdjacent(this.grid, rt.move.tile, {
       x: node.x,
       y: node.y,
       w: 1,
@@ -178,13 +256,13 @@ export class FilamentRoom extends Room<FilamentState> {
       rt.move = setPath(rt.move, path);
       this.broadcast(MSG.moveAccepted, { sessionId: client.sessionId, path });
     }
-    // Gather begins in tick() once movement settles next to the node.
+    // The session begins in tick() once movement settles next to the node.
   }
 
   private handleGlintClick(client: Client, msg: GlintClickIntent): void {
     const rt = this.runtimes.get(client.sessionId);
     const s = rt?.session;
-    if (rt === undefined || s === undefined || s === null) return;
+    if (rt === undefined || s === undefined || s === null || s.kind !== 'junkHeap') return;
     if (s.nodeId !== msg.nodeId || s.glintShownAtMs === null || s.glintExpired || s.glintHit) {
       return;
     }
@@ -199,6 +277,90 @@ export class FilamentRoom extends Room<FilamentState> {
       account: rt.accountId,
       data: { nodeId: s.nodeId, reactionMs },
     });
+  }
+
+  private handleNodeAction(client: Client, msg: NodeActionIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    const s = rt?.session;
+    if (rt === undefined || s === undefined || s === null || s.nodeId !== msg.nodeId) return;
+
+    switch (msg.action) {
+      case 'forkPick': {
+        if (s.kind !== 'brassSeam' || s.phase !== 'fork') return;
+        if (msg.side !== 0 && msg.side !== 1) return;
+        rt.glintReactionsMs.push(Math.round(s.elapsed * 1000));
+        if (msg.side === s.liveSide) {
+          s.segment += 1;
+          s.phase = 'digging';
+          s.elapsed = 0;
+        } else {
+          this.endBrass(client, rt, s, false);
+        }
+        break;
+      }
+      case 'strike': {
+        if (s.kind !== 'amperite') return;
+        const cfg = CONFIG.gathering.amperite;
+        const onPulse = pulseIsOn(
+          s.elapsed,
+          s.phaseSeconds,
+          cfg.pulsePeriodSeconds,
+          cfg.pulseWindowSeconds,
+        );
+        const amount = amperiteStrikeYield(cfg, onPulse);
+        s.total += amount;
+        s.strikesLeft -= 1;
+        this.sendNodeEvent(client, {
+          type: 'amperiteStrike',
+          nodeId: s.nodeId,
+          onPulse,
+          amount,
+          strikesLeft: s.strikesLeft,
+        });
+        if (s.strikesLeft <= 0) {
+          const rtSession = rt.session as Session;
+          rt.session = null;
+          this.setGatheringFlag(client.sessionId, false);
+          this.grantLoot(client, rt, rtSession.nodeId, 'amperite', s.total, null, {
+            kind: 'amperite',
+          });
+          this.depleteNode(rtSession.nodeId, CONFIG.gathering.amperite.respawnSeconds);
+        }
+        break;
+      }
+      case 'cast': {
+        if (s.kind !== 'glowkoi' || s.phase !== 'shadow') return;
+        s.phase = 'casting';
+        s.elapsed = 0;
+        break;
+      }
+      case 'reel': {
+        if (s.kind !== 'glowkoi' || s.phase !== 'tension') return;
+        const cfg = CONFIG.gathering.glowkoi;
+        const v = tensionValue(s.elapsed, cfg.tensionPeriodSeconds);
+        const caught = inSweetZone(v, s.sweetStart, cfg.sweetZoneFraction);
+        rt.glintReactionsMs.push(Math.round(s.elapsed * 1000));
+        rt.session = null;
+        this.setGatheringFlag(client.sessionId, false);
+        this.sendNodeEvent(client, { type: 'koiResult', nodeId: s.nodeId, caught });
+        if (caught) {
+          const amount = koiYield(cfg, s.koi);
+          const rare = s.koi.rare ? (cfg.rareFindItem as ItemId) : null;
+          this.grantLoot(client, rt, s.nodeId, 'glowkoi', amount, rare, {
+            kind: 'glowkoi',
+            sizeIdx: s.koi.sizeIdx,
+          });
+          this.depleteNode(s.nodeId, cfg.respawnSeconds);
+        }
+        break;
+      }
+      case 'tune': {
+        if (s.kind !== 'antenna') return;
+        if (typeof msg.needle !== 'number' || Number.isNaN(msg.needle)) return;
+        s.needle = Math.min(1, Math.max(0, msg.needle));
+        break;
+      }
+    }
   }
 
   private handleMoveStack(client: Client, msg: MoveStackIntent): void {
@@ -284,8 +446,8 @@ export class FilamentRoom extends Room<FilamentState> {
       if (rt.gatherTargetNode !== null && rt.session === null && rt.move.queue.length === 0) {
         this.beginGather(sessionId, rt);
       }
-      // Advance gather session.
-      if (rt.session !== null) this.advanceGather(sessionId, rt, dt);
+      // Advance the active session.
+      if (rt.session !== null) this.advanceSession(sessionId, rt, dt);
     }
 
     // Periodic persistence (~every 30s of ticks).
@@ -298,7 +460,7 @@ export class FilamentRoom extends Room<FilamentState> {
 
   private beginGather(sessionId: string, rt: PlayerRuntime): void {
     const nodeId = rt.gatherTargetNode as number;
-    const node = this.map.junkNodes.find((n) => n.id === nodeId);
+    const node = this.map.nodes.find((n) => n.id === nodeId);
     const nodeState = this.state.nodes.get(String(nodeId));
     const client = this.clients.find((c) => c.sessionId === sessionId);
     rt.gatherTargetNode = null;
@@ -308,117 +470,342 @@ export class FilamentRoom extends Room<FilamentState> {
     const t = rt.move.tile;
     if (Math.abs(t.x - node.x) + Math.abs(t.y - node.y) !== 1) return;
 
-    const cfg = CONFIG.gathering.junkHeap;
-    rt.session = {
-      nodeId,
-      elapsed: 0,
-      glintAt: rollGlintTime(cfg, cfg.gatherSeconds, this.rng),
-      glintShownAtMs: null,
-      glintExpired: false,
-      glintHit: false,
-    };
-    const ps = this.state.players.get(sessionId);
-    if (ps !== undefined) ps.gathering = true;
-    client.send(MSG.gatherStart, { nodeId, seconds: cfg.gatherSeconds });
+    switch (node.kind) {
+      case 'junkHeap': {
+        const cfg = CONFIG.gathering.junkHeap;
+        rt.session = {
+          kind: 'junkHeap',
+          nodeId,
+          elapsed: 0,
+          glintAt: rollGlintTime(cfg, cfg.gatherSeconds, this.rng),
+          glintShownAtMs: null,
+          glintExpired: false,
+          glintHit: false,
+        };
+        client.send(MSG.gatherStart, { nodeId, seconds: cfg.gatherSeconds });
+        break;
+      }
+      case 'brassSeam': {
+        rt.session = {
+          kind: 'brassSeam',
+          nodeId,
+          phase: 'digging',
+          elapsed: 0,
+          segment: 1,
+          total: 0,
+          liveSide: 0,
+        };
+        client.send(MSG.gatherStart, {
+          nodeId,
+          seconds: CONFIG.gathering.brassSeam.segmentSeconds,
+        });
+        break;
+      }
+      case 'amperite': {
+        const cfg = CONFIG.gathering.amperite;
+        rt.session = {
+          kind: 'amperite',
+          nodeId,
+          elapsed: 0,
+          phaseSeconds: this.rng() * cfg.pulsePeriodSeconds,
+          strikesLeft: cfg.strikes,
+          total: 0,
+        };
+        this.sendNodeEvent(client, {
+          type: 'amperiteStart',
+          nodeId,
+          periodSeconds: cfg.pulsePeriodSeconds,
+          phaseSeconds: (rt.session as Extract<Session, { kind: 'amperite' }>).phaseSeconds,
+          windowSeconds: cfg.pulseWindowSeconds,
+          strikes: cfg.strikes,
+        });
+        break;
+      }
+      case 'glowkoi': {
+        const cfg = CONFIG.gathering.glowkoi;
+        const koi = rollKoi(cfg, this.rng);
+        rt.session = {
+          kind: 'glowkoi',
+          nodeId,
+          phase: 'shadow',
+          elapsed: 0,
+          koi,
+          sweetStart: 0,
+        };
+        this.sendNodeEvent(client, {
+          type: 'koiShadow',
+          nodeId,
+          sizeIdx: koi.sizeIdx,
+          rare: koi.rare,
+          shadowSeconds: cfg.shadowSeconds,
+        });
+        break;
+      }
+      case 'antenna': {
+        const cfg = CONFIG.gathering.antenna;
+        rt.session = {
+          kind: 'antenna',
+          nodeId,
+          elapsed: 0,
+          wavePhase: this.rng() * Math.PI * 2,
+          needle: 0.5,
+          lockSeconds: 0,
+        };
+        this.sendNodeEvent(client, {
+          type: 'tuneStart',
+          nodeId,
+          seconds: cfg.tuneSeconds,
+          phase: (rt.session as Extract<Session, { kind: 'antenna' }>).wavePhase,
+          driftSpeed: cfg.driftSpeed,
+          amplitude: cfg.amplitude,
+          tolerance: cfg.lockTolerance,
+        });
+        break;
+      }
+    }
+    this.setGatheringFlag(sessionId, true);
   }
 
-  private advanceGather(sessionId: string, rt: PlayerRuntime, dt: number): void {
-    const s = rt.session as GatherSession;
-    const cfg = CONFIG.gathering.junkHeap;
+  private advanceSession(sessionId: string, rt: PlayerRuntime, dt: number): void {
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client === undefined) {
       rt.session = null;
       return;
     }
+    const s = rt.session as Session;
     s.elapsed += dt;
 
-    if (s.glintShownAtMs === null && s.elapsed >= s.glintAt) {
-      s.glintShownAtMs = Date.now();
-      client.send(MSG.glintShow, {
-        nodeId: s.nodeId,
-        offset: this.rng(),
-        windowSeconds: cfg.glint.windowSeconds,
-      });
-    } else if (
-      s.glintShownAtMs !== null &&
-      !s.glintExpired &&
-      !s.glintHit &&
-      s.elapsed >= s.glintAt + cfg.glint.windowSeconds
-    ) {
-      s.glintExpired = true;
-      client.send(MSG.glintHide, { nodeId: s.nodeId });
-    }
-
-    if (s.elapsed >= cfg.gatherSeconds) this.completeGather(sessionId, rt, client);
-  }
-
-  private completeGather(sessionId: string, rt: PlayerRuntime, client: Client): void {
-    const s = rt.session as GatherSession;
-    rt.session = null;
-    const ps = this.state.players.get(sessionId);
-    if (ps !== undefined) ps.gathering = false;
-    const nodeState = this.state.nodes.get(String(s.nodeId));
-    if (nodeState === undefined || nodeState.depleted) return;
-
-    const cfg = CONFIG.gathering.junkHeap;
-    const roll = rollGather(cfg, s.glintHit, this.rng);
-    const r = addItem(rt.pack, 'salvage', roll.amount, CONFIG.inventory.stackMax);
-    rt.pack = r.inv;
-    let rareGranted: typeof roll.rare = null;
-    if (roll.rare !== null) {
-      const rr = addItem(rt.pack, roll.rare, 1, CONFIG.inventory.stackMax);
-      if (rr.added > 0) {
-        rt.pack = rr.inv;
-        rareGranted = roll.rare;
+    switch (s.kind) {
+      case 'junkHeap': {
+        const cfg = CONFIG.gathering.junkHeap;
+        if (s.glintShownAtMs === null && s.elapsed >= s.glintAt) {
+          s.glintShownAtMs = Date.now();
+          client.send(MSG.glintShow, {
+            nodeId: s.nodeId,
+            offset: this.rng(),
+            windowSeconds: cfg.glint.windowSeconds,
+          });
+        } else if (
+          s.glintShownAtMs !== null &&
+          !s.glintExpired &&
+          !s.glintHit &&
+          s.elapsed >= s.glintAt + cfg.glint.windowSeconds
+        ) {
+          s.glintExpired = true;
+          client.send(MSG.glintHide, { nodeId: s.nodeId });
+        }
+        if (s.elapsed >= cfg.gatherSeconds) {
+          const roll = rollGather(cfg, s.glintHit, this.rng);
+          rt.session = null;
+          this.setGatheringFlag(sessionId, false);
+          this.grantLoot(client, rt, s.nodeId, 'salvage', roll.amount, roll.rare, {
+            kind: 'junkHeap',
+            glintHit: s.glintHit,
+          });
+          this.depleteNode(s.nodeId, cfg.respawnSeconds);
+        }
+        break;
+      }
+      case 'brassSeam': {
+        const cfg = CONFIG.gathering.brassSeam;
+        if (s.phase === 'digging' && s.elapsed >= cfg.segmentSeconds) {
+          const amount = rollBrassSegmentYield(cfg, this.rng);
+          s.total += amount;
+          this.sendNodeEvent(client, {
+            type: 'brassSegment',
+            nodeId: s.nodeId,
+            segment: s.segment,
+            amount,
+          });
+          if (s.segment >= cfg.maxSegments) {
+            this.endBrass(client, rt, s, true);
+          } else {
+            s.phase = 'fork';
+            s.elapsed = 0;
+            s.liveSide = pickLiveFork(this.rng);
+            this.sendNodeEvent(client, {
+              type: 'brassFork',
+              nodeId: s.nodeId,
+              liveSide: s.liveSide,
+              cueSeconds: cfg.forkCueSeconds,
+            });
+          }
+        } else if (s.phase === 'fork' && s.elapsed >= cfg.forkCueSeconds) {
+          // The trail went cold.
+          this.endBrass(client, rt, s, false);
+        }
+        break;
+      }
+      case 'amperite': {
+        // Player-paced striking; nothing to advance beyond the clock.
+        break;
+      }
+      case 'glowkoi': {
+        const cfg = CONFIG.gathering.glowkoi;
+        if (s.phase === 'shadow' && s.elapsed >= cfg.shadowSeconds) {
+          rt.session = null;
+          this.setGatheringFlag(sessionId, false);
+          this.sendNodeEvent(client, { type: 'koiResult', nodeId: s.nodeId, caught: false });
+        } else if (s.phase === 'casting' && s.elapsed >= cfg.castSeconds) {
+          s.phase = 'tension';
+          s.elapsed = 0;
+          s.sweetStart = rollSweetZoneStart(cfg, this.rng);
+          this.sendNodeEvent(client, {
+            type: 'koiTension',
+            nodeId: s.nodeId,
+            periodSeconds: cfg.tensionPeriodSeconds,
+            sweetStart: s.sweetStart,
+            sweetLen: cfg.sweetZoneFraction,
+          });
+        } else if (s.phase === 'tension' && s.elapsed >= cfg.tensionPeriodSeconds * 3) {
+          // Held too long; the koi slips the net.
+          rt.session = null;
+          this.setGatheringFlag(sessionId, false);
+          this.sendNodeEvent(client, { type: 'koiResult', nodeId: s.nodeId, caught: false });
+        }
+        break;
+      }
+      case 'antenna': {
+        const cfg = CONFIG.gathering.antenna;
+        const target = targetFrequencyAt(s.elapsed, s.wavePhase, cfg);
+        if (Math.abs(s.needle - target) <= cfg.lockTolerance) {
+          s.lockSeconds += dt;
+        }
+        if (s.elapsed >= cfg.tuneSeconds) {
+          const lockRatio = Math.min(1, s.lockSeconds / cfg.tuneSeconds);
+          const amount = signalYield(cfg, lockRatio);
+          const rare = rollSignalRare(cfg, lockRatio, this.rng)
+            ? (cfg.rareFindItem as ItemId)
+            : null;
+          rt.session = null;
+          this.setGatheringFlag(sessionId, false);
+          this.sendNodeEvent(client, { type: 'tuneResult', nodeId: s.nodeId, lockRatio });
+          this.grantLoot(client, rt, s.nodeId, 'signal', amount, rare, {
+            kind: 'antenna',
+            lockRatio: Number(lockRatio.toFixed(3)),
+          });
+          this.depleteNode(s.nodeId, cfg.respawnSeconds);
+        }
+        break;
       }
     }
+  }
 
-    // Every faucet writes to the economy ledger (golden rule 9 habit).
-    ledger.log({
-      type: 'gather',
-      account: rt.accountId,
-      data: {
-        nodeId: s.nodeId,
-        itemId: 'salvage',
-        qty: r.added,
-        overflow: r.overflow,
-        rare: rareGranted,
-        glintHit: s.glintHit,
-      },
-    });
-
-    client.send(MSG.loot, {
+  private endBrass(
+    client: Client,
+    rt: PlayerRuntime,
+    s: Extract<Session, { kind: 'brassSeam' }>,
+    completed: boolean,
+  ): void {
+    const cfg = CONFIG.gathering.brassSeam;
+    rt.session = null;
+    this.setGatheringFlag(client.sessionId, false);
+    this.sendNodeEvent(client, {
+      type: 'brassEnd',
       nodeId: s.nodeId,
-      itemId: 'salvage',
-      qty: r.added,
-      rare: rareGranted,
-      glintHit: s.glintHit,
+      total: s.total,
+      completed,
     });
-    client.send(MSG.inventory, this.inventorySync(rt));
+    const rare = rollBrassRare(cfg, completed, this.rng) ? (cfg.rareFindItem as ItemId) : null;
+    if (s.total > 0 || rare !== null) {
+      this.grantLoot(client, rt, s.nodeId, 'brass', s.total, rare, {
+        kind: 'brassSeam',
+        completed,
+      });
+    }
+    this.depleteNode(s.nodeId, cfg.respawnSeconds);
+  }
 
-    nodeState.depleted = true;
-    const timer = setTimeout(() => {
-      nodeState.depleted = false;
-      this.respawnTimers.delete(s.nodeId);
-    }, cfg.respawnSeconds * 1000);
-    this.respawnTimers.set(s.nodeId, timer);
+  /** Cancel/abandon: veins and strikes pay what was worked; the rest fizzle. */
+  private settleSession(client: Client, rt: PlayerRuntime, notify: boolean): void {
+    const s = rt.session;
+    if (s === null) return;
+    if (s.kind === 'brassSeam') {
+      this.endBrass(client, rt, s, false);
+      return;
+    }
+    if (s.kind === 'amperite' && s.total > 0) {
+      rt.session = null;
+      this.setGatheringFlag(client.sessionId, false);
+      this.grantLoot(client, rt, s.nodeId, 'amperite', s.total, null, {
+        kind: 'amperite',
+        partial: true,
+      });
+      this.depleteNode(s.nodeId, CONFIG.gathering.amperite.respawnSeconds);
+      return;
+    }
+    rt.session = null;
+    this.setGatheringFlag(client.sessionId, false);
+    if (notify) client.send(MSG.gatherStop, { nodeId: s.nodeId });
   }
 
   // ── helpers ────────────────────────────────────────────────────────────
 
   private cancelGather(client: Client, rt: PlayerRuntime): void {
     if (rt.session !== null) {
-      client.send(MSG.gatherStop, { nodeId: rt.session.nodeId });
-      rt.session = null;
-      const ps = this.state.players.get(client.sessionId);
-      if (ps !== undefined) ps.gathering = false;
+      const nodeId = rt.session.nodeId;
+      this.settleSession(client, rt, false);
+      client.send(MSG.gatherStop, { nodeId });
     }
   }
 
-  private settledTile(rt: PlayerRuntime): TilePoint {
-    // Clients don't predict: the server's last committed tile is the truth
-    // a new path starts from (mid-walk re-paths replace the queue).
-    return rt.move.tile;
+  private setGatheringFlag(sessionId: string, gathering: boolean): void {
+    const ps = this.state.players.get(sessionId);
+    if (ps !== undefined) ps.gathering = gathering;
+  }
+
+  private sendNodeEvent(client: Client, payload: NodeEventPayload): void {
+    client.send(MSG.nodeEvent, payload);
+  }
+
+  private grantLoot(
+    client: Client,
+    rt: PlayerRuntime,
+    nodeId: number,
+    itemId: ItemId,
+    qty: number,
+    rare: ItemId | null,
+    ledgerData: Record<string, unknown>,
+  ): void {
+    let added = 0;
+    if (qty > 0) {
+      const r = addItem(rt.pack, itemId, qty, CONFIG.inventory.stackMax);
+      rt.pack = r.inv;
+      added = r.added;
+    }
+    let rareGranted: ItemId | null = null;
+    if (rare !== null) {
+      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      if (rr.added > 0) {
+        rt.pack = rr.inv;
+        rareGranted = rare;
+      }
+    }
+    // Every faucet writes to the economy ledger (golden rule 9 habit).
+    ledger.log({
+      type: 'gather',
+      account: rt.accountId,
+      data: { nodeId, itemId, qty: added, rare: rareGranted, ...ledgerData },
+    });
+    client.send(MSG.loot, {
+      nodeId,
+      itemId,
+      qty: added,
+      rare: rareGranted,
+      glintHit: ledgerData.glintHit === true,
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+  }
+
+  private depleteNode(nodeId: number, respawnSeconds: number): void {
+    const nodeState = this.state.nodes.get(String(nodeId));
+    if (nodeState === undefined || nodeState.depleted) return;
+    nodeState.depleted = true;
+    const timer = setTimeout(() => {
+      nodeState.depleted = false;
+      this.respawnTimers.delete(nodeId);
+    }, respawnSeconds * 1000);
+    this.respawnTimers.set(nodeId, timer);
   }
 
   private isValidTile(p: { x: number; y: number }): boolean {

@@ -6,6 +6,8 @@ import type {
   GlintClickIntent,
   MoveIntent,
   MoveStackIntent,
+  NodeActionIntent,
+  SelectSlotIntent,
 } from '@shared/protocol';
 
 /** Server base URL (http; ws derives from it). */
@@ -54,6 +56,8 @@ export const send = {
   move: (room: FilamentRoom, msg: MoveIntent) => room.send(MSG.move, msg),
   gather: (room: FilamentRoom, msg: GatherIntent) => room.send(MSG.gather, msg),
   glintClick: (room: FilamentRoom, msg: GlintClickIntent) => room.send(MSG.glintClick, msg),
+  nodeAction: (room: FilamentRoom, msg: NodeActionIntent) => room.send(MSG.nodeAction, msg),
+  selectSlot: (room: FilamentRoom, msg: SelectSlotIntent) => room.send(MSG.selectSlot, msg),
   moveStack: (room: FilamentRoom, msg: MoveStackIntent) => room.send(MSG.moveStack, msg),
   chat: (room: FilamentRoom, msg: ChatIntent) => room.send(MSG.chat, msg),
 };

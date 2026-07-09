@@ -9,6 +9,7 @@ import { TEX_SCALE } from '../render/textures';
  * glint spark, respawn) — the GatherController owns the timing logic.
  */
 export class JunkHeapNode {
+  readonly kind = 'junkHeap' as const;
   readonly id: number;
   readonly tile: { x: number; y: number };
   readonly image: Phaser.GameObjects.Image;

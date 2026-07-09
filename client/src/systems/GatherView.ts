@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE_INT } from '@shared/palette';
-import type { JunkHeapNode } from '../entities/JunkHeapNode';
+import type { NodeView } from '../entities/nodes';
 
 /**
  * Presentation of the OWN player's gather cycle, driven entirely by server
@@ -10,7 +10,7 @@ import type { JunkHeapNode } from '../entities/JunkHeapNode';
 export class GatherView {
   private readonly scene: Phaser.Scene;
   private readonly bar: Phaser.GameObjects.Graphics;
-  private node: JunkHeapNode | null = null;
+  private node: NodeView | null = null;
   private startedAt = 0;
   private seconds = 1;
 
@@ -21,7 +21,7 @@ export class GatherView {
     this.bar.setVisible(false);
   }
 
-  start(node: JunkHeapNode, seconds: number): void {
+  start(node: NodeView, seconds: number): void {
     this.node = node;
     this.seconds = Math.max(0.05, seconds);
     this.startedAt = this.scene.time.now;
@@ -29,7 +29,6 @@ export class GatherView {
   }
 
   stop(): void {
-    this.node?.hideGlint();
     this.node = null;
     this.bar.setVisible(false);
   }

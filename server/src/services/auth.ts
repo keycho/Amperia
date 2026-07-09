@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import bs58 from 'bs58';
 import jwt from 'jsonwebtoken';
 import nacl from 'tweetnacl';
+import { makeStarterHotbar } from '@shared/inventory';
 import { prisma } from './db.js';
 
 /**
@@ -57,7 +58,7 @@ async function createAccountWithCharacter(
       email,
       passwordHash,
       character: {
-        create: { sparkName },
+        create: { sparkName, hotbarJson: makeStarterHotbar().slots as object[] },
       },
     },
     include: { character: true },

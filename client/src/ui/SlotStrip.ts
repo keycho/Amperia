@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { ITEMS } from '@shared/items';
-import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { mixPalette, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
 import type { Inventory } from '@shared/inventory';
 
 export const SLOT_SIZE = 52;
@@ -179,7 +179,10 @@ export class SlotStrip {
       if (icon === undefined || count === undefined) continue;
       const stack = inv.slots[i];
       if (stack !== null && stack !== undefined && i !== hiddenSlot) {
-        icon.setTexture(ITEMS[stack.itemId].icon);
+        const def = ITEMS[stack.itemId];
+        icon.setTexture(def.icon);
+        if (def.iconTint !== undefined) icon.setTint(PALETTE_INT[def.iconTint as PaletteKey]);
+        else icon.clearTint();
         icon.setPosition(cx + SLOT_SIZE / 2, cy + SLOT_SIZE / 2);
         icon.setDisplaySize(SLOT_SIZE - 12, SLOT_SIZE - 12);
         icon.setVisible(true);

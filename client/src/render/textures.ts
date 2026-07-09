@@ -229,6 +229,59 @@ export function makeItemIconTextures(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** Antenna-shrine: a jury-rigged mast with a dish and a teal beacon. */
+export function makeAntennaTexture(scene: Phaser.Scene): void {
+  const W = 84;
+  const H = 150;
+  const g = g2(scene);
+  const cx = W / 2;
+  // Shadow + base plinth.
+  g.fillStyle(PALETTE_INT.ink, 0.3);
+  g.fillEllipse(cx, H - 10, 58, 16);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.25));
+  g.fillRect(cx - 16, H - 26, 32, 14);
+  g.fillStyle(mixPalette('structureMid', 'groundAccent', 0.3));
+  g.fillRect(cx - 12, H - 30, 24, 6);
+  // Mast with cross-braces.
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.05));
+  g.fillRect(cx - 3, 26, 6, H - 52);
+  g.fillStyle(mixPalette('groundAccent', 'structureMid', 0.4));
+  g.fillRect(cx - 11, 52, 22, 4);
+  g.fillRect(cx - 9, 84, 18, 4);
+  // Dish.
+  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.35));
+  g.fillEllipse(cx + 13, 44, 26, 34);
+  g.fillStyle(mixPalette('structureMid', 'ink', 0.15));
+  g.fillEllipse(cx + 16, 44, 16, 24);
+  // Wires.
+  g.lineStyle(2, mixPalette('structureMid', 'ink', 0.3), 0.9);
+  g.lineBetween(cx - 2, 30, cx - 26, H - 24);
+  g.lineBetween(cx + 2, 30, cx + 28, H - 24);
+  // Beacon (the interactable accent).
+  g.fillStyle(PALETTE_INT.neonTeal);
+  g.fillCircle(cx, 20, 7);
+  g.fillStyle(PALETTE_INT.neonCyan, 0.65);
+  g.fillCircle(cx, 20, 11);
+  g.generateTexture('tex-antenna', W, H);
+  g.destroy();
+}
+
+/** Koi shadow (soft dark ellipse) + a small splash ring. */
+export function makeKoiTextures(scene: Phaser.Scene): void {
+  let g = g2(scene);
+  g.fillStyle(PALETTE_INT.ink, 0.5);
+  g.fillEllipse(40, 22, 64, 28);
+  g.fillStyle(PALETTE_INT.ink, 0.75);
+  g.fillEllipse(40, 22, 44, 18);
+  g.generateTexture('tex-koi-shadow', 80, 44);
+  g.destroy();
+  g = g2(scene);
+  g.lineStyle(4, PALETTE_INT.neonCyan, 0.9);
+  g.strokeEllipse(36, 20, 56, 26);
+  g.generateTexture('tex-splash-ring', 72, 40);
+  g.destroy();
+}
+
 /** Neon-teal diamond outline used for hover / click feedback. */
 export function makeTileMarkerTextures(scene: Phaser.Scene): void {
   const W = 128;

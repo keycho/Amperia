@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
-import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
@@ -140,6 +140,7 @@ export class UIScene extends Phaser.Scene {
       kb.on(`keydown-${name}`, () => {
         if (typing()) return;
         gameState.setActiveHotbarSlot(i);
+        if (session.room !== null) send.selectSlot(session.room, { slot: i });
       });
     });
   }
@@ -151,7 +152,9 @@ export class UIScene extends Phaser.Scene {
     const stack = inv.slots[idx];
     if (stack === null || stack === undefined) return;
 
-    const ghost = this.add.image(pointer.x, pointer.y, ITEMS[stack.itemId].icon);
+    const def = ITEMS[stack.itemId];
+    const ghost = this.add.image(pointer.x, pointer.y, def.icon);
+    if (def.iconTint !== undefined) ghost.setTint(PALETTE_INT[def.iconTint as PaletteKey]);
     ghost.setDisplaySize(44, 44);
     ghost.setAlpha(0.85);
     ghost.setDepth(2000);
