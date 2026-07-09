@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
+import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
@@ -18,8 +19,9 @@ export class Spark {
   private stepTween: Phaser.Tweens.Tween | null = null;
   private stepTarget: TilePoint | null = null;
   private onArrive: (() => void) | null = null;
+  private label: Phaser.GameObjects.Text | null = null;
 
-  constructor(scene: Phaser.Scene, tile: TilePoint) {
+  constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
     this.tile = { ...tile };
     const { x, y } = tileToWorld(tile.x, tile.y);
@@ -27,6 +29,45 @@ export class Spark {
     this.image.setOrigin(0.5, 0.9);
     this.image.setScale(TEX_SCALE * 1.45);
     this.image.setDepth(depthForWorldY(y));
+    if (name !== undefined) this.setNameLabel(name);
+  }
+
+  setNameLabel(name: string): void {
+    this.label?.destroy();
+    this.label = this.scene.add.text(this.image.x, this.image.y, name, {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: UI_TEXT_WARM,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.label.setOrigin(0.5, 1);
+    this.syncLabel();
+  }
+
+  private syncLabel(): void {
+    if (this.label === null) return;
+    this.label.setPosition(this.image.x, this.image.y - this.image.displayHeight + 6);
+    this.label.setDepth(this.image.depth + 1);
+  }
+
+  /** Snap instantly to a tile (server drift correction). */
+  snapTo(tile: TilePoint): void {
+    this.stepTween?.stop();
+    this.stepTween = null;
+    this.stepTarget = null;
+    this.queue = [];
+    this.tile = { ...tile };
+    const { x, y } = tileToWorld(tile.x, tile.y);
+    this.image.setPosition(x, y);
+    this.image.setDepth(depthForWorldY(y));
+    this.syncLabel();
+  }
+
+  destroy(): void {
+    this.stepTween?.stop();
+    this.label?.destroy();
+    this.image.destroy();
   }
 
   get isMoving(): boolean {
@@ -73,7 +114,10 @@ export class Spark {
       y: to.y,
       duration: CONFIG.player.secondsPerTile * 1000,
       ease: 'linear',
-      onUpdate: () => this.image.setDepth(depthForWorldY(this.image.y)),
+      onUpdate: () => {
+        this.image.setDepth(depthForWorldY(this.image.y));
+        this.syncLabel();
+      },
       onComplete: () => {
         this.tile = next;
         this.stepTarget = null;

@@ -1,8 +1,20 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
+import { ITEMS } from '@shared/items';
 import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
-import { mixPalette, PALETTE_INT } from '@shared/palette';
-import { findPath } from '@shared/pathfinding';
+import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import type {
+  ChatBroadcast,
+  GatherStartEvent,
+  GatherStopEvent,
+  GlintHideEvent,
+  GlintShowEvent,
+  InventorySync,
+  LootEvent,
+  MoveAcceptedEvent,
+  NodeStateShape,
+  PlayerStateShape,
+} from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
 import { Spark } from '../entities/Spark';
@@ -14,24 +26,47 @@ import {
   tileToWorld,
   worldToTileFloor,
 } from '../iso/project';
+import {
+  getStateCallbacks,
+  joinFilament,
+  MSG,
+  send,
+  TOKEN_KEY,
+  type FilamentRoom,
+} from '../net/NetClient';
+import { session } from '../net/session';
+import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { CameraController } from '../systems/CameraController';
-import { GatherController } from '../systems/GatherController';
+import { GatherView } from '../systems/GatherView';
+import { gameState } from '../state/GameState';
 
 /** Depth floor for the ground layer; entities use their anchor world-Y. */
 const DEPTH_FLOOR = -100000;
 
+/**
+ * The Filament, rendered from server truth. The client sends intents (move,
+ * gather, glint clicks, stack moves) and animates the results — it never
+ * decides yields, positions-for-loot, or inventory contents.
+ */
 export class WorldScene extends Phaser.Scene {
   private map!: WorldMap;
   private cameraCtl!: CameraController;
-  private spark!: Spark;
   private hoverMarker!: Phaser.GameObjects.Image;
-  private gatherCtl!: GatherController;
-  private nodes: JunkHeapNode[] = [];
+  private gatherView!: GatherView;
+  private nodes = new Map<number, JunkHeapNode>();
+  private sparks = new Map<string, Spark>();
+  private room: FilamentRoom | null = null;
+  private token = '';
+  private connectingText: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super('world');
+  }
+
+  init(data: { token?: string }): void {
+    this.token = data.token ?? '';
   }
 
   create(): void {
@@ -40,26 +75,159 @@ export class WorldScene extends Phaser.Scene {
     this.placeProps();
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
-    this.spawnSpark();
-    this.spawnJunkHeaps();
-    this.setupMoveInput();
-    this.scene.launch('ui');
+    this.gatherView = new GatherView(this);
+    this.spawnNodes();
+    this.setupInput();
+
+    this.connectingText = this.add
+      .text(this.scale.width / 2, this.scale.height / 2, 'Riding the tram in…', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: PALETTE.warmGlow,
+        stroke: PALETTE.ink,
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1e9);
+
+    void this.connect();
   }
 
   update(_time: number, deltaMs: number): void {
     this.cameraCtl.update(deltaMs);
     this.updateHoverMarker();
-    this.gatherCtl.update(deltaMs);
+    this.gatherView.update();
   }
 
-  private spawnJunkHeaps(): void {
-    this.gatherCtl = new GatherController(
-      this,
-      this.spark,
-      { size: this.map.size, walkable: this.map.walkable },
-      // Session seed: value rolls should differ between sessions.
-      Date.now() >>> 0,
-    );
+  // ── networking ─────────────────────────────────────────────────────────
+
+  private async connect(): Promise<void> {
+    try {
+      const room = await joinFilament(this.token);
+      this.bindRoom(room);
+      this.connectingText?.destroy();
+      this.connectingText = null;
+    } catch (err) {
+      console.error('[net] join failed', err);
+      localStorage.removeItem(TOKEN_KEY);
+      this.scene.stop('ui');
+      this.scene.start('login');
+    }
+  }
+
+  private bindRoom(room: FilamentRoom): void {
+    this.room = room;
+    session.room = room;
+    // Boundary typing for the runtime-typed Colyseus callback proxy.
+    interface EntityProxy {
+      onChange(cb: () => void): void;
+      listen(prop: 'depleted', cb: (v: boolean) => void): void;
+    }
+    interface StateProxy {
+      players: {
+        onAdd(cb: (p: PlayerStateShape, id: string) => void): void;
+        onRemove(cb: (p: PlayerStateShape, id: string) => void): void;
+      };
+      nodes: {
+        onAdd(cb: (n: NodeStateShape, key: string) => void): void;
+      };
+    }
+    const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
+    const $state = proxy(room.state) as unknown as StateProxy;
+
+    $state.players.onAdd((p: PlayerStateShape, sessionId: string) => {
+      const spark = new Spark(this, { x: p.tileX, y: p.tileY }, p.sparkName);
+      this.sparks.set(sessionId, spark);
+      if (sessionId === room.sessionId) {
+        this.cameraCtl.followTarget(spark.image);
+      }
+      // Drift correction: if the server's committed tile diverges while the
+      // client isn't animating a path, snap to truth.
+      proxy(p).onChange(() => {
+        const s = this.sparks.get(sessionId);
+        if (s === undefined || s.isMoving) return;
+        if (s.tile.x !== p.tileX || s.tile.y !== p.tileY) {
+          s.snapTo({ x: p.tileX, y: p.tileY });
+        }
+      });
+    });
+
+    $state.players.onRemove((_p: PlayerStateShape, sessionId: string) => {
+      this.sparks.get(sessionId)?.destroy();
+      this.sparks.delete(sessionId);
+    });
+
+    $state.nodes.onAdd((n: NodeStateShape, key: string) => {
+      const node = this.nodes.get(Number(key));
+      if (node === undefined) return;
+      node.setDepleted(n.depleted);
+      proxy(n).listen('depleted', (v: boolean) => node.setDepleted(v));
+    });
+
+    room.onMessage(MSG.moveAccepted, (e: MoveAcceptedEvent) => {
+      const spark = this.sparks.get(e.sessionId);
+      spark?.walk(e.path);
+      if (e.sessionId === room.sessionId && spark !== undefined) {
+        this.cameraCtl.followTarget(spark.image);
+      }
+    });
+
+    room.onMessage(MSG.gatherStart, (e: GatherStartEvent) => {
+      const node = this.nodes.get(e.nodeId);
+      if (node !== undefined) this.gatherView.start(node, e.seconds);
+    });
+    room.onMessage(MSG.gatherStop, (_e: GatherStopEvent) => this.gatherView.stop());
+    room.onMessage(MSG.glintShow, (e: GlintShowEvent) => {
+      this.nodes.get(e.nodeId)?.showGlint(e.offset);
+    });
+    room.onMessage(MSG.glintHide, (e: GlintHideEvent) => {
+      this.nodes.get(e.nodeId)?.hideGlint();
+    });
+
+    room.onMessage(MSG.loot, (e: LootEvent) => {
+      this.gatherView.stop();
+      const node = this.nodes.get(e.nodeId);
+      const nx = node?.image.x ?? 0;
+      const ny = (node?.image.y ?? 0) - 70;
+      if (e.qty > 0) {
+        floatText(this, nx, ny, `+${e.qty} ${ITEMS[e.itemId].name}`);
+      } else {
+        floatText(this, nx, ny, 'Pack is full!', PALETTE.neonRose);
+      }
+      if (e.rare !== null) {
+        floatText(this, nx, ny - 20, `+1 ${ITEMS[e.rare].name} ✦`, PALETTE.neonAmber);
+      }
+    });
+
+    room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
+    // Chat UI lands with the chat commit; drain quietly until then.
+    room.onMessage(MSG.chatMsg, (_m: ChatBroadcast) => undefined);
+
+    room.onLeave(() => {
+      session.room = null;
+      this.room = null;
+    });
+
+    this.scene.launch('ui');
+  }
+
+  // ── input ──────────────────────────────────────────────────────────────
+
+  private setupInput(): void {
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown() || this.room === null) return;
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const t = worldToTileFloor(world.x, world.y);
+      if (this.map.walkable[t.ty]?.[t.tx] === true) {
+        send.move(this.room, { x: t.tx, y: t.ty });
+        this.gatherView.stop();
+        this.pulseTile(t.tx, t.ty);
+      }
+    });
+  }
+
+  private spawnNodes(): void {
     for (const n of this.map.junkNodes) {
       const node = new JunkHeapNode(this, n.id, n.x, n.y);
       node.image.on(
@@ -70,12 +238,11 @@ export class WorldScene extends Phaser.Scene {
           _ly: number,
           event: Phaser.Types.Input.EventData,
         ) => {
-          if (!pointer.leftButtonDown()) return;
+          if (!pointer.leftButtonDown() || this.room === null) return;
           event.stopPropagation();
-          this.gatherCtl.requestGather(node);
+          send.gather(this.room, { nodeId: node.id });
         },
       );
-      // The glint is its own hit target, above the heap.
       node.glintImage.on(
         'pointerdown',
         (
@@ -84,51 +251,17 @@ export class WorldScene extends Phaser.Scene {
           _ly: number,
           event: Phaser.Types.Input.EventData,
         ) => {
-          if (!pointer.leftButtonDown()) return;
+          if (!pointer.leftButtonDown() || this.room === null) return;
           event.stopPropagation();
-          this.gatherCtl.onGlintClicked(node);
+          send.glintClick(this.room, { nodeId: node.id });
+          node.flashGlintHit();
         },
       );
-      this.nodes.push(node);
+      this.nodes.set(n.id, node);
     }
   }
 
-  private spawnSpark(): void {
-    this.spark = new Spark(this, CONFIG.player.spawn);
-    this.cameraCtl.followTarget(this.spark.image);
-
-    this.hoverMarker = this.add.image(0, 0, 'tex-tile-marker');
-    this.hoverMarker.setScale(TEX_SCALE);
-    this.hoverMarker.setAlpha(0.4);
-    this.hoverMarker.setVisible(false);
-    this.hoverMarker.setDepth(DEPTH_FLOOR + 1);
-  }
-
-  private setupMoveInput(): void {
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (!pointer.leftButtonDown()) return;
-      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      const t = worldToTileFloor(world.x, world.y);
-      this.walkTo(t.tx, t.ty);
-    });
-  }
-
-  /** Path the Spark to a walkable tile; pulses the destination marker. */
-  private walkTo(tx: number, ty: number): boolean {
-    if (this.map.walkable[ty]?.[tx] !== true) return false;
-    const path = findPath(
-      { size: this.map.size, walkable: this.map.walkable },
-      this.spark.settledTile,
-      { x: tx, y: ty },
-    );
-    if (path === null) return false;
-    // Walking away abandons any gather in progress.
-    this.gatherCtl.cancel();
-    this.spark.walk(path);
-    this.cameraCtl.followTarget(this.spark.image);
-    this.pulseTile(tx, ty);
-    return true;
-  }
+  // ── presentation (unchanged from M0) ───────────────────────────────────
 
   /** neonTeal click feedback pulse at a tile. */
   private pulseTile(tx: number, ty: number): void {
@@ -148,6 +281,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateHoverMarker(): void {
+    if (this.hoverMarker === undefined) {
+      this.hoverMarker = this.add.image(0, 0, 'tex-tile-marker');
+      this.hoverMarker.setScale(TEX_SCALE);
+      this.hoverMarker.setAlpha(0.4);
+      this.hoverMarker.setVisible(false);
+      this.hoverMarker.setDepth(DEPTH_FLOOR + 1);
+    }
     const pointer = this.input.activePointer;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const { tx, ty } = worldToTileFloor(world.x, world.y);

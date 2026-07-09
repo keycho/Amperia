@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { send } from '../net/NetClient';
+import { session } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { SlotStrip } from '../ui/SlotStrip';
 
@@ -147,8 +149,15 @@ export class UIScene extends Phaser.Scene {
       for (const strip of targets) {
         if (!strip.visible) continue;
         const idx = strip.slotIndexAt(pointer.x, pointer.y);
-        if (idx !== null) {
-          gameState.moveStack(d.strip.source, d.slotIdx, strip.source, idx);
+        if (idx !== null && session.room !== null) {
+          // Server-authoritative: send the intent; the echo re-renders.
+          send.moveStack(session.room, {
+            from: d.strip.source === 'inventory' ? 'pack' : 'hotbar',
+            fromIdx: d.slotIdx,
+            to: strip.source === 'inventory' ? 'pack' : 'hotbar',
+            toIdx: idx,
+          });
+          this.refreshAll();
           return;
         }
       }

@@ -13,6 +13,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "colyseus.js": "^0.16.22",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

@@ -1,0 +1,49 @@
+// AMPERIA persistence — PostgreSQL via Prisma.
+// Accounts are email-first; guests are accounts without an email; SIWS wallet
+// linking is optional and late (walletAddress nullable). All value movements
+// append to LedgerEvent (the economy ledger habit).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id            String      @id @default(cuid())
+  email         String?     @unique
+  passwordHash  String?
+  walletAddress String?     @unique
+  createdAt     DateTime    @default(now())
+  character     Character?
+  ledgerEvents  LedgerEvent[]
+}
+
+model Character {
+  id        String   @id @default(cuid())
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String   @unique
+  sparkName String   @unique
+  tileX     Int      @default(-1)
+  tileY     Int      @default(-1)
+  packJson  Json     @default("[]")
+  hotbarJson Json    @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LedgerEvent {
+  id        BigInt   @id @default(autoincrement())
+  ts        DateTime @default(now())
+  type      String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  data      Json
+
+  @@index([accountId, ts])
+  @@index([type, ts])
+}

@@ -1,0 +1,64 @@
+import { CONFIG } from '@shared/config';
+import type { Inventory, InventorySlot } from '@shared/inventory';
+import { makeInventory } from '@shared/inventory';
+import type { TilePoint } from '@shared/pathfinding';
+import { prisma } from './db.js';
+
+export interface CharacterSnapshot {
+  sparkName: string;
+  tile: TilePoint | null;
+  pack: Inventory | null;
+  hotbar: Inventory | null;
+}
+
+function parseInventory(raw: unknown, slotCount: number): Inventory | null {
+  if (!Array.isArray(raw)) return null;
+  const inv = makeInventory(slotCount);
+  for (let i = 0; i < slotCount; i++) {
+    const s = raw[i] as InventorySlot | undefined;
+    if (
+      s !== null &&
+      s !== undefined &&
+      typeof s === 'object' &&
+      typeof (s as { itemId?: unknown }).itemId === 'string' &&
+      typeof (s as { qty?: unknown }).qty === 'number' &&
+      (s as { qty: number }).qty > 0
+    ) {
+      inv.slots[i] = { itemId: s.itemId, qty: Math.floor(s.qty) };
+    }
+  }
+  return inv;
+}
+
+export async function loadCharacter(characterId: string): Promise<CharacterSnapshot> {
+  const c = await prisma.character.findUniqueOrThrow({ where: { id: characterId } });
+  const tile =
+    typeof c.tileX === 'number' && typeof c.tileY === 'number' && c.tileX >= 0 && c.tileY >= 0
+      ? { x: c.tileX, y: c.tileY }
+      : null;
+  return {
+    sparkName: c.sparkName,
+    tile,
+    pack: parseInventory(c.packJson, CONFIG.inventory.slots),
+    hotbar: parseInventory(c.hotbarJson, CONFIG.inventory.hotbarSlots),
+  };
+}
+
+export async function persistCharacter(
+  characterId: string,
+  data: { tile: TilePoint; pack: Inventory; hotbar: Inventory },
+): Promise<void> {
+  try {
+    await prisma.character.update({
+      where: { id: characterId },
+      data: {
+        tileX: data.tile.x,
+        tileY: data.tile.y,
+        packJson: data.pack.slots as object[],
+        hotbarJson: data.hotbar.slots as object[],
+      },
+    });
+  } catch (err) {
+    console.error('[persistence] save failed for', characterId, err);
+  }
+}

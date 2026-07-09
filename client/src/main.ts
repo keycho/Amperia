@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PALETTE } from '@shared/palette';
 import { BootScene } from './scenes/BootScene';
+import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { gameState } from './state/GameState';
@@ -24,7 +25,7 @@ const game = new Phaser.Game({
     antialias: true,
     roundPixels: false,
   },
-  scene: [BootScene, WorldScene, UIScene],
+  scene: [BootScene, LoginScene, WorldScene, UIScene],
 });
 
 window.__amperia = { game, gameState };

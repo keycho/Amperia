@@ -31,6 +31,6 @@ export class BootScene extends Phaser.Scene {
     makeTileMarkerTextures(this);
     makeJunkHeapTextures(this);
     makeItemIconTextures(this);
-    this.scene.start('world');
+    this.scene.start('login');
   }
 }
