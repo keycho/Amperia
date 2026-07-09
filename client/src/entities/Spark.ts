@@ -4,7 +4,7 @@ import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { worldSpriteTint } from '../render/styleConfig';
-import { TEX_SCALE } from '../render/textures';
+import { voxelSprite } from '../render/voxel';
 
 /**
  * The player entity: a sprite that walks tile-to-tile along A* paths with
@@ -26,13 +26,29 @@ export class Spark {
     this.scene = scene;
     this.tile = { ...tile };
     const { x, y } = tileToWorld(tile.x, tile.y);
-    this.image = scene.add.image(x, y, 'tex-spark');
-    this.image.setOrigin(0.5, 0.9);
-    this.image.setScale(TEX_SCALE * 1.45);
+    const baked = voxelSprite('spark-se');
+    this.image = scene.add.image(x, y, baked.key);
+    this.image.setOrigin(baked.originX, baked.originY);
+    this.image.setScale(baked.scale);
     const wt = worldSpriteTint();
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     if (name !== undefined) this.setNameLabel(name);
+  }
+
+  /** Voxel-bake facing: SE/SW use the front bake, NE/NW the back bake. */
+  private face(dx: number, dy: number): void {
+    let name: 'spark-se' | 'spark-ne' | null = null;
+    let flip = false;
+    if (dx > 0) [name, flip] = ['spark-se', false];
+    else if (dx < 0) [name, flip] = ['spark-ne', true];
+    else if (dy > 0) [name, flip] = ['spark-se', true];
+    else if (dy < 0) [name, flip] = ['spark-ne', false];
+    if (name === null) return;
+    const baked = voxelSprite(name);
+    this.image.setTexture(baked.key);
+    this.image.setOrigin(baked.originX, baked.originY);
+    this.image.setFlipX(flip);
   }
 
   setNameLabel(name: string): void {
@@ -107,9 +123,7 @@ export class Spark {
     }
     this.stepTarget = next;
     const to = tileToWorld(next.x, next.y);
-    // Face the walk direction (sprite is drawn facing right/east-ish).
-    if (to.x < this.image.x) this.image.setFlipX(true);
-    else if (to.x > this.image.x) this.image.setFlipX(false);
+    this.face(next.x - this.tile.x, next.y - this.tile.y);
 
     this.stepTween = this.scene.tweens.add({
       targets: this.image,

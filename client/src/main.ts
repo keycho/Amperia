@@ -5,12 +5,17 @@ import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
+import { voxelSprite } from './render/voxel';
 import { gameState } from './state/GameState';
 
 declare global {
   interface Window {
     /** Debug/verification handle (screenshot harness, manual poking). */
-    __amperia?: { game: Phaser.Game; gameState: typeof gameState };
+    __amperia?: {
+      game: Phaser.Game;
+      gameState: typeof gameState;
+      voxelSprite: typeof voxelSprite;
+    };
   }
 }
 
@@ -46,4 +51,4 @@ if (STYLE.pixelHeight !== null) {
   game.canvas.style.imageRendering = 'pixelated';
 }
 
-window.__amperia = { game, gameState };
+window.__amperia = { game, gameState, voxelSprite };

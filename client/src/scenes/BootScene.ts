@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
+import { bakeCoreVoxelModels } from '../render/voxelModels';
 import {
   makeAntennaTexture,
   makeDynamoTexture,
@@ -35,6 +36,7 @@ export class BootScene extends Phaser.Scene {
     makeItemIconTextures(this);
     makeAntennaTexture(this);
     makeKoiTextures(this);
+    bakeCoreVoxelModels(this);
     this.scene.start('login');
   }
 }

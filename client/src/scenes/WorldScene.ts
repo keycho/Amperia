@@ -51,6 +51,7 @@ import { floatText } from '../render/effects';
 import { TEX_SCALE } from '../render/textures';
 import { TINTS } from '../render/tints';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
+import { addVoxelSprite } from '../render/voxel';
 import { bloom, gradeGround, gradeSpriteTint, STYLE, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
@@ -539,18 +540,13 @@ export class WorldScene extends Phaser.Scene {
         let fill: number;
         const inPlaza = plazaDist <= plaza.radius;
         if (inPlaza) {
-          // Warm decking on the plaza — the amber heart of the district.
-          fill = mixPalette('groundAccent', 'warmGlow', 0.12 + rng() * 0.12);
+          // Plaza decking: mid-value warm plum — objects must sit LIGHTER
+          // than the ground (contrast by value separation, not darkness).
+          fill = mixPalette('groundBase', 'groundAccent', 0.22 + rng() * 0.1);
         } else {
-          // Mauve plating outward, cooling gently toward the fringe. The
-          // Filament's hue leans amber north / rose south-east (one dominant
-          // hue per district, varied inside it).
-          const accent = 0.08 + Math.max(0, 0.3 - edgeness * 0.2) * rng();
-          const coolShift = Math.max(0, edgeness - 0.62) * 0.4;
-          fill =
-            coolShift > 0.01
-              ? mixPalette('groundBase', 'structureMid', coolShift + rng() * 0.06)
-              : mixPalette('groundBase', 'groundAccent', accent);
+          // Streets: dark-mid plum, darkening gently toward the fringe.
+          const t = 0.42 + edgeness * 0.2 + rng() * 0.08;
+          fill = mixPalette('groundBase', 'duskSky', Math.min(0.75, t));
         }
 
         g.fillStyle(gradeGround(fill));
@@ -671,27 +667,31 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'stall': {
-          const img = this.add.image(x, y + 2, `stall-${p.variant % 4}`);
-          img.setOrigin(0.5, 1);
-          // Building art is 132px wide for a 2-tile (128px) footprint.
-          img.setScale((TILE_W * 2) / 132);
-          img.setTint(gradeSpriteTint(TINTS.building));
+          const img = addVoxelSprite(this, `stall-${p.variant % 4}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
-          // A little lantern dot by the door so stalls read as "market".
-          const lantern = this.add.image(x + 14, y - 30, 'fx-glow');
+          // Lantern glow on the baked lantern voxel (right post, mid-height).
+          const lantern = this.add.image(x + 34, y - 58, 'fx-glow');
           lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);
-          lantern.setAlpha(bloom(0.75));
-          lantern.setScale(0.13);
+          lantern.setAlpha(bloom(0.7));
+          lantern.setScale(0.11);
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
+          // Sign glyph glow (left of center, under the awning).
+          const sign = this.add.image(x - 6, y - 62, 'fx-glow');
+          sign.setTint(PALETTE_INT.neonAmber);
+          sign.setAlpha(bloom(0.4));
+          sign.setScale(0.06);
+          sign.setBlendMode(Phaser.BlendModes.ADD);
+          sign.setDepth(depthForWorldY(y) + 1);
           this.addGroundPool(x + 10, y - 4, PALETTE_INT.neonAmber, 0.38);
           break;
         }
         case 'crate': {
-          const img = this.add.image(x, y, `crate-${p.variant % 2}`);
-          img.setOrigin(0.5, 1);
-          img.setScale((TILE_W * 0.78) / 111);
-          img.setTint(gradeSpriteTint(TINTS.crate));
+          const img = addVoxelSprite(this, 'crate', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
           break;
         }
@@ -704,9 +704,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'planter': {
-          const img = this.add.image(x, y, 'tex-planter');
-          img.setOrigin(0.5, 0.92);
-          img.setScale(TEX_SCALE * 1.3);
+          const img = addVoxelSprite(this, 'planter', x, y);
           const pt = worldSpriteTint();
           if (pt !== null) img.setTint(pt);
           img.setDepth(depthForWorldY(y));
