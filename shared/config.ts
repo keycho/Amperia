@@ -187,6 +187,64 @@ export const CONFIG = {
     /** Chebyshev tile radius reported by /near. */
     nearRadiusTiles: 8,
   },
+
+  /** Skill Mastery 1-50 (Game Bible B3): fast early, long-horizon late. */
+  mastery: {
+    maxLevel: 50,
+    /** XP from level 1 → 2; each next level costs curveGrowth× more. */
+    curveBase: 40,
+    curveGrowth: 1.135,
+    /** XP granted per successful gather, by node kind. */
+    xpByNode: {
+      junkHeap: 10,
+      brassSeam: 6, // per vein segment collected (see server)
+      amperite: 5, // per strike
+      glowkoi: 14,
+      antenna: 16,
+    },
+    /** The modest gather-speed curve: -0.6%/level, floor at 75% of base. */
+    speedPerLevel: 0.006,
+    speedCap: 0.75,
+    /** Breadth flags only (content arrives later); labels are UI previews. */
+    unlocks: {
+      scavving: {
+        10: 'Rich heaps read at a glance',
+        20: 'Derelict machine caches',
+        30: 'Deep-fringe heap routes',
+        40: 'Master scav marks',
+      },
+      delving: {
+        10: 'Seam weather sense',
+        20: 'Crystal lattice reading',
+        30: 'Underworks side-galleries',
+        40: 'Master delve marks',
+      },
+      skimming: {
+        10: 'Koi shadow lore',
+        20: 'Night-water casts',
+        30: 'Deep-channel skimming',
+        40: 'Master skim marks',
+      },
+      tuning: {
+        10: 'Cleaner static',
+        20: 'Old grid callsigns',
+        30: 'Ghost-band access',
+        40: 'Master tune marks',
+      },
+      brawling: {
+        10: 'Sparyard stances',
+        20: 'Junkbot weak points',
+        30: 'Outskirt patrol routes',
+        40: 'Master brawl marks',
+      },
+      griddling: {
+        10: 'Warmcup basics',
+        20: 'Skewer seasoning',
+        30: 'Stall-worthy plating',
+        40: 'Master griddle marks',
+      },
+    },
+  },
 } as const;
 
 export type GameConfig = typeof CONFIG;

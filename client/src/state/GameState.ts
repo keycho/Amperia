@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { countItem, makeInventory, type Inventory } from '@shared/inventory';
 import type { ItemId } from '@shared/items';
-import type { InventorySync } from '@shared/protocol';
+import { makeSkillXp, SKILLS, type SkillId, type SkillXp } from '@shared/mastery';
+import type { InventorySync, SkillsSync } from '@shared/protocol';
 
 /**
  * Client mirror of server-authoritative state. The server owns inventories;
@@ -12,13 +13,23 @@ import type { InventorySync } from '@shared/protocol';
 export const GameEvents = {
   inventoryChanged: 'inventory:changed',
   hotbarChanged: 'hotbar:changed',
+  skillsChanged: 'skills:changed',
 } as const;
 
 class GameStateStore {
   readonly events = new Phaser.Events.EventEmitter();
   inventory: Inventory = makeInventory(CONFIG.inventory.slots);
   hotbar: Inventory = makeInventory(CONFIG.inventory.hotbarSlots);
+  skills: SkillXp = makeSkillXp();
   activeHotbarSlot = 0;
+
+  applySkills(sync: SkillsSync): void {
+    for (const skill of SKILLS) {
+      const v = sync.xp[skill];
+      if (typeof v === 'number') this.skills[skill as SkillId] = v;
+    }
+    this.events.emit(GameEvents.skillsChanged);
+  }
 
   applySync(sync: InventorySync): void {
     this.inventory = { slots: [...sync.pack] };

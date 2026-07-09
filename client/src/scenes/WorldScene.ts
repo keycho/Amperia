@@ -7,6 +7,8 @@ import type {
   ChatBroadcast,
   NodeEventPayload,
   NoticeEvent,
+  SkillsSync,
+  XpGainEvent,
   GatherStartEvent,
   GatherStopEvent,
   GlintHideEvent,
@@ -237,6 +239,14 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
+    room.onMessage(MSG.skills, (sync: SkillsSync) => gameState.applySkills(sync));
+    room.onMessage(MSG.xpGain, (e: XpGainEvent) => {
+      const own = this.sparks.get(room.sessionId);
+      if (own !== undefined) {
+        const label = e.skill.charAt(0).toUpperCase() + e.skill.slice(1);
+        floatText(this, own.image.x + 26, own.image.y - 46, `+${e.amount} ${label}`, PALETTE.solarGreen);
+      }
+    });
     room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => session.events.emit(SessionEvents.chat, m));
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),

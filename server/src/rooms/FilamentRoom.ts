@@ -20,6 +20,13 @@ import {
   tensionValue,
   type KoiRoll,
 } from '@shared/minigames';
+import {
+  effectiveSeconds,
+  levelForXp,
+  SKILL_BY_NODE,
+  type SkillId,
+  type SkillXp,
+} from '@shared/mastery';
 import { advanceMovement, makeMoveState, setPath, type MoveState } from '@shared/movement';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
 import {
@@ -47,6 +54,8 @@ type Session =
       kind: 'junkHeap';
       nodeId: number;
       elapsed: number;
+      /** Effective cycle seconds (mastery speed curve applied). */
+      seconds: number;
       glintAt: number;
       glintShownAtMs: number | null;
       glintExpired: boolean;
@@ -57,6 +66,8 @@ type Session =
       nodeId: number;
       phase: 'digging' | 'fork';
       elapsed: number;
+      /** Effective segment seconds (mastery speed curve applied). */
+      seconds: number;
       segment: number;
       total: number;
       liveSide: 0 | 1;
@@ -95,6 +106,7 @@ interface PlayerRuntime {
   pack: Inventory;
   hotbar: Inventory;
   activeSlot: number;
+  skills: SkillXp;
   gatherTargetNode: number | null;
   session: Session | null;
   lastChatAtMs: number;
@@ -173,6 +185,7 @@ export class FilamentRoom extends Room<FilamentState> {
       pack: character.pack ?? makeInventory(CONFIG.inventory.slots),
       hotbar: character.hotbar ?? makeStarterHotbar(),
       activeSlot: 0,
+      skills: character.skills,
       gatherTargetNode: null,
       session: null,
       lastChatAtMs: 0,
@@ -187,6 +200,7 @@ export class FilamentRoom extends Room<FilamentState> {
     this.state.players.set(client.sessionId, ps);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
+    client.send(MSG.skills, { xp: runtime.skills });
     this.broadcast(
       MSG.notice,
       { text: `${character.sparkName} stepped off the tram.` },
@@ -310,6 +324,7 @@ export class FilamentRoom extends Room<FilamentState> {
         const amount = amperiteStrikeYield(cfg, onPulse);
         s.total += amount;
         s.strikesLeft -= 1;
+        this.grantXp(client, rt, SKILL_BY_NODE.amperite, CONFIG.mastery.xpByNode.amperite);
         this.sendNodeEvent(client, {
           type: 'amperiteStrike',
           nodeId: s.nodeId,
@@ -350,6 +365,7 @@ export class FilamentRoom extends Room<FilamentState> {
             kind: 'glowkoi',
             sizeIdx: s.koi.sizeIdx,
           });
+          this.grantXp(client, rt, SKILL_BY_NODE.glowkoi, CONFIG.mastery.xpByNode.glowkoi);
           this.depleteNode(s.nodeId, cfg.respawnSeconds);
         }
         break;
@@ -473,32 +489,36 @@ export class FilamentRoom extends Room<FilamentState> {
     switch (node.kind) {
       case 'junkHeap': {
         const cfg = CONFIG.gathering.junkHeap;
+        const seconds = effectiveSeconds(cfg.gatherSeconds, levelForXp(rt.skills.scavving));
         rt.session = {
           kind: 'junkHeap',
           nodeId,
           elapsed: 0,
-          glintAt: rollGlintTime(cfg, cfg.gatherSeconds, this.rng),
+          seconds,
+          glintAt: rollGlintTime(cfg, seconds, this.rng),
           glintShownAtMs: null,
           glintExpired: false,
           glintHit: false,
         };
-        client.send(MSG.gatherStart, { nodeId, seconds: cfg.gatherSeconds });
+        client.send(MSG.gatherStart, { nodeId, seconds });
         break;
       }
       case 'brassSeam': {
+        const seconds = effectiveSeconds(
+          CONFIG.gathering.brassSeam.segmentSeconds,
+          levelForXp(rt.skills.delving),
+        );
         rt.session = {
           kind: 'brassSeam',
           nodeId,
           phase: 'digging',
           elapsed: 0,
+          seconds,
           segment: 1,
           total: 0,
           liveSide: 0,
         };
-        client.send(MSG.gatherStart, {
-          nodeId,
-          seconds: CONFIG.gathering.brassSeam.segmentSeconds,
-        });
+        client.send(MSG.gatherStart, { nodeId, seconds });
         break;
       }
       case 'amperite': {
@@ -594,7 +614,7 @@ export class FilamentRoom extends Room<FilamentState> {
           s.glintExpired = true;
           client.send(MSG.glintHide, { nodeId: s.nodeId });
         }
-        if (s.elapsed >= cfg.gatherSeconds) {
+        if (s.elapsed >= s.seconds) {
           const roll = rollGather(cfg, s.glintHit, this.rng);
           rt.session = null;
           this.setGatheringFlag(sessionId, false);
@@ -602,15 +622,17 @@ export class FilamentRoom extends Room<FilamentState> {
             kind: 'junkHeap',
             glintHit: s.glintHit,
           });
+          this.grantXp(client, rt, SKILL_BY_NODE.junkHeap, CONFIG.mastery.xpByNode.junkHeap);
           this.depleteNode(s.nodeId, cfg.respawnSeconds);
         }
         break;
       }
       case 'brassSeam': {
         const cfg = CONFIG.gathering.brassSeam;
-        if (s.phase === 'digging' && s.elapsed >= cfg.segmentSeconds) {
+        if (s.phase === 'digging' && s.elapsed >= s.seconds) {
           const amount = rollBrassSegmentYield(cfg, this.rng);
           s.total += amount;
+          this.grantXp(client, rt, SKILL_BY_NODE.brassSeam, CONFIG.mastery.xpByNode.brassSeam);
           this.sendNodeEvent(client, {
             type: 'brassSegment',
             nodeId: s.nodeId,
@@ -684,6 +706,7 @@ export class FilamentRoom extends Room<FilamentState> {
             kind: 'antenna',
             lockRatio: Number(lockRatio.toFixed(3)),
           });
+          this.grantXp(client, rt, SKILL_BY_NODE.antenna, CONFIG.mastery.xpByNode.antenna);
           this.depleteNode(s.nodeId, cfg.respawnSeconds);
         }
         break;
@@ -758,6 +781,13 @@ export class FilamentRoom extends Room<FilamentState> {
     client.send(MSG.nodeEvent, payload);
   }
 
+  private grantXp(client: Client, rt: PlayerRuntime, skill: SkillId, amount: number): void {
+    if (amount <= 0) return;
+    rt.skills[skill] += amount;
+    client.send(MSG.xpGain, { skill, amount });
+    client.send(MSG.skills, { xp: rt.skills });
+  }
+
   private grantLoot(
     client: Client,
     rt: PlayerRuntime,
@@ -828,6 +858,7 @@ export class FilamentRoom extends Room<FilamentState> {
       tile: rt.move.tile,
       pack: rt.pack,
       hotbar: rt.hotbar,
+      skills: rt.skills,
     });
   }
 }

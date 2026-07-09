@@ -6,6 +6,7 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { ChatUI } from '../ui/ChatUI';
+import { SkillsPanel } from '../ui/SkillsPanel';
 import { SlotStrip } from '../ui/SlotStrip';
 
 interface DragState {
@@ -27,6 +28,7 @@ export class UIScene extends Phaser.Scene {
   private lootChip!: Phaser.GameObjects.Text;
   private presenceChip!: Phaser.GameObjects.Text;
   private chat!: ChatUI;
+  private skillsPanel!: SkillsPanel;
 
   constructor() {
     super('ui');
@@ -74,6 +76,10 @@ export class UIScene extends Phaser.Scene {
     });
 
     this.chat = new ChatUI(this);
+    this.skillsPanel = new SkillsPanel(this);
+    gameState.events.on(GameEvents.skillsChanged, () => {
+      if (this.skillsPanel.visible) this.skillsPanel.refresh();
+    });
 
     this.layout();
     this.refreshAll();
@@ -96,6 +102,8 @@ export class UIScene extends Phaser.Scene {
     this.hotbar.setPosition((w - hb.w) / 2, h - hb.h - 12);
     const inv = this.inventoryPanel.pixelSize();
     this.inventoryPanel.setPosition((w - inv.w) / 2, (h - inv.h) / 2 - 20);
+    const sk = this.skillsPanel.pixelSize();
+    this.skillsPanel.setPosition((w - sk.w) / 2, (h - sk.h) / 2 - 10);
     this.refreshAll();
   }
 
@@ -125,11 +133,18 @@ export class UIScene extends Phaser.Scene {
       this.chat.typing || document.activeElement instanceof HTMLInputElement;
     kb.on('keydown-I', () => {
       if (typing()) return;
+      this.skillsPanel.setVisible(false);
       this.inventoryPanel.setVisible(!this.inventoryPanel.visible);
+    });
+    kb.on('keydown-K', () => {
+      if (typing()) return;
+      this.inventoryPanel.setVisible(false);
+      this.skillsPanel.setVisible(!this.skillsPanel.visible);
     });
     kb.on('keydown-ESC', () => {
       if (typing()) return;
       if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
+      else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;

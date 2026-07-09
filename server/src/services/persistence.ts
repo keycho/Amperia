@@ -1,6 +1,7 @@
 import { CONFIG } from '@shared/config';
 import type { Inventory, InventorySlot } from '@shared/inventory';
 import { makeInventory } from '@shared/inventory';
+import { makeSkillXp, SKILLS, type SkillXp } from '@shared/mastery';
 import type { TilePoint } from '@shared/pathfinding';
 import { prisma } from './db.js';
 
@@ -9,6 +10,18 @@ export interface CharacterSnapshot {
   tile: TilePoint | null;
   pack: Inventory | null;
   hotbar: Inventory | null;
+  skills: SkillXp;
+}
+
+function parseSkills(raw: unknown): SkillXp {
+  const xp = makeSkillXp();
+  if (typeof raw === 'object' && raw !== null) {
+    for (const skill of SKILLS) {
+      const v = (raw as Record<string, unknown>)[skill];
+      if (typeof v === 'number' && v >= 0) xp[skill] = Math.floor(v);
+    }
+  }
+  return xp;
 }
 
 function parseInventory(raw: unknown, slotCount: number): Inventory | null {
@@ -41,12 +54,13 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     tile,
     pack: parseInventory(c.packJson, CONFIG.inventory.slots),
     hotbar: parseInventory(c.hotbarJson, CONFIG.inventory.hotbarSlots),
+    skills: parseSkills(c.skillsJson),
   };
 }
 
 export async function persistCharacter(
   characterId: string,
-  data: { tile: TilePoint; pack: Inventory; hotbar: Inventory },
+  data: { tile: TilePoint; pack: Inventory; hotbar: Inventory; skills: SkillXp },
 ): Promise<void> {
   try {
     await prisma.character.update({
@@ -56,6 +70,7 @@ export async function persistCharacter(
         tileY: data.tile.y,
         packJson: data.pack.slots as object[],
         hotbarJson: data.hotbar.slots as object[],
+        skillsJson: data.skills,
       },
     });
   } catch (err) {

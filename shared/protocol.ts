@@ -25,6 +25,8 @@ export const MSG = {
   nodeEvent: 'nodeEvent',
   loot: 'loot',
   inventory: 'inventory',
+  skills: 'skills',
+  xpGain: 'xpGain',
   chatMsg: 'chatMsg',
   notice: 'notice',
 } as const;
@@ -142,6 +144,15 @@ export interface LootEvent {
 export interface InventorySync {
   pack: InventorySlot[];
   hotbar: InventorySlot[];
+}
+
+export interface SkillsSync {
+  xp: Record<string, number>;
+}
+
+export interface XpGainEvent {
+  skill: string;
+  amount: number;
 }
 
 export interface ChatBroadcast {
