@@ -1,94 +1,105 @@
 # AMPERIA — Progress
 
-## Status: `m0-complete` (M0 prototype done; next up: M2 multiplayer skeleton by owner directive)
+## Status after the 2026-07-09 autonomous run (`run-20260709-autonomous`)
 
-### Plan change (2026-07-09, from the project owner)
+The prototype is now a **playable multiplayer vertical slice**: email/guest
+accounts, one Filament district on a Colyseus server with Postgres
+persistence, all five gathering skills with their active layers running
+server-authoritatively, Mastery 1–50, chat/presence, and a first real
+graphics pass. Screenshots: `docs/screenshots/` (`devlog-01.png` is the
+postcard; before/after pairs for the graphics pass).
 
-After M0.5, we skip directly to **M2's multiplayer skeleton** (Colyseus, one
-district room, email-first accounts with optional SIWS, Postgres persistence,
-chat) and then build **M1's content inside multiplayer**. The M0/M1 habits are
-unchanged and mandatory: ledger logging for every value movement,
-config-driven constants in `/shared/config.ts`, pure unit-tested value
-functions, palette-only colors, comms-rules-compliant UI strings.
+### Plan changes (owner-directed)
 
-## What exists (M0)
+1. 2026-07-09: after M0.5, skip to the **M2 multiplayer skeleton**, then build
+   M1 content inside it (ledger/config/pure-function habits unchanged).
+2. Same day, autonomous run (~2h): P0 finish chat/presence · P1 five
+   resources server-auth · P2 Mastery · P3 graphics · P4 this wrap-up.
 
-- **Monorepo**: `/client` (Phaser 3.90 + Vite 7 + strict TS), `/shared`
-  (config, palette, pure game math + Vitest suites), `/assets` (curated
-  Kenney CC0), placeholder `/server` `/db` `/economy` dirs. Root
-  `npm run dev|build|test|lint` proxy to the client workspace.
-- **M0.1 iso world**: 40×40 map from `shared/map.ts` (deterministic builder:
-  Great Dynamo 4×4 at plaza heart, Nightstalls-style stall row, planter ring,
-  scrappy crate/block fringe, 15 junk-heap nodes; flood-fill-tested
-  reachability). Floor renders as ONE static Graphics (shared vertices → no
-  seams at any zoom, single draw call) with palette-mixed per-tile variation:
-  warm decking plaza, mauve plating fringe cooling toward the edges.
-- **M0.2 camera**: pointer-anchored wheel zoom (0.5×–2×), middle-mouse drag
-  pan, edge pan, lerped follow; manual pan pauses follow, movement re-engages.
-- **M0.3 movement**: `shared/pathfinding.ts` 4-directional A* (no diagonal
-  corner-cutting by construction) + `findPathAdjacent`; Spark walks
-  tile-to-tile with tweens, continuous depth = anchor worldY; neonTeal hover
-  outline + destination pulse.
-- **M0.4 gathering**: junk heap → Salvage with the glint-spot active layer.
-  `shared/gathering.ts` pure rolls (glint multiplies yield ×1.5; rare-find
-  Gilded Scrap ONLY on glint hits; per-cycle random glint timing) —
-  statistically tested (attentive > passive by >20%). Click heap → A* to an
-  adjacent tile → 2.6 s cycle with progress bar → loot float text → node
-  depletes → 20 s respawn. Walking away cancels the cycle.
-- **M0.5 inventory/hotbar**: 24-slot Pack panel (I toggles, Esc closes) +
-  6-slot hotbar (keys 1–6, neonAmber active ring), drag to move/merge/swap
-  across both containers (pure `shared/inventory.ts` math), loot chip.
-- **Verification harness** (not shipped): Playwright + preinstalled Chromium
-  drives the real game (clicks, keys, drag, condition-polling) and
-  screenshots it; used at every milestone. Note: headless frame throttling
-  makes game-time run slow/erratic — poll conditions, never fixed waits.
+## What exists
 
-## Config (all tunables in `/shared/config.ts`)
+### Platform (M2 skeleton)
+- **Server** (`/server`, Colyseus 0.16 + Express): FilamentRoom with a 50 ms
+  sim loop; server-authoritative movement (shared A*), gathering, inventory,
+  chat. Clients send intents; the server rolls ALL value RNG on its own
+  clock. One session per account. Joins/leaves broadcast tram notices;
+  `/near` and `/help` commands.
+- **Accounts**: email+password (bcrypt) and guest accounts (email-less rows,
+  upgradeable later); JWT room auth; **SIWS wallet-link endpoint**
+  (tweetnacl verify, message must embed the account id) — optional and late
+  per CLAUDE.md; nothing in the game requires a wallet.
+- **Persistence**: PostgreSQL 16 + Prisma 6 (`/db`): Account, Character
+  (tile, pack, hotbar, skills), **LedgerEvent** — every yield writes a row
+  (kind, qty, rare, glintHit/lockRatio metadata) + glint reaction-time
+  entropy entries (C7 habit). Dev cluster setup: `db/dev-postgres.md`.
+- **Client**: LoginScene (warm DOM overlay), WorldScene renders server truth
+  (all Sparks animate server-accepted paths; drift-snap correction; node
+  state via schema sync), chat log + input, presence chip, Pack/hotbar with
+  server-validated drags.
 
-Tile 64×32 · map 40 · zoom 0.5–2 · 0.21 s/tile walk · heap: 15 nodes,
-2.6 s cycle, 1–3 yield, ×1.5 glint, 8% rare on glint, 20 s respawn ·
-inventory 24×999, hotbar 6.
+### Gameplay (M1 content, in multiplayer)
+- **Five resources, five active layers** (Game Bible B3), all
+  server-validated with pure tested math in `/shared/minigames.ts`:
+  - Salvage/junk heaps — glint spots (bonus + only path to rare rolls)
+  - Brass seams — live-fork spark trails; wrong fork ends the vein early;
+    full veins roll Blue-Hot Brass
+  - Amperite crystals — pulse-timed strikes (off-pulse = lattice shatter)
+  - Glowkoi — canal spots with size/rarity-telegraphed shadows, cast +
+    tension-bar reel; Prismatic Glowkoi shimmer
+  - Signal antenna-shrines — **the flagship tuner**: drifting target band,
+    pointer needle, lock-scaled yield, Ghost Frequencies above 0.85 lock
+- **Tools**: Magclaw/Drillhammer/Skimnet/Tuner required IN THE ACTIVE hotbar
+  slot (selectSlot intent, server-checked); Riveter inert; starter tool belt
+  written at character creation.
+- **Mastery 1–50** for all six skills (Brawling/Griddling idle): geometric
+  XP curve, XP per act, modest gather-speed curve (-0.6%/level, floor 75%),
+  breadth-flag unlocks at 10/20/30/40; skills panel on K.
+- **Coolant canal**: built channel (dark coolant, cyan glints, decked bridge
+  rows) — never open water.
 
-## Assets used (all Kenney CC0; packs zipped in `/assets/_zips`)
+### Graphics pass (P3 a–d, i)
+Golden-dusk breathing wash + corner dusk pools; wet-sheen tile glaze; the
+Great Dynamo as a humming centerpiece (halo + staggered coil blooms);
+plaza decking seams; overhead string lights (Dynamo → stalls → planter
+ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
 
-- `kenney_isometric-blocks`: voxelTile_09/18/26/29/30/42/46/47 (structure
-  cubes, tool crate, planks, ore cubes for M1 Brass/Amperite),
-  platformerTile_22/23 (crates)
-- `kenney_isometric-buildings`: buildingTiles_004/012/014/020/030/043
-  (stall row shopfronts)
-- `kenney_particle-pack`: circle_02/circle_05 (soft glows), spark_04/05
-  (glints), star_06
-- `kenney_voxel-pack` (for M1 items): hammer/pick/sword/fishingPole/fish/
-  fish_cooked/ore_iron/ore_gold/ore_diamond/stew/bowl
-- `kenney_game-icons` (white 2×, for UI): wrench, signal2, gear, cross,
-  question, save, shoppingBasket, trophy, star, checkmark, exclamation, locked
-- Everything else is generated at boot from the locked palette
-  (`client/src/render/textures.ts`): Dynamo, Spark, heaps, planters, markers,
-  item icons. Kenney sprites are always warm-tinted via palette blends
-  (`client/src/render/tints.ts`) — nothing ships the stock daylight look.
+## Verification (all green at HEAD)
 
-## Known issues / polish backlog
+- `npm test`: 59 client/shared + 5 server tests.
+- Browser e2e (Playwright + real server): two clients see each other move
+  and chat; tool gating notice; all five resources gathered through their
+  active layers; salvage survives relog via Postgres; node depletion syncs;
+  tuner lock 0.81 when tracked at 30 ms cadence vs 0.13–0.15 tracked poorly
+  (accuracy pays); ledger rows in Postgres for every grant.
 
-- Planter foliage reads slightly mint at small sizes; revisit solarGreen
-  shading.
-- The Dynamo placeholder's left rim-light band is faint; the dome could use a
-  touch more warm bounce.
-- Junk heaps could pop slightly more against fringe blocks (amber chip helps;
-  consider a faint idle shimmer).
-- No wet-sheen ground glaze yet (ART-DIRECTION "lightly reflective tiles") —
-  deferred to a polish pass.
-- No audio at all (out of scope so far).
-- FPS in the CI-style headless browser is throttled (not representative);
-  desktop browsers idle at 60.
+## Known issues / backlog
 
-## What M2 starts with (next)
+- Headless-browser verification runs at throttled frame rates — poll
+  conditions, never fixed waits (harness notes in scratchpad scripts).
+- Remote refuses tag pushes (integration token) — `m0-complete` and
+  `run-20260709-autonomous` exist locally; recreate from the commit log if
+  needed.
+- Spark sprite still the M0 capsule (no walk frames); node silhouettes could
+  pop more; no vending machines/graffiti yet; UI reskin partial (login/panels
+  warm, but stock browser scrollbars etc. untouched). P3 e–h remainders.
+- Amperite has no Manifest rare (the bible names none for it) — flagged for
+  a design pass.
+- Colyseus schema v3 gotchas documented in server/src/rooms/state.ts
+  (defineTypes + useDefineForClassFields:false).
+- Old dev accounts created before the starter-hotbar fix have empty hotbars.
 
-1. `/server`: Colyseus (TS) — one Filament district room; server-authoritative
-   movement + gathering (shared A*/gather math runs server-side; client sends
-   intents, renders results).
-2. Accounts: email-first (password hash), SIWS wallet linking optional and
-   late; Postgres + Prisma persistence (accounts, inventories); `/db` schema.
-3. Chat + presence; remote Sparks rendered from room state.
-4. M1 content (5 resources with active layers, Mastery, mobs/Brawling,
-   healing, crafting/durability, merchant price bands + quests + economy
-   ledger) built ON the multiplayer skeleton, per owner directive.
+## NEEDS RUSTY (deploy)
+
+`DEPLOY.md` + `fly.toml` + `server/Dockerfile` are ready; needs Fly/Railway,
+Neon, and Vercel accounts + secrets (~15 min). CORS must be tightened to the
+Vercel domain and JWT_SECRET set to a real secret at deploy time.
+
+## Next up
+
+1. P3 remainders: Spark walk frames + scale, node silhouette pass, juice
+   (footstep dust, success flourishes), UI reskin, vending machines/graffiti.
+2. M1-in-M2 continuation: mobs + Brawling, healing (Dynamo zone + Heatlamp),
+   crafting/durability at the Tinkerbench, Bolts + merchant price bands +
+   quests (server-side, ledger-logged), Griddling at the Canals stall.
+3. M3 retention layer per the bible (Manifest, weekly goals, Rested Charge)
+   — still NO token code before M4's gate.

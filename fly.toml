@@ -1,0 +1,22 @@
+# Fly.io config for the AMPERIA Colyseus server (see DEPLOY.md).
+app = "amperia-server"
+primary_region = "iad"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "2567"
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  auto_stop_machines = false   # rooms are stateful; keep the machine warm
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  method = "GET"
+  path = "/health"
