@@ -1,0 +1,16 @@
+{
+  "name": "amperia",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AMPERIA — isometric cozy salvage-punk MMO. Keep the city lit.",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "test": "npm run test -w client",
+    "lint": "npm run lint -w client",
+    "format": "npm run format -w client"
+  }
+}
