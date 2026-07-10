@@ -88,6 +88,7 @@ import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
+import { placeAmbientNpcs } from '../render/ambientNpcs';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
 import { itemThumbKey } from '../render/itemThumbs';
@@ -179,6 +180,7 @@ export class WorldScene extends Phaser.Scene {
     makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
+    placeAmbientNpcs(this, this.map.district);
     this.placeRopes();
     this.placeAntennaCables();
     this.placeTangleCables();
@@ -2369,6 +2371,13 @@ export class WorldScene extends Phaser.Scene {
           addLampCone(this, x, y - 30, lampTint, depthForWorldY(y));
           const pool = this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.34);
           pool.setAlpha(0.15);
+          // V6 density: moths-of-ember drifting around the junction lamps.
+          addEmberMotes(this, x, y - 30, depthForWorldY(y) + 2, {
+            count: 2,
+            radius: 10,
+            rise: 22,
+            tint: lampTint,
+          });
           break;
         }
         case 'ropepost': {
@@ -2424,6 +2433,20 @@ export class WorldScene extends Phaser.Scene {
           win.setScale(0.09);
           win.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, win, bloom(0.42), 0.05);
+          // V6 density: every flue breathes — the city is COOKING dinner.
+          const CHIMNEY: Partial<Record<number, [number, number]>> = {
+            0: [-24, -56], // parapet roof pipe
+            2: [-18, -70], // main-roof stovepipe
+            3: [-2, -62], // quonset end chimney
+            7: [-16, -72], // cottage chimney
+          };
+          const flue = CHIMNEY[design];
+          if (flue !== undefined) {
+            addSteamVent(this, x + flue[0], y + flue[1], depthForWorldY(y) + 2, {
+              periodMs: 1500 + design * 260,
+              drift: 9,
+            });
+          }
           // Rooftop marks: the whip antenna / masthead lamp get their glint.
           if (design === 1) {
             const tip = this.add.image(x + 14, y - 92, 'fx-glow');
