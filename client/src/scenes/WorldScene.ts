@@ -91,6 +91,7 @@ export class WorldScene extends Phaser.Scene {
     this.drawFloor();
     this.placeProps();
     this.placeStringLights();
+    this.placeCanalLife();
     addSkyline(this, -70);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
@@ -867,6 +868,77 @@ export class WorldScene extends Phaser.Scene {
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
       }
     }
+  }
+
+  /**
+   * Ambient life in the coolant: koi shadows cruising the channel segments
+   * between bridges, with faint cyan surface glints. Pure decor — the
+   * gatherable Glowkoi spots are separate server-owned nodes.
+   */
+  private placeCanalLife(): void {
+    const cv = CONFIG.canal;
+    const bridgeRows = cv.bridgeRows as readonly number[];
+    const segments: Array<[number, number]> = [];
+    let segStart: number | null = null;
+    for (let y = cv.yMin; y <= cv.yMax + 1; y++) {
+      const isCanal = y <= cv.yMax && !bridgeRows.includes(y);
+      if (isCanal && segStart === null) segStart = y;
+      if (!isCanal && segStart !== null) {
+        segments.push([segStart, y - 1]);
+        segStart = null;
+      }
+    }
+
+    for (const [y0, y1] of segments) {
+      const count = y1 - y0 > 8 ? 2 : 1;
+      for (let i = 0; i < count; i++) {
+        const tx = cv.xMin + (i % 2 === 0 ? 0.2 : 0.8) * (cv.xMax - cv.xMin);
+        const a = tileToWorld(tx, y0 + 0.6);
+        const b = tileToWorld(tx, y1 - 0.6);
+        const koi = this.add.image(a.x, a.y, 'tex-koi-shadow');
+        koi.setAlpha(0.3);
+        koi.setScale(0.55);
+        koi.setDepth(DEPTH_FLOOR + 6);
+        this.tweens.add({
+          targets: koi,
+          x: b.x,
+          y: b.y,
+          duration: Phaser.Math.Between(15000, 24000),
+          delay: Phaser.Math.Between(0, 7000),
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inout',
+        });
+      }
+    }
+
+    // Faint cyan glints where a fin breaks the coolant surface.
+    this.time.addEvent({
+      delay: 2400,
+      loop: true,
+      callback: () => {
+        if (Math.random() < 0.45 || segments.length === 0) return;
+        const seg = segments[Math.floor(Math.random() * segments.length)] as [number, number];
+        const ty = seg[0] + Math.random() * (seg[1] - seg[0]);
+        const tx = cv.xMin + Math.random() * (cv.xMax - cv.xMin);
+        const w = tileToWorld(tx, ty);
+        const glint = this.add.image(w.x, w.y, 'fx-spark');
+        glint.setTint(PALETTE_INT.neonCyan);
+        glint.setBlendMode(Phaser.BlendModes.ADD);
+        glint.setScale(0.02);
+        glint.setAlpha(0);
+        glint.setDepth(DEPTH_FLOOR + 7);
+        this.tweens.add({
+          targets: glint,
+          alpha: { from: 0.55, to: 0 },
+          scale: 0.05,
+          angle: 40,
+          duration: 900,
+          ease: 'quad.out',
+          onComplete: () => glint.destroy(),
+        });
+      },
+    });
   }
 
   /** Thick cables running from the Dynamo's base across the plaza floor. */
