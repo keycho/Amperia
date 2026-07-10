@@ -1226,6 +1226,11 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
     [3, 32], [8, 32], [13, 32], [18, 32], [28, 32], [33, 32],
   ] as const) towerAt(tx, ty);
 
+  // The ONE rooftop garden in the city (§12B brief): a fixed tower wears
+  // it — variant 12 is the client's special garden-roof bake.
+  const gardenTower = props.find((p) => p.kind === 'tower' && p.x === 7 && p.y === 9);
+  if (gardenTower !== undefined) gardenTower.variant = 12;
+
   // ── the junction plaza: noodle cart + the district's one tree ──────────
   place('noodlecart', 11, 13, 2, 1);
   place('treeplanter', 15, 16, 2, 2);

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { mixPalette, PALETTE_INT } from '@shared/palette';
-import { MATERIALS } from './materials';
+import { hexToInt, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { MATERIALS, voxelHash, type Material } from './materials';
 import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
 /**
@@ -1552,6 +1552,338 @@ function guardrailModel(alongY: boolean): Voxel[] {
   return v;
 }
 
+// ── D1 THE STACKS: towers, the Spire, and the street furniture ────────────
+// Towers are BLOCKING WORLD OBJECTS, never interiors (§5 amendment). Their
+// windows bake dark-or-lit deterministically; the client overlays a slow
+// light/dim shimmer on the lit ones (and the Charge meter scales it, D3).
+
+const TOWER_DESIGNS = 4;
+const TOWER_PAINTS = [MATERIALS.paintTeal, MATERIALS.paintOchre, MATERIALS.paintRose] as const;
+/** Stories per design — every design a different height band. */
+const TOWER_STORIES = [5, 7, 6, 9] as const;
+const STORY_H = 6;
+const PLINTH_H = 3;
+/** The special one-per-city rooftop-garden tower (map variant 12). */
+export const TOWER_GARDEN_VARIANT = 12;
+
+export interface TowerWindow {
+  /** Screen-px offset from the placed sprite's anchor (display scale). */
+  dx: number;
+  dy: number;
+  lit: boolean;
+}
+
+interface TowerSpec {
+  voxels: Voxel[];
+  windows: TowerWindow[];
+}
+
+/**
+ * One tower: body, skin, windows, and its DISTINCT roofline (§12B: tanks,
+ * antenna clusters, tarp shanties, one garden). Returns the voxels and the
+ * window list (same generator = model and glow overlay always agree).
+ */
+function towerSpec(variant: number): TowerSpec {
+  const garden = variant === TOWER_GARDEN_VARIANT;
+  const design = garden ? 0 : Math.floor(variant / 3) % TOWER_DESIGNS;
+  const paint = TOWER_PAINTS[variant % 3] as (typeof MATERIALS)['paintTeal'];
+  const stories = TOWER_STORIES[design] as number;
+  // Footprint: 4×4 tiles = 32 voxels; bodies inset for silhouette variety.
+  const W = design === 3 ? 24 : 30;
+  const D = design === 3 ? 24 : 30;
+  const off = Math.floor((32 - W) / 2);
+  const v: Voxel[] = [];
+  const windows: TowerWindow[] = [];
+  const cx = 31 / 2; // anchor center of the full 32-voxel footprint
+  const cy = 31 / 2;
+  const toScreen = (vx: number, vy: number, vz: number): [number, number] => [
+    (vx - vy - (cx - cy)) * 4,
+    (vx + vy - (cx + cy)) * 2 - vz * 4 - 6,
+  ];
+
+  // Plinth: concrete, full footprint feel.
+  v.push(...mbox(off, off, 0, W, D, PLINTH_H, MATERIALS.concreteDeep));
+  const topZ = PLINTH_H + stories * STORY_H;
+
+  // Body walls (hollow — only shells render anyway, but keep voxel count sane).
+  const skinAt = (vx: number, vy: number, vz: number): Material => {
+    const story = Math.floor((vz - PLINTH_H) / STORY_H);
+    switch (design) {
+      case 0: // painted panel stories over gunmetal
+        return story % 2 === 0 ? paint : MATERIALS.gunmetal;
+      case 1: // gunmetal shaft with a painted waist band
+        return story === 2 || story === 3 ? paint : MATERIALS.gunmetal;
+      case 2: // painted base floors, concrete above
+        return story < 2 ? paint : MATERIALS.concrete;
+      default: // slender: gunmetal with painted corner columns
+        return (vx < off + 2 || vx >= off + W - 2) && (vy < off + 2 || vy >= off + D - 2)
+          ? paint
+          : MATERIALS.gunmetalDeep;
+    }
+  };
+  const setback = design === 2 ? 2 : 0; // top floors step back on design 2
+  for (let vz = PLINTH_H; vz < topZ; vz++) {
+    const story = Math.floor((vz - PLINTH_H) / STORY_H);
+    const inset = setback > 0 && story >= stories - 2 ? 3 : 0;
+    const x0 = off + inset;
+    const y0 = off + inset;
+    const x1 = off + W - 1 - inset;
+    const y1 = off + D - 1 - inset;
+    for (let vx = x0; vx <= x1; vx++) {
+      for (let vy = y0; vy <= y1; vy++) {
+        const shell = vx === x0 || vx === x1 || vy === y0 || vy === y1;
+        if (!shell) continue;
+        const mat = skinAt(vx, vy, vz);
+        v.push({ x: vx, y: vy, z: vz, c: mat.base, mat });
+      }
+    }
+    // Window rows: mid-story, on the two camera-facing faces (+y and +x).
+    const inStoryZ = (vz - PLINTH_H) % STORY_H;
+    if (inStoryZ === 2 || inStoryZ === 3) {
+      for (let vx = x0 + 3; vx <= x1 - 3; vx += 4) {
+        for (const wx of [vx, vx + 1]) {
+          const lit = voxelHash(vx, story, variant * 7 + 1) < 0.42;
+          const c = lit
+            ? mixPalette('warmGlow', 'neonAmber', 0.25)
+            : mixPalette('ink', 'structureMid', 0.4);
+          v.push({ x: wx, y: y1, z: vz, c });
+          if (inStoryZ === 2 && wx === vx) {
+            const [dx, dy] = toScreen(wx + 0.5, y1, vz + 0.5);
+            windows.push({ dx, dy, lit });
+          }
+        }
+      }
+      for (let vy = y0 + 3; vy <= y1 - 3; vy += 4) {
+        for (const wy of [vy, vy + 1]) {
+          const lit = voxelHash(story, vy, variant * 7 + 2) < 0.42;
+          const c = lit
+            ? mixPalette('warmGlow', 'neonAmber', 0.25)
+            : mixPalette('ink', 'structureMid', 0.4);
+          v.push({ x: x1, y: wy, z: vz, c });
+          if (inStoryZ === 2 && wy === vy) {
+            const [dx, dy] = toScreen(x1, wy + 0.5, vz + 0.5);
+            windows.push({ dx, dy, lit });
+          }
+        }
+      }
+    }
+  }
+
+  // Roof slab.
+  const rInset = setback > 0 ? 3 : 0;
+  v.push(...mbox(off + rInset, off + rInset, topZ, W - rInset * 2, D - rInset * 2, 1, MATERIALS.gunmetalDeep));
+  const rz = topZ + 1;
+
+  // ── the DISTINCT rooflines ──────────────────────────────────────────────
+  if (garden) {
+    // THE rooftop garden (one per city): planter rows, green, glow-fruit.
+    for (const gy of [off + 4, off + 12, off + 20]) {
+      v.push(...mbox(off + 3, gy, rz, W - 6, 3, 2, MATERIALS.wood));
+      for (let gx = off + 4; gx < off + W - 4; gx += 2) {
+        const leaf = (gx + gy) % 4 === 0 ? PALETTE_INT.solarGreen : mixPalette('solarGreen', 'ink', 0.3);
+        v.push({ x: gx, y: gy + 1, z: rz + 2, c: leaf });
+        if ((gx * 3 + gy) % 7 === 0) v.push({ x: gx, y: gy + 1, z: rz + 3, c: mixPalette('neonAmber', 'solarGreen', 0.4) });
+      }
+    }
+    v.push(...mbox(off + 2, off + 7, rz, 1, 1, 6, MATERIALS.woodDeep)); // trellis post
+    v.push(...mbox(off + W - 3, off + 7, rz, 1, 1, 6, MATERIALS.woodDeep));
+    for (let gx = off + 2; gx <= off + W - 3; gx++) v.push({ x: gx, y: off + 7, z: rz + 6, c: MATERIALS.woodDeep.base });
+  } else if (design === 0) {
+    // Parapet + the water tank + a pipe.
+    for (let px = off; px < off + W; px += 2) {
+      v.push({ x: px, y: off, z: rz, c: MATERIALS.concrete.base, mat: MATERIALS.concrete });
+      v.push({ x: px, y: off + D - 1, z: rz, c: MATERIALS.concrete.base, mat: MATERIALS.concrete });
+    }
+    for (let z2 = rz; z2 < rz + 6; z2++) {
+      for (let tx = off + 4; tx < off + 11; tx++) {
+        for (let ty = off + 4; ty < off + 11; ty++) {
+          const d2 = (tx - off - 7) ** 2 + (ty - off - 7) ** 2;
+          if (d2 <= 10 && d2 >= (z2 > rz && z2 < rz + 5 ? 5 : 0)) {
+            const band = z2 === rz + 2;
+            v.push({ x: tx, y: ty, z: z2, c: band ? MATERIALS.rustDeep.base : MATERIALS.gunmetal.base, mat: band ? MATERIALS.rustDeep : MATERIALS.gunmetal });
+          }
+        }
+      }
+    }
+    v.push(...mbox(off + 20, off + 6, rz, 2, 2, 4, MATERIALS.gunmetal)); // pipe
+  } else if (design === 1) {
+    // The antenna cluster: three whips + a dish.
+    for (const [ax, ay, h] of [
+      [off + 5, off + 5, 12],
+      [off + 14, off + 8, 9],
+      [off + 22, off + 4, 14],
+    ] as const) {
+      for (let z2 = rz; z2 < rz + h; z2++) v.push({ x: ax, y: ay, z: z2, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+      v.push({ x: ax, y: ay, z: rz + h, c: PALETTE_INT.neonAmber });
+    }
+    v.push(...mbox(off + 10, off + 18, rz, 5, 1, 5, MATERIALS.gunmetalDeep));
+    v.push(...mbox(off + 9, off + 18, rz + 5, 7, 1, 2, MATERIALS.gunmetal)); // the dish
+  } else if (design === 2) {
+    // The setback terrace carries a tarp shanty + a crate + a wash line.
+    const cloth = mixPalette('neonRose', 'structureMid', 0.3);
+    v.push(...mbox(off + 4, off + 4, rz, 3, 3, 3, MATERIALS.rust)); // crate stack
+    for (let sx = off + 10; sx < off + 18; sx++) {
+      v.push({ x: sx, y: off + 6, z: rz + 4 - (sx % 2), c: cloth });
+      v.push({ x: sx, y: off + 9, z: rz + 3, c: cloth });
+    }
+    v.push(...mbox(off + 10, off + 6, rz, 1, 1, 4, MATERIALS.woodDeep));
+    v.push(...mbox(off + 17, off + 6, rz, 1, 1, 4, MATERIALS.woodDeep));
+  } else {
+    // The slender crown: railing + stair hut + cable stubs.
+    for (let px = off; px < off + W; px += 2) {
+      v.push({ x: px, y: off, z: rz, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+      v.push({ x: px, y: off + D - 1, z: rz, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+    }
+    v.push(...mbox(off + 3, off + 3, rz, 6, 6, 5, MATERIALS.concrete)); // stair hut
+    v.push(...mbox(off + 14, off + 14, rz, 2, 2, 7, MATERIALS.gunmetal)); // mast stub
+    v.push({ x: off + 14, y: off + 14, z: rz + 7, c: PALETTE_INT.neonAmber });
+  }
+  return { voxels: v, windows };
+}
+
+/** The lit-window overlay anchors for a tower variant (client shimmer). */
+export function towerWindows(variant: number): TowerWindow[] {
+  return towerSpec(variant).windows;
+}
+
+/** THE SIGNAL SPIRE — the city's tallest mast, slow red crown beacon. */
+function spireModel(): Voxel[] {
+  const gm = MATERIALS.gunmetal;
+  const gmd = MATERIALS.gunmetalDeep;
+  const v: Voxel[] = [];
+  v.push(...mbox(2, 2, 0, 20, 20, 3, MATERIALS.concreteDeep)); // plinth
+  v.push(...mbox(6, 6, 3, 12, 12, 3, MATERIALS.concrete)); // machine base
+  // Four lattice legs tapering to a single column.
+  for (let z = 6; z < 34; z++) {
+    const pinch = Math.floor((z - 6) / 8); // legs lean inward with height
+    for (const [lx, ly] of [
+      [8 + pinch, 8 + pinch],
+      [15 - pinch, 8 + pinch],
+      [8 + pinch, 15 - pinch],
+      [15 - pinch, 15 - pinch],
+    ] as const) {
+      v.push({ x: lx, y: ly, z, c: z % 2 === 0 ? gm.base : gmd.base, mat: z % 2 === 0 ? gm : gmd });
+    }
+    if (z % 7 === 3) {
+      v.push(...mbox(9 + pinch, 8 + pinch, z, 5 - pinch * 2 < 1 ? 1 : 6 - pinch * 2, 1, 1, gmd));
+      v.push(...mbox(8 + pinch, 9 + pinch, z, 1, 5 - pinch * 2 < 1 ? 1 : 6 - pinch * 2, 1, gmd));
+    }
+  }
+  // The single spine above the legs.
+  for (let z = 34; z < 62; z++) {
+    v.push(...mbox(11, 11, z, 2, 2, 1, z % 9 < 2 ? MATERIALS.rust : gm));
+  }
+  // Dishes + boxes on the way up.
+  v.push(...mbox(9, 10, 40, 2, 4, 3, gmd));
+  v.push(...mbox(13, 11, 50, 3, 2, 2, gmd));
+  // The crown: platform + the slow red beacon (glow added at placement).
+  v.push(...mbox(9, 9, 62, 6, 6, 1, gmd));
+  v.push(...mbox(11, 11, 63, 2, 2, 3, gm));
+  v.push({ x: 11, y: 11, z: 66, c: hexToInt(PALETTE.signalRed) });
+  v.push({ x: 12, y: 11, z: 66, c: hexToInt(PALETTE.signalRed) });
+  return v;
+}
+
+/** The vanity registry office — the street's one licensed violet sign. */
+function registryModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Formal two-storey shopfront: gunmetal frame, glazed front, brass door.
+  for (const vox of mbox(0, 0, 0, 30, 22, 16, MATERIALS.gunmetal)) {
+    const band = vox.z === 8 || vox.z === 9;
+    v.push(band ? { ...vox, c: MATERIALS.paintOchre.base, mat: MATERIALS.paintOchre } : vox);
+  }
+  v.push(...mbox(-1, -1, 16, 32, 24, 1, MATERIALS.gunmetalDeep)); // roof slab
+  v.push(...mbox(4, 4, 17, 4, 4, 3, MATERIALS.concrete)); // roof hut
+  // The glazed front (lit — somebody is always on shift).
+  for (let gx = 4; gx <= 24; gx += 1) {
+    for (let gz = 3; gz <= 6; gz++) {
+      if (gx % 6 === 0) continue; // mullions
+      v.push({ x: gx, y: 21, z: gz, c: gx % 3 === 0 ? mixPalette('warmGlow', 'neonAmber', 0.35) : mixPalette('ink', 'structureMid', 0.45) });
+    }
+  }
+  v.push(...mbox(12, 21, 0, 4, 1, 7, MATERIALS.woodDeep)); // the door
+  v.push({ x: 13, y: 21, z: 4, c: PALETTE_INT.neonAmber }); // brass plate
+  // The violet sign board over the door — one per street, licensed.
+  v.push(...box(9, 21, 10, 11, 1, 3, mixPalette('ink', 'structureMid', 0.2)));
+  for (const sx of [11, 13, 15, 17]) {
+    v.push({ x: sx, y: 21, z: 11 + (sx % 2), c: PALETTE_INT.violetNeon });
+  }
+  return v;
+}
+
+/** The junction noodle cart — a griddle on wheels, steam at placement. */
+function noodlecartModel(): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(1, 1, 2, 14, 6, 5, MATERIALS.wood)); // cart body
+  for (const vox of mbox(1, 1, 7, 14, 6, 1, MATERIALS.wood)) v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  // Wheels.
+  for (const wx of [2, 12]) {
+    v.push(...mbox(wx, 0, 0, 3, 1, 3, MATERIALS.gunmetalDeep));
+    v.push(...mbox(wx, 7, 0, 3, 1, 3, MATERIALS.gunmetalDeep));
+  }
+  // The pot + the ember box.
+  v.push(...mbox(3, 2, 8, 4, 4, 3, MATERIALS.gunmetal));
+  v.push({ x: 4, y: 3, z: 11, c: mixPalette('warmGlow', 'neonAmber', 0.3) }); // broth
+  v.push({ x: 5, y: 6, z: 3, c: PALETTE_INT.emberOrange });
+  // Canopy on poles: a small striped hood.
+  v.push(...mbox(0, 3, 2, 1, 1, 12, MATERIALS.woodDeep));
+  v.push(...mbox(15, 3, 2, 1, 1, 12, MATERIALS.woodDeep));
+  const hot = mixPalette('neonRose', 'structureMid', 0.12);
+  const pale = mixPalette('warmGlow', 'groundAccent', 0.25);
+  for (let hx = 0; hx < 16; hx++) {
+    for (let hy = 1; hy < 8; hy++) v.push({ x: hx, y: hy, z: 14, c: hx % 2 === 0 ? hot : pale });
+  }
+  v.push({ x: 14, y: 6, z: 12, c: PALETTE_INT.warmGlow }); // lantern
+  return v;
+}
+
+/** The junction's one tree: a real canopy in a concrete ring. */
+function treeplanterModel(): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.3);
+  const v: Voxel[] = [];
+  for (const vox of mbox(2, 2, 0, 12, 12, 3, MATERIALS.concrete)) {
+    const hollow = vox.z === 2 && vox.x > 3 && vox.x < 12 && vox.y > 3 && vox.y < 12;
+    if (!hollow) v.push(vox);
+  }
+  v.push(...mbox(6, 6, 2, 3, 3, 2, MATERIALS.woodDeep)); // root ball
+  for (let z = 4; z < 12; z++) v.push(...mbox(7, 7, z, 2, 2, 1, MATERIALS.woodDeep)); // trunk
+  // Canopy puffs (three lobes — a TREE silhouette, the district's only one).
+  const puff = (cx2: number, cy2: number, cz: number, r: number) => {
+    for (let px = cx2 - r; px <= cx2 + r; px++) {
+      for (let py = cy2 - r; py <= cy2 + r; py++) {
+        for (let pz = cz - 1; pz <= cz + 1; pz++) {
+          if (Math.abs(px - cx2) + Math.abs(py - cy2) + Math.abs(pz - cz) > r + 1) continue;
+          v.push({ x: px, y: py, z: pz, c: (px + py + pz) % 2 === 0 ? leafA : leafB });
+        }
+      }
+    }
+  };
+  puff(8, 8, 13, 4);
+  puff(5, 9, 11, 3);
+  puff(11, 6, 12, 3);
+  v.push({ x: 8, y: 10, z: 15, c: PALETTE_INT.warmGlow }); // one string-light bulb
+  return v;
+}
+
+/** A rooftop tarp shanty — somebody lives up here too. */
+function shantyModel(): Voxel[] {
+  const cloth = mixPalette('neonTeal', 'structureMid', 0.35);
+  const v: Voxel[] = [];
+  v.push(...mbox(1, 1, 0, 6, 5, 4, MATERIALS.rust)); // crate wall
+  v.push(...mbox(9, 2, 0, 4, 3, 2, MATERIALS.wood)); // the bedroll base
+  for (let sx = 0; sx < 14; sx++) {
+    const z = 6 - Math.floor(sx / 5);
+    v.push({ x: sx, y: 1, z, c: cloth });
+    v.push({ x: sx, y: 4, z: z - 1, c: cloth });
+    v.push({ x: sx, y: 7, z: z - 2, c: cloth });
+  }
+  v.push(...mbox(0, 3, 0, 1, 1, 6, MATERIALS.woodDeep));
+  v.push(...mbox(13, 3, 0, 1, 1, 5, MATERIALS.woodDeep));
+  v.push({ x: 11, y: 3, z: 2, c: PALETTE_INT.warmGlow }); // their lamp
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -1631,6 +1963,19 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'spill', voxels: spillModel() });
   bakeVoxelModel(scene, { name: 'guardrail-0', voxels: guardrailModel(false) });
   bakeVoxelModel(scene, { name: 'guardrail-1', voxels: guardrailModel(true) });
+  // D1 the Stacks: 12 tower looks + the one garden roof + the landmarks.
+  for (let tv = 0; tv < 12; tv++) {
+    bakeVoxelModel(scene, { name: `tower-${tv}`, voxels: towerSpec(tv).voxels });
+  }
+  bakeVoxelModel(scene, {
+    name: `tower-${TOWER_GARDEN_VARIANT}`,
+    voxels: towerSpec(TOWER_GARDEN_VARIANT).voxels,
+  });
+  bakeVoxelModel(scene, { name: 'spire', voxels: spireModel() });
+  bakeVoxelModel(scene, { name: 'registry', voxels: registryModel() });
+  bakeVoxelModel(scene, { name: 'noodlecart', voxels: noodlecartModel() });
+  bakeVoxelModel(scene, { name: 'treeplanter', voxels: treeplanterModel() });
+  bakeVoxelModel(scene, { name: 'shanty', voxels: shantyModel() });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@shared/map';
-import { blendInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { towerWindows } from '../render/voxelWorldModels';
 import type {
   CacheStateShape,
   ChargeStateShape,
@@ -189,6 +190,7 @@ export class WorldScene extends Phaser.Scene {
     this.placeRopes();
     this.placeAntennaCables();
     this.placeTangleCables();
+    this.placeStacksOverhead();
     this.placeStringLights();
     this.placeCanalLife();
     this.spawnAmbientBots();
@@ -1418,6 +1420,31 @@ export class WorldScene extends Phaser.Scene {
             g.closePath();
             g.fillPath();
           };
+          // D1 the Stacks: deep drops are BUILDING WALLS — window bands
+          // turn a plateau face into a lit facade (the Roofline's towers).
+          const drawFacadeWindows = (
+            x1: number,
+            y1: number,
+            x2: number,
+            y2: number,
+            drop: number,
+          ) => {
+            if (this.map.district !== 'stacks' || drop < ELEV_PX * 2) return;
+            for (let row = 8; row < drop - 4; row += 9) {
+              for (const t of [0.3, 0.7]) {
+                const wx = x1 + (x2 - x1) * t;
+                const wy = y1 + (y2 - y1) * t + row;
+                const lit = ((tx * 7 + ty * 13 + row) & 3) !== 0;
+                g.fillStyle(
+                  lit
+                    ? mixPalette('warmGlow', 'neonAmber', 0.3)
+                    : mixPalette('ink', 'structureMid', 0.4),
+                  lit ? 0.9 : 0.8,
+                );
+                g.fillRect(wx - 1.5, wy, 3, 4);
+              }
+            }
+          };
           const eSE = this.map.elevation[ty]?.[tx + 1];
           if (eSE !== undefined && eSE < e) {
             drawFace(
@@ -1425,6 +1452,7 @@ export class WorldScene extends Phaser.Scene {
               (e - eSE) * ELEV_PX,
               this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.3),
             );
+            drawFacadeWindows(x, y + TILE_H / 2, x + TILE_W / 2, y, (e - eSE) * ELEV_PX);
           }
           const eSW = this.map.elevation[ty + 1]?.[tx];
           if (eSW !== undefined && eSW < e) {
@@ -1433,6 +1461,7 @@ export class WorldScene extends Phaser.Scene {
               (e - eSW) * ELEV_PX,
               MATERIAL_INT.concreteDeep,
             );
+            drawFacadeWindows(x - TILE_W / 2, y, x, y + TILE_H / 2, (e - eSW) * ELEV_PX);
           }
         }
 
@@ -1983,6 +2012,105 @@ export class WorldScene extends Phaser.Scene {
           this.propSprite(`guardrail-${p.variant % 2}`, x, y);
           break;
         }
+        // ── D1 THE STACKS ────────────────────────────────────────────────
+        case 'tower': {
+          const img = this.propSprite(`tower-${p.variant}`, x, y);
+          // The lit windows breathe on slow, staggered cycles — the
+          // district's texture. (D3's Charge hook scales the density.)
+          towerWindows(p.variant)
+            .filter((w) => w.lit)
+            .forEach((w, i) => {
+              const glow = this.add.image(x + w.dx, y + w.dy, 'fx-glow');
+              glow.setTint(PALETTE_INT.warmGlow);
+              glow.setBlendMode(Phaser.BlendModes.ADD);
+              glow.setScale(0.035);
+              glow.setAlpha(bloom(0.4));
+              glow.setDepth(img.depth + 1);
+              this.tweens.add({
+                targets: glow,
+                alpha: { from: bloom(0.16), to: bloom(0.5) },
+                duration: 5200 + ((p.x * 31 + p.y * 17 + i * 13) % 9) * 900,
+                delay: ((p.x * 13 + i * 29) % 11) * 500,
+                yoyo: true,
+                repeat: -1,
+                ease: 'sine.inout',
+              });
+              this.occlusion.attach(img, [glow]);
+            });
+          break;
+        }
+        case 'spire': {
+          const img = this.propSprite('spire', x, y);
+          // The slow red crown beacon — seen from every street.
+          const crown = this.add.image(x, y - 272, 'fx-glow');
+          crown.setTint(hexToInt(PALETTE.signalRed));
+          crown.setBlendMode(Phaser.BlendModes.ADD);
+          crown.setScale(0.16);
+          crown.setAlpha(bloom(0.1));
+          crown.setDepth(img.depth + 1);
+          this.tweens.add({
+            targets: crown,
+            alpha: { from: bloom(0.06), to: bloom(0.62) },
+            duration: 1150,
+            yoyo: true,
+            repeat: -1,
+            hold: 300,
+            repeatDelay: 900,
+            ease: 'sine.inout',
+          });
+          this.occlusion.attach(img, [crown]);
+          break;
+        }
+        case 'registry': {
+          const img = this.propSprite('registry', x, y);
+          // Main street's ONE licensed violet sign + the always-on shift.
+          const sign = this.add.image(x - 44, y - 38, 'fx-glow');
+          sign.setTint(PALETTE_INT.violetNeon);
+          sign.setBlendMode(Phaser.BlendModes.ADD);
+          sign.setScale(0.11);
+          sign.setAlpha(bloom(0.6));
+          sign.setDepth(img.depth + 1);
+          addFlicker(this, sign, bloom(0.6), 0.08);
+          const spill = this.add.image(x - 44, y - 6, 'fx-glow');
+          spill.setTint(PALETTE_INT.warmGlow);
+          spill.setBlendMode(Phaser.BlendModes.ADD);
+          spill.setScale(0.12);
+          spill.setAlpha(bloom(0.34));
+          spill.setDepth(img.depth + 1);
+          this.addGroundPool(x - 40, y - 2, PALETTE_INT.violetNeon, 0.3);
+          this.occlusion.attach(img, [sign, spill]);
+          break;
+        }
+        case 'noodlecart': {
+          const img = this.propSprite('noodlecart', x, y);
+          addSteamVent(this, x - 10, y - 53, img.depth + 2, { periodMs: 1200, drift: 10 });
+          const lantern = addLayeredGlow(this, x + 18, y - 37, PALETTE_INT.warmGlow, 0.3, img.depth + 1, 0.4);
+          addFlicker(this, lantern.core, 0.55, 0.12);
+          this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.45);
+          break;
+        }
+        case 'treeplanter': {
+          const img = this.propSprite('treeplanter', x, y);
+          const bulb = this.add.image(x - 8, y - 62, 'fx-glow');
+          bulb.setTint(PALETTE_INT.warmGlow);
+          bulb.setBlendMode(Phaser.BlendModes.ADD);
+          bulb.setScale(0.05);
+          bulb.setAlpha(bloom(0.45));
+          bulb.setDepth(img.depth + 1);
+          addFlicker(this, bulb, bloom(0.45), 0.1);
+          break;
+        }
+        case 'shanty': {
+          const img = this.propSprite('shanty', x, y);
+          const lamp = this.add.image(x + 22, y - 7, 'fx-glow');
+          lamp.setTint(PALETTE_INT.warmGlow);
+          lamp.setBlendMode(Phaser.BlendModes.ADD);
+          lamp.setScale(0.06);
+          lamp.setAlpha(bloom(0.4));
+          lamp.setDepth(img.depth + 1);
+          addFlicker(this, lamp, bloom(0.4), 0.14);
+          break;
+        }
         // V2 round-ish — the water tank's level-marker lamp.
         case 'watertank': {
           this.propSprite('watertank', x, y);
@@ -2465,6 +2593,75 @@ export class WorldScene extends Phaser.Scene {
           g.lineBetween(p.x, p.y, p.x, p.y + 16);
         }
       }
+    }
+  }
+
+  /**
+   * D1 the Stacks: the densest overhead layer in the city — cable webs
+   * and wash lines strung tower-to-tower across the canyon streets, plus
+   * the north/south streets' one licensed violet sign each (main street's
+   * lives on the registry).
+   */
+  private placeStacksOverhead(): void {
+    if (this.map.district !== 'stacks') return;
+    const g = this.add.graphics();
+    g.setDepth(1e5 - 1);
+    const cloth = [
+      mixPalette('neonRose', 'structureMid', 0.3),
+      mixPalette('warmGlow', 'groundAccent', 0.3),
+      mixPalette('neonTeal', 'structureMid', 0.4),
+    ];
+    // Spans across main street (towers at y15-18 ↔ y22-25) + the north
+    // street's mouth. Anchored high — these hang over Sparks' heads.
+    const spans: Array<{ ax: number; ay: number; bx: number; by: number }> = [
+      { ax: 20, ay: 18, bx: 20, by: 22 },
+      { ax: 24, ay: 18, bx: 24, by: 22 },
+      { ax: 29, ay: 18, bx: 29, by: 22 },
+      { ax: 34, ay: 18, bx: 34, by: 22 },
+      { ax: 12, ay: 13, bx: 17, by: 13 },
+      { ax: 12, ay: 9, bx: 13, by: 5 },
+      { ax: 25, ay: 26, bx: 25, by: 30 },
+    ];
+    spans.forEach((s, si) => {
+      const a = tileToWorld(s.ax, s.ay);
+      const b = tileToWorld(s.bx, s.by);
+      const top = -64 - (si % 3) * 10;
+      for (const [sagMult, alpha] of [
+        [1, 0.85],
+        [1.3, 0.6],
+      ] as const) {
+        const sag = 16 * sagMult;
+        const curve = new Phaser.Curves.QuadraticBezier(
+          new Phaser.Math.Vector2(a.x, a.y + top),
+          new Phaser.Math.Vector2((a.x + b.x) / 2, Math.max(a.y, b.y) + top + sag),
+          new Phaser.Math.Vector2(b.x, b.y + top),
+        );
+        g.lineStyle(2, mixPalette('ink', 'structureMid', 0.4), alpha);
+        curve.draw(g, 16);
+        // Wash pinned to the top strand on most spans.
+        if (sagMult === 1 && si % 3 !== 2) {
+          for (const t of [0.35, 0.55, 0.72]) {
+            const pt = curve.getPoint(t);
+            g.fillStyle(cloth[(si + Math.round(t * 10)) % 3] as number, 0.9);
+            g.fillRect(pt.x - 3, pt.y, 6, 7 + ((si + Math.round(t * 20)) % 3));
+          }
+        }
+      }
+    });
+    // The north + south streets' licensed violet signs, on tower faces.
+    for (const [sx, sy] of [
+      [11.4, 13.2],
+      [27.6, 23.2],
+    ] as const) {
+      const w = tileToWorld(sx, sy);
+      const sign = this.add.image(w.x, w.y - 44, 'fx-glow');
+      sign.setTint(PALETTE_INT.violetNeon);
+      sign.setBlendMode(Phaser.BlendModes.ADD);
+      sign.setScale(0.09);
+      sign.setAlpha(bloom(0.55));
+      sign.setDepth(depthForWorldY(w.y) + 2);
+      addFlicker(this, sign, bloom(0.55), 0.1);
+      this.addGroundPool(w.x, w.y - 2, PALETTE_INT.violetNeon, 0.26);
     }
   }
 

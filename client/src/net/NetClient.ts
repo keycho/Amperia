@@ -61,8 +61,13 @@ export const TOKEN_KEY = 'amperia.token';
 /** Mirrors the Spark's district so a stored-token resume rejoins it. */
 export const DISTRICT_KEY = 'amperia.district';
 
+const DISTRICTS: readonly DistrictId[] = ['filament', 'tangle', 'stacks'];
+
 export function rememberedDistrict(): DistrictId {
-  return localStorage.getItem(DISTRICT_KEY) === 'tangle' ? 'tangle' : 'filament';
+  const stored = localStorage.getItem(DISTRICT_KEY);
+  return (DISTRICTS as readonly string[]).includes(stored ?? '')
+    ? (stored as DistrictId)
+    : 'filament';
 }
 
 /** Live connection to a district room (Filament, Tangle, …). */

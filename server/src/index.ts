@@ -8,6 +8,7 @@ import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from '.
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
 import { prisma } from './services/db.js';
 import { FilamentRoom } from './rooms/FilamentRoom.js';
+import { StacksRoom } from './rooms/StacksRoom.js';
 import { TangleRoom } from './rooms/TangleRoom.js';
 
 const PORT = Number(process.env.PORT ?? 2567);
@@ -132,6 +133,7 @@ const gameServer = new Server({
 
 gameServer.define('filament', FilamentRoom);
 gameServer.define('tangle', TangleRoom);
+gameServer.define('stacks', StacksRoom);
 
 httpServer.listen(PORT, () => {
   console.log(`[amperia] server listening on :${PORT} — keep the city lit`);
