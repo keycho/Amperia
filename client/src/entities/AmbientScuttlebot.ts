@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldMap } from '@shared/map';
+import { PALETTE_INT } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { addVoxelSprite } from '../render/voxel';
@@ -11,6 +12,7 @@ import { addVoxelSprite } from '../render/voxel';
  */
 export class AmbientScuttlebot {
   readonly image: Phaser.GameObjects.Image;
+  private readonly eye: Phaser.GameObjects.Image;
   private tile: TilePoint;
   private readonly scene: Phaser.Scene;
   private readonly map: WorldMap;
@@ -24,6 +26,18 @@ export class AmbientScuttlebot {
     const { x, y } = tileToWorld(tile.x, tile.y);
     this.image = addVoxelSprite(scene, 'scuttlebot', x, y);
     this.image.setDepth(depthForWorldY(y));
+    // Tiny eye-light so the critter reads in the dark stretches.
+    this.eye = scene.add.image(x, y - 8, 'fx-glow');
+    this.eye.setTint(PALETTE_INT.neonTeal);
+    this.eye.setBlendMode(Phaser.BlendModes.ADD);
+    this.eye.setScale(0.035);
+    this.eye.setAlpha(0.55);
+    this.syncEye();
+  }
+
+  private syncEye(): void {
+    this.eye.setPosition(this.image.x + (this.image.flipX ? -5 : 5), this.image.y - 8);
+    this.eye.setDepth(this.image.depth + 1);
   }
 
   /** Called every frame with the current Spark tiles. */
@@ -49,6 +63,7 @@ export class AmbientScuttlebot {
 
   destroy(): void {
     this.scene.tweens.killTweensOf(this.image);
+    this.eye.destroy();
     this.image.destroy();
   }
 
@@ -89,7 +104,10 @@ export class AmbientScuttlebot {
       y: to.y,
       duration: spooked ? 190 : 420,
       ease: 'sine.inout',
-      onUpdate: () => this.image.setDepth(depthForWorldY(this.image.y)),
+      onUpdate: () => {
+        this.image.setDepth(depthForWorldY(this.image.y));
+        this.syncEye();
+      },
       onComplete: () => {
         this.tile = next;
         this.moving = false;
