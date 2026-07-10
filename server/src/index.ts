@@ -4,6 +4,7 @@ import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import cors from 'cors';
 import express from 'express';
+import { authRateOk, initOps } from './services/ops.js';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
 import { prisma } from './services/db.js';
@@ -14,9 +15,22 @@ import { TangleRoom } from './rooms/TangleRoom.js';
 
 const PORT = Number(process.env.PORT ?? 2567);
 
+// H4 ops: rotating structured logs + crash/restart alerts, installed
+// before anything else can log or throw.
+initOps();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// H4: auth endpoints get a per-IP sliding-window rate limit.
+app.use('/auth', (req, res, next) => {
+  if (!authRateOk(req.ip ?? 'unknown')) {
+    res.status(429).json({ error: 'Too many attempts — take a breath and try again.' });
+    return;
+  }
+  next();
+});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, city: 'AMPERIA' });
