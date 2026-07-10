@@ -437,8 +437,14 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.notice, {
         text: near.length > 0 ? `Nearby Sparks: ${near.join(', ')}` : 'No Sparks nearby.',
       });
+    } else if (cmd === '/wave') {
+      this.broadcast(MSG.emote, {
+        sessionId: client.sessionId,
+        from: rt.sparkName,
+        emote: 'wave',
+      });
     } else if (cmd === '/help') {
-      client.send(MSG.notice, { text: 'Commands: /near /help — more as the city grows.' });
+      client.send(MSG.notice, { text: 'Commands: /near /wave /help — more as the city grows.' });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
     }

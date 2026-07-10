@@ -29,6 +29,7 @@ export const MSG = {
   xpGain: 'xpGain',
   chatMsg: 'chatMsg',
   notice: 'notice',
+  emote: 'emote',
 } as const;
 
 export interface MoveIntent {
@@ -161,6 +162,12 @@ export interface ChatBroadcast {
   sessionId: string;
   text: string;
   ts: number;
+}
+
+export interface EmoteBroadcast {
+  sessionId: string;
+  from: string;
+  emote: 'wave';
 }
 
 export interface NoticeEvent {

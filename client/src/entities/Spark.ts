@@ -159,6 +159,43 @@ export class Spark {
     this.bubble.setDepth(this.image.depth + 2);
   }
 
+  /** The /wave emote: a friendly double hop + a little hand flourish. */
+  playWave(): void {
+    this.scene.tweens.add({
+      targets: this.image,
+      y: this.image.y - 7,
+      duration: 150,
+      yoyo: true,
+      repeat: 1,
+      ease: 'quad.out',
+      onUpdate: () => this.syncLabel(),
+    });
+    const hand = this.scene.add.text(
+      this.image.x + 14,
+      this.image.y - this.image.displayHeight + 10,
+      '✦',
+      { fontFamily: 'monospace', fontSize: '15px', color: PALETTE.neonAmber },
+    );
+    hand.setOrigin(0.5);
+    hand.setDepth(this.image.depth + 2);
+    this.scene.tweens.add({
+      targets: hand,
+      angle: { from: -24, to: 24 },
+      duration: 160,
+      yoyo: true,
+      repeat: 3,
+      ease: 'sine.inout',
+    });
+    this.scene.tweens.add({
+      targets: hand,
+      y: hand.y - 14,
+      alpha: 0,
+      delay: 620,
+      duration: 320,
+      onComplete: () => hand.destroy(),
+    });
+  }
+
   /** Snap instantly to a tile (server drift correction). */
   snapTo(tile: TilePoint): void {
     this.stepTween?.stop();

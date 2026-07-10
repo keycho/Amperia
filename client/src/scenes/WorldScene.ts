@@ -5,6 +5,7 @@ import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
 import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   ChatBroadcast,
+  EmoteBroadcast,
   NodeEventPayload,
   NoticeEvent,
   SkillsSync,
@@ -266,6 +267,10 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => {
       session.events.emit(SessionEvents.chat, m);
       this.sparks.get(m.sessionId)?.showChatBubble(m.text);
+    });
+    room.onMessage(MSG.emote, (e: EmoteBroadcast) => {
+      this.sparks.get(e.sessionId)?.playWave();
+      session.events.emit(SessionEvents.notice, `${e.from} waves.`);
     });
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),
