@@ -192,6 +192,32 @@ function shackModel(variant: number): Voxel[] {
   return v;
 }
 
+// ── Scuttlebots (little junk critters; accent = eye/antenna light) ────────
+
+export function scuttlebotModel(accent: number): Voxel[] {
+  const shell = mixPalette('structureMid', 'ink', 0.15);
+  const shellLight = mixPalette('structureMid', 'groundAccent', 0.35);
+  const leg = mixPalette('structureMid', 'ink', 0.4);
+  const v: Voxel[] = [];
+  // Four stub legs.
+  for (const [lx, ly] of [
+    [0, 0],
+    [4, 0],
+    [0, 3],
+    [4, 3],
+  ] as const) {
+    v.push({ x: lx, y: ly, z: 0, c: leg });
+  }
+  // Dented shell with a lighter hatch.
+  v.push(...box(0, 0, 1, 5, 4, 2, shell));
+  v.push(...box(1, 1, 3, 3, 2, 1, shellLight));
+  // One glowing eye on the front face + antenna tip — the accent.
+  v.push({ x: 3, y: 3, z: 2, c: accent });
+  v.push({ x: 1, y: 1, z: 4, c: leg });
+  v.push({ x: 1, y: 1, z: 5, c: accent });
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -274,4 +300,5 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   }
   bakeVoxelModel(scene, { name: 'drums', voxels: drumsModel() });
   bakeVoxelModel(scene, { name: 'dynamo', voxels: dynamoModel() });
+  bakeVoxelModel(scene, { name: 'scuttlebot', voxels: scuttlebotModel(PALETTE_INT.neonTeal) });
 }

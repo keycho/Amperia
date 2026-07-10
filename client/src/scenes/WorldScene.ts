@@ -20,6 +20,7 @@ import type {
   PlayerStateShape,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
+import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
 import {
   AmperiteNode,
@@ -73,6 +74,7 @@ export class WorldScene extends Phaser.Scene {
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
   private connectingText: Phaser.GameObjects.Text | null = null;
@@ -92,6 +94,7 @@ export class WorldScene extends Phaser.Scene {
     this.placeProps();
     this.placeStringLights();
     this.placeCanalLife();
+    this.spawnAmbientBots();
     addSkyline(this, -70);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
@@ -120,13 +123,17 @@ export class WorldScene extends Phaser.Scene {
     void this.connect();
   }
 
-  update(_time: number, deltaMs: number): void {
+  update(time: number, deltaMs: number): void {
     this.cameraCtl.update(deltaMs);
     this.updateHoverMarker();
     this.gatherView.update();
     this.tuner.update();
     for (const node of this.nodes.values()) {
       if (node instanceof KoiSpotNode) node.update();
+    }
+    if (this.ambientBots.length > 0) {
+      const sparkTiles = [...this.sparks.values()].map((s) => s.settledTile);
+      for (const bot of this.ambientBots) bot.update(time, sparkTiles);
     }
   }
 
@@ -925,6 +932,34 @@ export class WorldScene extends Phaser.Scene {
         // Every third bulb wavers a touch — strings feel strung, not printed.
         if (i % 3 === 0) addFlicker(this, glow, bloom(0.85), 0.09);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
+      }
+    }
+  }
+
+  /**
+   * Three harmless Scuttlebots pottering around the plaza edge: pure decor,
+   * client-side only. They skitter off when a Spark walks up. The hostile
+   * kind (server-owned, in the scrap fringe) is a separate creature.
+   */
+  private spawnAmbientBots(): void {
+    const { cx, cy, radius } = this.map.plaza;
+    const seats: Array<[number, number]> = [
+      [cx + radius - 1, cy - 3],
+      [cx - radius + 2, cy + 4],
+      [cx + 3, cy + radius - 1],
+    ];
+    for (const [sx, sy] of seats) {
+      // Nudge to the nearest walkable tile in a small spiral if occupied.
+      outer: for (let r = 0; r < 4; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const t = { x: sx + dx, y: sy + dy };
+            if (this.map.walkable[t.y]?.[t.x] === true) {
+              this.ambientBots.push(new AmbientScuttlebot(this, this.map, t));
+              break outer;
+            }
+          }
+        }
       }
     }
   }
