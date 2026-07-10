@@ -1,5 +1,68 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 NEW DISTRICTS block (T0 + D1–D4)
+
+The city grew from two districts to four — THE STACKS (the vertical
+quarter) and THE TERRARIUM (the hanging gardens) — and got connected:
+one tram line, per-hop tolls, a world map, and a marketing poster.
+Briefs first: both districts entered `ART-DIRECTION_1.md` §12B before any
+code, plus the Part I §5 amendment (tall structures are blocking world
+objects, never interiors; walkable levels ride +2/+3 via elevation;
+anything that can occlude the player requires occlusion fade).
+Shots: `stacks-{canyon-street,junction-plaza,roofline,spire}.png` ·
+`terrarium-terraces.png` · `loftpod-decorated.png` · `worldmap-screen.png`
+· `docs/marketing/world-poster.png`.
+
+- **T0 occlusion fade** (`client/src/systems/OcclusionFade.ts`) — any
+  registered tall prop between the camera and your Spark (or the hovered
+  tile) eases to 35% opacity and back; window-glow overlays ride along as
+  companions scaled by the base alpha. Verified with a bot walking behind
+  a tower (alphas 0.37 hidden / 1.0 clear). Applies to all districts.
+- **D1 THE STACKS** — canyon streets between 5–9 storey towers (13 baked
+  variants off one generator, every roofline distinct: tanks, antenna
+  clusters, tarp shanties, one pinned rooftop garden), window-light spill
+  as the district's texture, laundry/cable-web overhead, ONE licensed
+  violet sign per street, the junction plaza (noodle cart, tree planter),
+  a stair run to THE ROOFLINE (+3 walkable terrace across three towers:
+  two market stalls, the Tuning shrine with the city's best Signal —
+  +75% yield server-side, ledger-tagged `roofline`), and the SIGNAL SPIRE
+  with its slow red crown. The Vanity Registry is a street-level
+  shopfront with a closed door ("appointments open after the first
+  season") — the future token-layer tie-in, no code behind it. PvE-safe;
+  highest ambient-life density (balcony citizens, roofline laundry-bot).
+- **D2 THE TERRARIUM** — three stepped terrace bands (deck, never lawn),
+  planter rows, tool sheds, compost heaps, firefly motes, and the MOTHER
+  TRELLIS wearing glow-fruit lamps. Peaceful scavenging: compost glints
+  reroll into GARDEN rares (silverfern, emberseed) that open the new
+  Gardens Manifest page (Seedkeeper title). LOFTPODS: one pod per Spark
+  on server-managed berths (DB uniqueness IS the slot manager), `/haul`
+  to move, 3 upgrade tiers, 4 dyes, trophy hooks showing a Manifest title
+  + Mastery banner — every cost a Bolts/resource sink, every knob
+  display-only. PvE-safe, no mobs.
+- **D3 CONNECT THE CITY** — the tram line Filament ↔ Stacks ↔ Terrarium ↔
+  Tangle with tolls charged PER HOP (`shared/travel.ts`, config-tuned).
+  Tramgates open a stop board listing every other district and its fare.
+  District-sticky relog verified across all four (circuit bot: tolls
+  5/5/5/15 ledger-logged with hop counts, blind relog lands home
+  toll-free). Weekly goals gained district reasons to ride (tram rides,
+  Stacks salvage, Roofline signal, Terrarium compost) via a district
+  filter on goal events. The Citywide Charge hook now reaches every
+  district: Stacks window blaze scales ember→quarter-blazing by tier;
+  Terrarium garden lamps fill in from half-lit (the Trellis never goes
+  dark).
+- **D4 THE WORLD MAP** — TAB opens the map screen: all four districts as
+  mini-iso islands drawn from their REAL walkable grids in their accent
+  colors, the tram line gate-to-gate, tramgates as amber diamonds, your
+  Spark pulsing where you stand. And `tools/world-poster.mjs` renders
+  `docs/marketing/world-poster.png` (2560×1440): four visibly different
+  quarters, one city in the dark.
+- **Deferred by design**: The Canals district + the Griddling skill move
+  to post-launch content — the four-district city is the launch shape.
+- Tests 182 green (+6 travel/goal). Photo mode grew two habits: empty
+  berth-pad markers hide on film, and the marketing rig
+  (`tools/marketing-shot.mjs`) was rebuilt + committed after the
+  container restart ate its first uncommitted version.
+
 ## Status after the 2026-07-10 WORLD VARIETY pass (V1–V6)
 
 Killed the "everything is a box" monotony — shape language and content
@@ -626,8 +689,12 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   `docs/brand/spark-mascot-original.png` — no code references it.
 - Git tags (`m0-complete`, `run-20260709-autonomous`) exist locally only —
   the remote refuses tag pushes from this session.
-- A second district doubles room count per instance — no action needed
-  now, but pick the Fly VM size with both rooms + headroom in mind.
+- NEW (districts block): one more migration for production Neon —
+  `20260710180503_loftpods` (the Terrarium housing table). Same
+  `prisma migrate deploy`; that makes 10 unshipped migrations total.
+- NEW (districts block): the server now defines FOUR room types
+  (filament, tangle, stacks, terrarium) — an idle room per district per
+  instance. Size the Fly VM for four rooms + headroom, not two.
 - Nothing else is blocked on accounts; no token/chain code exists (M4 gate).
 
 ## Next up
