@@ -37,6 +37,7 @@ export const MSG = {
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
+  appearance: 'appearance',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -52,6 +53,7 @@ export const MSG = {
   notice: 'notice',
   emote: 'emote',
   combat: 'combat',
+  identity: 'identity',
 } as const;
 
 export interface MoveIntent {
@@ -406,6 +408,23 @@ export const CHAT_LIMITS = {
  * Read-side shapes of the synced room state (mirrors server schema classes;
  * lets the client stay `any`-free when reading Colyseus state).
  */
+/** Client → server: creator confirm (name only settable on first login). */
+export interface AppearanceIntent {
+  code: string;
+  name?: string;
+}
+
+/**
+ * Server → client (own client only): identity snapshot on join + the
+ * result of each appearance intent. chosen=false → show the creator.
+ */
+export interface IdentityEvent {
+  appearance: string;
+  sparkName: string;
+  chosen: boolean;
+  error?: string;
+}
+
 export interface PlayerStateShape {
   sparkName: string;
   tileX: number;
@@ -413,6 +432,8 @@ export interface PlayerStateShape {
   gathering: boolean;
   /** Working-pose tool id while gathering ('' = none) — presentation only. */
   pose: string;
+  /** Creator appearance code (shared/appearance.ts) — presentation only. */
+  appearance: string;
   hp: number;
   maxHp: number;
   /** Worn cosmetic id ('' = none) — quest rewards, never gameplay. */

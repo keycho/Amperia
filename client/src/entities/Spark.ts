@@ -3,7 +3,9 @@ import { CONFIG } from '@shared/config';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { DEPTH_SHADOW, depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
+import { DEFAULT_APPEARANCE_CODE } from '@shared/appearance';
 import { worldSpriteTint } from '../render/styleConfig';
+import { bakeSparkAppearance } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 
 /**
@@ -28,6 +30,7 @@ export class Spark {
   onStep: (() => void) | null = null;
   private cosmetic = '';
   private trim = '';
+  private appearance = DEFAULT_APPEARANCE_CODE;
   private dir: 'se' | 'sw' | 'ne' | 'nw' = 'se';
   private frame: 'idle' | 'walkA' | 'walkP' | 'walkB' = 'idle';
   /** Alternates which leg strides first on each step (A vs B). */
@@ -39,7 +42,7 @@ export class Spark {
     this.scene = scene;
     this.tile = { ...tile };
     const { x, y } = tileToWorld(tile.x, tile.y);
-    const baked = voxelSprite('spark-se');
+    const baked = voxelSprite(`spark@${DEFAULT_APPEARANCE_CODE}-se`);
     this.image = scene.add.image(x, y, baked.key);
     this.image.setOrigin(baked.originX, baked.originY);
     this.image.setScale(baked.scale);
@@ -77,10 +80,22 @@ export class Spark {
 
   /** Pose bakes win over walk frames; cosmetics ride the base frames. */
   private textureName(): string {
-    if (this.pose !== null) return `spark-${this.dir}-pose-${this.pose}`;
+    const base = `spark@${this.appearance}-${this.dir}`;
+    if (this.pose !== null) return `${base}-pose-${this.pose}`;
     const frame = this.frame === 'idle' ? '' : `-${this.frame}`;
     const cos = this.cosmetic !== '' ? `-${this.cosmetic}` : '';
-    return `spark-${this.dir}${frame}${cos}`;
+    return `${base}${frame}${cos}`;
+  }
+
+  /**
+   * Creator-chosen appearance (server-broadcast code). Bakes the set on
+   * first sight of a code — idempotent, so repeats are free.
+   */
+  setAppearance(code: string): void {
+    if (code === this.appearance || code === '') return;
+    bakeSparkAppearance(this.scene, code);
+    this.appearance = code;
+    this.applyTexture();
   }
 
   private applyTexture(): void {

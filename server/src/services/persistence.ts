@@ -23,6 +23,8 @@ export interface CharacterSnapshot {
   quests: Record<string, unknown>;
   cosmetics: string[];
   district: string;
+  /** Creator appearance code; '' = not chosen (first-login creator). */
+  appearance: string;
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -92,6 +94,7 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
       ? (c.cosmeticsJson as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
     district: c.district,
+    appearance: c.appearance,
   };
 }
 
@@ -135,5 +138,28 @@ export async function persistCharacter(
     });
   } catch (err) {
     console.error('[persistence] save failed for', characterId, err);
+  }
+}
+
+/**
+ * Creator confirm (I2): store the appearance code and (first login only)
+ * the chosen Spark name. Returns an error string instead of throwing so the
+ * room can bounce it to the client copy-safe.
+ */
+export async function saveIdentity(
+  characterId: string,
+  appearance: string,
+  sparkName?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await prisma.character.update({
+      where: { id: characterId },
+      data: sparkName === undefined ? { appearance } : { appearance, sparkName },
+    });
+    return { ok: true };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'P2002') return { ok: false, error: 'That name is already taken.' };
+    return { ok: false, error: 'Could not save — try again in a moment.' };
   }
 }

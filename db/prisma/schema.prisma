@@ -43,6 +43,9 @@ model Character {
   tradeDayCount      Int    @default(0)
   questsJson     Json   @default("{}")
   cosmeticsJson  Json   @default("[]")
+  /// Creator appearance code (shared/appearance.ts); "" = not chosen yet,
+  /// so the client shows the first-login creator. Presentation only.
+  appearance     String @default("")
   /// Which district the Spark was last in ('filament' | 'tangle').
   district       String @default("filament")
   createdAt DateTime @default(now())

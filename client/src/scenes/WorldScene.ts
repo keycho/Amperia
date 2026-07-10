@@ -20,6 +20,7 @@ import type {
   GatherStopEvent,
   GlintHideEvent,
   GlintShowEvent,
+  IdentityEvent,
   InventorySync,
   LootEvent,
   MoveAcceptedEvent,
@@ -69,6 +70,7 @@ import {
   type FilamentRoom,
 } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { showCreatorOverlay, type CreatorHandle } from '../ui/creatorOverlay';
 import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
 import { floorTileKey, type FloorKind } from '../render/floorTiles';
@@ -101,6 +103,9 @@ export class WorldScene extends Phaser.Scene {
   private cameraCtl!: CameraController;
   private hoverMarker!: Phaser.GameObjects.Image;
   private gatherView!: GatherView;
+  /** Creator overlay handle + latest identity snapshot (own Spark). */
+  private creator: CreatorHandle | null = null;
+  private identity: IdentityEvent | null = null;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
@@ -314,6 +319,10 @@ export class WorldScene extends Phaser.Scene {
       // Working pose while gathering (server-set, presentation only).
       proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
       spark.setPose(p.pose === '' ? null : p.pose);
+      // Creator appearance (server-validated code) + first-login rename.
+      proxy(p).listen('appearance', (v: string) => spark.setAppearance(v));
+      spark.setAppearance(p.appearance);
+      proxy(p).listen('sparkName', (v: string) => spark.setNameLabel(v));
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
         if (s === undefined || s.isMoving) return;
@@ -424,6 +433,25 @@ export class WorldScene extends Phaser.Scene {
       if (e.sessionId === room.sessionId && spark !== undefined) {
         this.cameraCtl.followTarget(spark.image);
       }
+    });
+
+    room.onMessage(MSG.identity, (e: IdentityEvent) => {
+      this.identity = e;
+      if (e.error !== undefined) {
+        this.creator?.setError(e.error);
+        return;
+      }
+      if (!e.chosen && this.creator === null) {
+        // First login: shape your Spark before the city knows you.
+        this.openCreator('first');
+      } else if (e.chosen && this.creator !== null) {
+        this.creator.close();
+        this.creator = null;
+      }
+    });
+    session.events.off(SessionEvents.openWardrobe);
+    session.events.on(SessionEvents.openWardrobe, () => {
+      if (this.creator === null && this.identity !== null) this.openCreator('wardrobe');
     });
 
     room.onMessage(MSG.gatherStart, (e: GatherStartEvent) => {
@@ -821,6 +849,25 @@ export class WorldScene extends Phaser.Scene {
 
   /** Node id of the session this client is currently working (UI routing). */
   private activeSessionNode: number | null = null;
+
+  /** Open the creator ('first' = name + look; 'wardrobe' = look only). */
+  private openCreator(mode: 'first' | 'wardrobe'): void {
+    const identity = this.identity;
+    if (identity === null || this.room === null) return;
+    const room = this.room;
+    this.creator = showCreatorOverlay({
+      scene: this,
+      mode,
+      currentCode: identity.appearance,
+      currentName: identity.sparkName,
+      onConfirm: (code, name) => {
+        send.appearance(room, name === undefined ? { code } : { code, name });
+      },
+      onCancel: () => {
+        this.creator = null;
+      },
+    });
+  }
 
   private handleNodeEvent(e: NodeEventPayload): void {
     const view = this.nodes.get(e.nodeId);

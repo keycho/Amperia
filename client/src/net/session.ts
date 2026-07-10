@@ -41,4 +41,8 @@ export const SessionEvents = {
   charge: 'charge',
   /** Charge detail (meter + leaderboard): payload ChargeSyncEvent. */
   chargeSync: 'chargeSync',
+  /** Open the wardrobe (limited creator) — /wardrobe chat command. */
+  openWardrobe: 'openWardrobe',
+  /** Identity snapshot / creator save result: payload IdentityEvent. */
+  identity: 'identity',
 } as const;

@@ -1,5 +1,15 @@
 import type Phaser from 'phaser';
-import { MATERIAL_INT, mixPalette, PALETTE_INT } from '@shared/palette';
+import {
+  type Appearance,
+  decodeAppearance,
+  DEFAULT_APPEARANCE,
+  DEFAULT_APPEARANCE_CODE,
+  HAIR_COLORS,
+  HAIR_STYLES,
+  JACKET_COLORS,
+  SKIN_TONES,
+} from '@shared/appearance';
+import { blendInt, MATERIAL_INT, mixPalette, PALETTE_INT } from '@shared/palette';
 import { MATERIALS } from './materials';
 import { voxelHash } from './materials';
 import { bakeVoxelModel, shade, type Voxel } from './voxel';
@@ -175,9 +185,35 @@ function transpose(voxels: Voxel[]): Voxel[] {
   return voxels.map((v) => ({ ...v, x: v.y, y: v.x }));
 }
 
+/** Appearance indices resolved to concrete colors (single derivation spot). */
+interface SparkTints {
+  skin: number;
+  hairMain: number;
+  hairDeep: number;
+  hairLight: number;
+  jacket: number;
+  jacketDeep: number;
+  sleeve: number;
+}
+
+function resolveTints(a: Appearance): SparkTints {
+  const hairMain = HAIR_COLORS[a.hairColor] ?? (HAIR_COLORS[0] as number);
+  const jacket = JACKET_COLORS[a.jacket] ?? (JACKET_COLORS[0] as number);
+  return {
+    skin: SKIN_TONES[a.skin] ?? (SKIN_TONES[0] as number),
+    hairMain,
+    hairDeep: blendInt(hairMain, PALETTE_INT.ink, 0.4),
+    hairLight: shade(hairMain, 0.22),
+    jacket,
+    jacketDeep: blendInt(jacket, PALETTE_INT.ink, 0.32),
+    sleeve: blendInt(jacket, PALETTE_INT.ink, 0.18),
+  };
+}
+
 /** Rectangular hair layer with corner cuts + jagged edges (mop language). */
-function mopLayer(
+function hairSlab(
   v: Voxel[],
+  t: SparkTints,
   x0: number,
   y0: number,
   z0: number,
@@ -194,14 +230,89 @@ function mopLayer(
       if (jag && onEdge && voxelHash(x0 + dx, y0 + dy, z0, 51) < 0.28) continue;
       for (let dz = 0; dz < h; dz++) {
         const streak = voxelHash(x0 + dx, y0 + dy, z0 + dz, 53);
-        const c =
-          streak < 0.16
-            ? shade(SPARK_COLORS.hairRose, 0.22)
-            : streak > 0.85
-              ? SPARK_COLORS.hairRoseDeep
-              : SPARK_COLORS.hairRose;
+        const c = streak < 0.16 ? t.hairLight : streak > 0.85 ? t.hairDeep : t.hairMain;
         v.push({ x: x0 + dx, y: y0 + dy, z: z0 + dz, c, mat: cloth });
       }
+    }
+  }
+}
+
+/**
+ * Hair styles (creator option). Every style sits on/over the goggle band
+ * (z12-13) — the band is Spark brand language and never disappears.
+ * Coordinates are FRONT-view; the back-view lean sign is already applied.
+ */
+function buildHair(
+  v: Voxel[],
+  t: SparkTints,
+  styleIdx: number,
+  lean: number,
+  lift: number,
+  back: boolean,
+): void {
+  const style = HAIR_STYLES[styleIdx]?.id ?? 'mop';
+  const z = 14 + lift;
+  switch (style) {
+    case 'spikes': {
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, false);
+      for (const [sx, sy] of [
+        [0, 0],
+        [3, 1],
+        [5, 3],
+        [1, 3],
+        [4, 0],
+      ] as const) {
+        v.push({ x: -1 + sx + 1, y: lean - 2 + sy + 1, z: z + 1, c: t.hairMain, mat: cloth });
+        v.push({ x: -1 + sx + 1, y: lean - 2 + sy + 1, z: z + 2, c: t.hairLight, mat: cloth });
+      }
+      break;
+    }
+    case 'buns': {
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, true);
+      const bunY = back ? lean + 2 : lean - 2;
+      for (const bx of [-1, 5] as const) {
+        v.push(...cbox(bx, bunY, z + 1, 2, 2, 2, t.hairMain, cloth));
+        v.push({ x: bx, y: bunY, z: z + 3, c: t.hairDeep, mat: cloth });
+      }
+      break;
+    }
+    case 'crest': {
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, false);
+      for (let dy = 0; dy < 6; dy++) {
+        const h = dy < 2 ? 2 : dy < 4 ? 3 : 2;
+        for (let dz = 1; dz <= h; dz++) {
+          const c = dz === h ? t.hairLight : t.hairMain;
+          v.push({ x: 2, y: lean - 2 + dy, z: z + dz, c, mat: cloth });
+          v.push({ x: 3, y: lean - 2 + dy, z: z + dz, c, mat: cloth });
+        }
+      }
+      break;
+    }
+    case 'bowl': {
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 2, 0, false);
+      // Fringe hanging over the brow (front only — the back drops lower).
+      const fringeY = back ? lean + 3 : lean - 2;
+      for (let dx = 0; dx < 8; dx++) {
+        if (voxelHash(dx, 7, z, 57) < 0.3) continue;
+        v.push({ x: -1 + dx, y: fringeY, z: z - 1, c: t.hairDeep, mat: cloth });
+      }
+      break;
+    }
+    case 'tail': {
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, true);
+      // Cable tail down the back of the head.
+      const tailY = back ? lean + 3 : lean - 2;
+      v.push(...cbox(2, tailY, 8 + lift, 2, 1, 6, t.hairMain, cloth));
+      v.push({ x: 2, y: tailY, z: 7 + lift, c: t.hairDeep, mat: cloth });
+      v.push({ x: 3, y: tailY, z: 7 + lift, c: t.hairDeep, mat: cloth });
+      break;
+    }
+    default: {
+      // The mascot mop: spills one voxel over the proud band, jagged, domed.
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 2, 1, true);
+      hairSlab(v, t, 0, lean - 1, z + 2, 6, 4, 1, 1, true);
+      if (back) hairSlab(v, t, 0, lean + 2, 10 + lift, 6, 1, 4, 0, true);
+      break;
     }
   }
 }
@@ -244,6 +355,7 @@ const TOOL_CELLS: Record<Exclude<SparkPoseId, 'brawl'>, Array<[number, number, n
 interface SparkBuild {
   view: 'front' | 'back';
   frame: SparkFrame;
+  appearance: Appearance;
   pose?: SparkPoseId;
   scarf?: boolean;
 }
@@ -258,6 +370,7 @@ interface SparkBuild {
 export function sparkBodyModel(b: SparkBuild): Voxel[] {
   const v: Voxel[] = [];
   const C = SPARK_COLORS;
+  const t = resolveTints(b.appearance);
   const back = b.view === 'back';
   const fwd = back ? -1 : 1;
   const posed = b.pose !== undefined;
@@ -284,9 +397,9 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
 
   // Layered jacket (z5-8): deep hem, plum body, deep collar; chest tag on
   // the front, small salvage pack on the back.
-  v.push(...cbox(1, lean, 5 + lift, 4, 3, 1, C.jacketPlumDeep));
-  v.push(...cbox(1, lean, 6 + lift, 4, 3, 2, C.jacketPlum));
-  v.push(...cbox(1, lean, 8 + lift, 4, 3, 1, C.jacketPlumDeep));
+  v.push(...cbox(1, lean, 5 + lift, 4, 3, 1, t.jacketDeep));
+  v.push(...cbox(1, lean, 6 + lift, 4, 3, 2, t.jacket));
+  v.push(...cbox(1, lean, 8 + lift, 4, 3, 1, t.jacketDeep));
   if (!back) {
     v.push({ x: 3, y: 2 + lean, z: 7 + lift, c: C.tag });
   } else {
@@ -298,13 +411,13 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   const raisedLeft = b.pose === 'brawl';
   const arm = (x0: number, raised: boolean, swing: number) => {
     if (raised) {
-      v.push(...cbox(x0, lean, 6 + lift, 1, 2, 2, BODY_COLORS.sleeve));
-      v.push({ x: x0, y: lean + 2 * fwd, z: 7 + lift, c: C.skin, mat: skinMat });
+      v.push(...cbox(x0, lean, 6 + lift, 1, 2, 2, t.sleeve));
+      v.push({ x: x0, y: lean + 2 * fwd, z: 7 + lift, c: t.skin, mat: skinMat });
     } else {
-      v.push(...cbox(x0, lean + swing, 5 + lift, 1, 2, 3, BODY_COLORS.sleeve));
-      v.push({ x: x0, y: lean + swing, z: 4 + lift, c: C.skin, mat: skinMat });
+      v.push(...cbox(x0, lean + swing, 5 + lift, 1, 2, 3, t.sleeve));
+      v.push({ x: x0, y: lean + swing, z: 4 + lift, c: t.skin, mat: skinMat });
     }
-    v.push(...cbox(x0, lean, 8 + lift, 1, 2, 1, C.jacketPlumDeep)); // shoulder
+    v.push(...cbox(x0, lean, 8 + lift, 1, 2, 1, t.jacketDeep)); // shoulder
   };
   arm(0, raisedLeft, walking ? -stride * fwd : 0);
   arm(5, raisedRight, walking ? stride * fwd : 0);
@@ -328,11 +441,11 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   }
 
   // The oversized head (z9-13): skin block, face on the lit +y side.
-  v.push(...cbox(0, lean - 1, 9 + lift, 6, 4, 5, C.skin, skinMat));
+  v.push(...cbox(0, lean - 1, 9 + lift, 6, 4, 5, t.skin, skinMat));
   if (!back) {
     // Mouth low on the face, under the lens gap.
-    v.push({ x: 2, y: lean + 3, z: 9 + lift, c: shade(C.skin, -0.45) });
-    v.push({ x: 3, y: lean + 3, z: 9 + lift, c: shade(C.skin, -0.45) });
+    v.push({ x: 2, y: lean + 3, z: 9 + lift, c: shade(t.skin, -0.45) });
+    v.push({ x: 3, y: lean + 3, z: 9 + lift, c: shade(t.skin, -0.45) });
     // Two big teal lenses proud of the face.
     v.push(...cbox(0, lean + 3, 10 + lift, 2, 1, 2, C.lens));
     v.push(...cbox(4, lean + 3, 10 + lift, 2, 1, 2, C.lens));
@@ -340,13 +453,21 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   // Goggle band: proud wrap at the crown — visible from every direction.
   v.push(...cbox(-1, lean - 2, 12 + lift, 8, 6, 2, C.band));
 
-  // The rose mop: flush with the proud band (already a voxel out from the
-  // head), jagged, domed — never wider than the shoulders read.
-  mopLayer(v, -1, lean - 2, 14 + lift, 8, 6, 2, 1, true);
-  mopLayer(v, 0, lean - 1, 16 + lift, 6, 4, 1, 1, true);
-  if (back) {
-    // The mop hangs lower at the back of the head.
-    mopLayer(v, 0, lean + 2, 10 + lift, 6, 1, 4, 0, true);
+  // Hair per the chosen style, in the chosen color.
+  buildHair(v, t, b.appearance.hair, lean, lift, back);
+
+  // Accessory flair (front views only — all tiny, all presentation).
+  if (!back) {
+    const acc = b.appearance.accessory;
+    if (acc === 1) {
+      v.push({ x: 4, y: lean + 3, z: 12 + lift, c: C.tag }); // amber stud on the band
+    } else if (acc === 2) {
+      v.push({ x: 1, y: lean + 2, z: 7 + lift, c: BODY_COLORS.toolMetal }); // antenna pin
+      v.push({ x: 1, y: lean + 2, z: 8 + lift, c: PALETTE_INT.neonCyan });
+    } else if (acc === 3) {
+      v.push({ x: 1, y: lean + 2, z: 6 + lift, c: MATERIAL_INT.paintTeal }); // teal patch
+      v.push({ x: 2, y: lean + 2, z: 6 + lift, c: MATERIAL_INT.paintTeal });
+    }
   }
   return v;
 }
@@ -371,7 +492,54 @@ const SPARK_POSES: SparkPoseId[] = [
   'brawl',
 ];
 
-/** Bake the identity-block character models (call from BootScene). */
+/**
+ * Bake one appearance's full sprite set. Names are prefixed with the
+ * appearance code: `spark@<code>-<dir>[-frame][-starterScarf|-pose-x]`.
+ * Idempotent per name (bakeVoxelModel checks its registry), so re-baking a
+ * code that's already live is free.
+ *
+ * previewOnly bakes just the SW idle — the creator re-bakes on every
+ * option click and only needs the pedestal view.
+ */
+export function bakeSparkAppearance(
+  scene: Phaser.Scene,
+  code: string,
+  opts: { previewOnly?: boolean } = {},
+): void {
+  const appearance = decodeAppearance(code) ?? DEFAULT_APPEARANCE;
+  if (opts.previewOnly === true) {
+    bakeVoxelModel(scene, {
+      name: `spark@${code}-sw`,
+      voxels: dirVoxels('sw', { frame: 'idle', appearance }),
+      warmRim: true,
+      shadow: false,
+    });
+    return;
+  }
+  for (const dir of SPARK_DIRS) {
+    for (const frame of SPARK_FRAMES) {
+      const frameSuffix = frame === 'idle' ? '' : `-${frame}`;
+      for (const scarf of [false, true]) {
+        bakeVoxelModel(scene, {
+          name: `spark@${code}-${dir}${frameSuffix}${scarf ? '-starterScarf' : ''}`,
+          voxels: dirVoxels(dir, { frame, scarf, appearance }),
+          warmRim: true,
+          shadow: false,
+        });
+      }
+    }
+    for (const pose of SPARK_POSES) {
+      bakeVoxelModel(scene, {
+        name: `spark@${code}-${dir}-pose-${pose}`,
+        voxels: dirVoxels(dir, { frame: 'idle', pose, appearance }),
+        warmRim: true,
+        shadow: false,
+      });
+    }
+  }
+}
+
+/** Bake the boot-time character set: the brand bust + the mascot default. */
 export function bakeSparkModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, {
     name: 'spark-mascot-bust',
@@ -380,25 +548,5 @@ export function bakeSparkModels(scene: Phaser.Scene): void {
     shadow: false,
     grounding: false,
   });
-  for (const dir of SPARK_DIRS) {
-    for (const frame of SPARK_FRAMES) {
-      const frameSuffix = frame === 'idle' ? '' : `-${frame}`;
-      for (const scarf of [false, true]) {
-        bakeVoxelModel(scene, {
-          name: `spark-${dir}${frameSuffix}${scarf ? '-starterScarf' : ''}`,
-          voxels: dirVoxels(dir, { frame, scarf }),
-          warmRim: true,
-          shadow: false,
-        });
-      }
-    }
-    for (const pose of SPARK_POSES) {
-      bakeVoxelModel(scene, {
-        name: `spark-${dir}-pose-${pose}`,
-        voxels: dirVoxels(dir, { frame: 'idle', pose }),
-        warmRim: true,
-        shadow: false,
-      });
-    }
-  }
+  bakeSparkAppearance(scene, DEFAULT_APPEARANCE_CODE);
 }

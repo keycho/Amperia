@@ -15,6 +15,8 @@ export class PlayerState extends Schema {
   gathering = false;
   /** Working-pose tool id while gathering ('' = none) — presentation only. */
   pose = '';
+  /** Creator appearance code (shared/appearance.ts) — presentation only. */
+  appearance = '';
   hp = 0;
   maxHp = 0;
   cosmetic = '';
@@ -27,6 +29,7 @@ defineTypes(PlayerState, {
   tileY: 'int16',
   gathering: 'boolean',
   pose: 'string',
+  appearance: 'string',
   hp: 'int16',
   maxHp: 'int16',
   cosmetic: 'string',

@@ -46,11 +46,18 @@ import {
 } from '@shared/quests';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
 import {
+  decodeAppearance,
+  DEFAULT_APPEARANCE_CODE,
+  SPARK_NAME_RE,
+} from '@shared/appearance';
+import {
   CHAT_LIMITS,
   MSG,
+  type AppearanceIntent,
   type AttackIntent,
   type ChatBroadcast,
   type ChatIntent,
+  type IdentityEvent,
   type GatherIntent,
   type GlintClickIntent,
   type InventorySync,
@@ -90,7 +97,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
-import { loadCharacter, persistCharacter } from '../services/persistence.js';
+import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
 import {
   CacheState,
   FilamentState,
@@ -169,6 +176,8 @@ interface PlayerRuntime {
   accountCreatedAtMs: number;
   quests: QuestLog;
   cosmetics: string[];
+  /** Creator appearance code; '' until the first-login creator confirms. */
+  appearance: string;
   hp: number;
   /** Set when the player pays the tram toll; persisted as the district. */
   pendingDistrict: DistrictId | null;
@@ -294,6 +303,9 @@ export class FilamentRoom extends Room<FilamentState> {
       this.handleMoveStack(client, msg),
     );
     this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
+    this.onMessage<AppearanceIntent>(MSG.appearance, (client, msg) => {
+      void this.handleAppearance(client, msg);
+    });
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
@@ -375,6 +387,7 @@ export class FilamentRoom extends Room<FilamentState> {
       accountCreatedAtMs: character.accountCreatedAtMs,
       quests: character.quests as QuestLog,
       cosmetics: character.cosmetics,
+      appearance: character.appearance,
       hp: CONFIG.combat.player.maxHp,
       pendingDistrict: null,
       healAcc: 0,
@@ -396,7 +409,15 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.trim = runtime.cosmetics.includes(CONFIG.charge.trimCosmetic)
       ? CONFIG.charge.trimCosmetic
       : '';
+    ps.appearance =
+      runtime.appearance !== '' ? runtime.appearance : DEFAULT_APPEARANCE_CODE;
     this.state.players.set(client.sessionId, ps);
+    // Identity snapshot: chosen=false pops the first-login creator.
+    client.send(MSG.identity, {
+      appearance: ps.appearance,
+      sparkName: runtime.sparkName,
+      chosen: runtime.appearance !== '',
+    } satisfies IdentityEvent);
     void this.deliverChargeAwards(client, runtime);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
@@ -619,6 +640,52 @@ export class FilamentRoom extends Room<FilamentState> {
       else rt.hotbar = r.dst;
     }
     client.send(MSG.inventory, this.inventorySync(rt));
+  }
+
+  /**
+   * Creator confirm (I2): validate the code against the shared tables,
+   * allow a name pick ONLY on first login (appearance still unset), persist,
+   * then broadcast via PlayerState so every client re-bakes this Spark.
+   * Appearance is presentation-only — it never touches gameplay numbers.
+   */
+  private async handleAppearance(client: Client, msg: AppearanceIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    const ps = this.state.players.get(client.sessionId);
+    if (rt === undefined || ps === undefined) return;
+    const fail = (error: string) =>
+      client.send(MSG.identity, {
+        appearance: ps.appearance,
+        sparkName: rt.sparkName,
+        chosen: rt.appearance !== '',
+        error,
+      } satisfies IdentityEvent);
+
+    const code = typeof msg.code === 'string' ? msg.code : '';
+    if (decodeAppearance(code) === null) return fail('That look did not scan.');
+
+    let rename: string | undefined;
+    const wantName = typeof msg.name === 'string' ? msg.name.trim() : '';
+    if (wantName !== '' && wantName !== rt.sparkName) {
+      if (rt.appearance !== '') return fail('Names are set when a Spark first steps in.');
+      if (!SPARK_NAME_RE.test(wantName)) {
+        return fail('Names are 3-16 letters, digits, spaces, - or _.');
+      }
+      rename = wantName;
+    }
+
+    const saved = await saveIdentity(rt.characterId, code, rename);
+    if (!saved.ok) return fail(saved.error);
+    rt.appearance = code;
+    if (rename !== undefined) {
+      rt.sparkName = rename;
+      ps.sparkName = rename;
+    }
+    ps.appearance = code;
+    client.send(MSG.identity, {
+      appearance: code,
+      sparkName: rt.sparkName,
+      chosen: true,
+    } satisfies IdentityEvent);
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {

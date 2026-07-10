@@ -139,7 +139,12 @@ function luma(color: number): number {
   );
 }
 
-function mixInt(a: number, b: number, t: number): number {
+/**
+ * Linear blend of two already-sanctioned color ints. Exported for DERIVED
+ * tables only (skin tones, hair/jacket tints in shared/appearance.ts) so
+ * palette.ts stays the single audit point — never feed it raw hex.
+ */
+export function blendInt(a: number, b: number, t: number): number {
   const clamp = Math.max(0, Math.min(1, t));
   const mix = (sa: number, sb: number) => Math.round(sa + (sb - sa) * clamp);
   return (
@@ -148,6 +153,7 @@ function mixInt(a: number, b: number, t: number): number {
     mix(a & 0xff, b & 0xff)
   );
 }
+const mixInt = blendInt;
 
 /**
  * Saturation scale around luma: k > 0 pushes chroma out (richer color),

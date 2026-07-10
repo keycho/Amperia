@@ -116,7 +116,10 @@ export class ChatUI {
       e.stopPropagation();
       if (e.key === 'Enter') {
         const text = el.value.trim();
-        if (text !== '' && session.room !== null) {
+        if (text === '/wardrobe') {
+          // Client-side command: reopen the (limited) creator.
+          session.events.emit(SessionEvents.openWardrobe);
+        } else if (text !== '' && session.room !== null) {
           send.chat(session.room, { text });
         }
         this.closeInput();

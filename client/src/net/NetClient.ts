@@ -2,6 +2,7 @@ import { Client, getStateCallbacks, type Room } from 'colyseus.js';
 import type { DistrictId } from '@shared/map';
 import { MSG } from '@shared/protocol';
 import type {
+  AppearanceIntent,
   AttackIntent,
   ChatIntent,
   CraftIntent,
@@ -94,4 +95,5 @@ export const send = {
   selectSlot: (room: FilamentRoom, msg: SelectSlotIntent) => room.send(MSG.selectSlot, msg),
   moveStack: (room: FilamentRoom, msg: MoveStackIntent) => room.send(MSG.moveStack, msg),
   chat: (room: FilamentRoom, msg: ChatIntent) => room.send(MSG.chat, msg),
+  appearance: (room: FilamentRoom, msg: AppearanceIntent) => room.send(MSG.appearance, msg),
 };
