@@ -107,6 +107,6 @@ export function addSkyline(scene: Phaser.Scene, mapTopY: number): void {
     img.setOrigin(0.5, 1);
     img.setScrollFactor(0.35, 0.5);
     img.setDepth(-1e6);
-    img.setAlpha(0.7);
+    img.setAlpha(0.4); // the void swallows the mass; lit windows remain
   }
 }

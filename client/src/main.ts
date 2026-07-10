@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE } from '@shared/palette';
+import { MATERIAL_COLORS } from '@shared/palette';
 import { STYLE } from './render/styleConfig';
 import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
@@ -37,7 +37,7 @@ const pixelScale =
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: PALETTE.duskSky,
+  backgroundColor: MATERIAL_COLORS.voidBlack,
   scale: pixelScale,
   render: {
     antialias: STYLE.pixelHeight === null,

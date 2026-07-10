@@ -98,6 +98,8 @@ export const MATERIAL_COLORS = {
   /** Concrete / pavement — neutral grey-mauve ground and curbs. */
   concrete: '#6B6169',
   concreteDeep: '#514A52',
+  /** The void beyond the map: ink fading to near-black (composition §B5). */
+  voidBlack: '#0B0812',
 } as const;
 
 export type MaterialColorKey = keyof typeof MATERIAL_COLORS;

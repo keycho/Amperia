@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
-import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   ChatBroadcast,
   CombatEvent,
@@ -857,6 +857,23 @@ export class WorldScene extends Phaser.Scene {
           g.fillStyle(mixPalette('groundBase', 'ink', 0.4), 0.8);
           g.fillCircle(x - 6 + rng() * 12, y - 3 + rng() * 6, 1.6);
         }
+      }
+    }
+
+    // THE VOID (§B5): the map is an island of light — its last rows fade
+    // into near-black so screenshot corners are dark, not plum.
+    const voidG = this.add.graphics();
+    voidG.setDepth(DEPTH_FLOOR + 1);
+    const FADE = 5;
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        const distToEdge = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
+        if (distToEdge >= FADE) continue;
+        const a = Math.pow((FADE - distToEdge) / FADE, 1.6) * 0.92;
+        const { x, y } = tileToWorld(tx, ty);
+        voidG.fillStyle(MATERIAL_INT.voidBlack, a);
+        this.traceDiamond(voidG, x, y);
+        voidG.fillPath();
       }
     }
   }
