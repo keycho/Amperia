@@ -263,7 +263,10 @@ export class WorldScene extends Phaser.Scene {
         floatText(this, own.image.x + 26, own.image.y - 46, `+${e.amount} ${label}`, PALETTE.solarGreen);
       }
     });
-    room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => session.events.emit(SessionEvents.chat, m));
+    room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => {
+      session.events.emit(SessionEvents.chat, m);
+      this.sparks.get(m.sessionId)?.showChatBubble(m.text);
+    });
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),
     );

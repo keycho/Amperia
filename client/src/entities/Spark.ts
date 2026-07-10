@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
-import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { worldSpriteTint } from '../render/styleConfig';
@@ -22,6 +22,8 @@ export class Spark {
   private onArrive: (() => void) | null = null;
   private label: Phaser.GameObjects.Text | null = null;
   private labelRise = { value: 0 };
+  private bubble: Phaser.GameObjects.Container | null = null;
+  private bubbleHeight = 0;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -101,6 +103,60 @@ export class Spark {
       this.image.y - this.image.displayHeight + 6 + this.labelRise.value,
     );
     this.label.setDepth(this.image.depth + 1);
+    this.syncBubble();
+  }
+
+  /** Speech bubble above the head; a new line replaces the old one. */
+  showChatBubble(text: string): void {
+    this.bubble?.destroy();
+    const body = text.length > 90 ? `${text.slice(0, 89)}…` : text;
+    const txt = this.scene.add.text(0, 0, body, {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: UI_TEXT_WARM,
+      wordWrap: { width: 168 },
+      align: 'center',
+    });
+    txt.setOrigin(0.5, 0.5);
+    const w = txt.width + 14;
+    const h = txt.height + 10;
+    const g = this.scene.add.graphics();
+    g.fillStyle(PALETTE_INT.ink, 0.82);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, 7);
+    g.lineStyle(1.5, PALETTE_INT.warmGlow, 0.55);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, 7);
+    g.fillStyle(PALETTE_INT.ink, 0.82);
+    g.fillTriangle(-4, h / 2 - 1, 4, h / 2 - 1, 0, h / 2 + 6);
+    const bubble = this.scene.add.container(0, 0, [g, txt]);
+    bubble.setAlpha(0);
+    this.bubble = bubble;
+    this.bubbleHeight = h;
+    this.syncBubble();
+    this.scene.tweens.add({ targets: bubble, alpha: 1, duration: 160, ease: 'quad.out' });
+    const fadeAt = 3400 + Math.min(2200, text.length * 28);
+    this.scene.time.delayedCall(fadeAt, () => {
+      if (this.bubble !== bubble) return;
+      this.scene.tweens.add({
+        targets: bubble,
+        alpha: 0,
+        y: bubble.y - 8,
+        duration: 420,
+        ease: 'quad.in',
+        onComplete: () => {
+          if (this.bubble === bubble) this.bubble = null;
+          bubble.destroy();
+        },
+      });
+    });
+  }
+
+  private syncBubble(): void {
+    if (this.bubble === null) return;
+    this.bubble.setPosition(
+      this.image.x,
+      this.image.y - this.image.displayHeight - 16 - this.bubbleHeight / 2,
+    );
+    this.bubble.setDepth(this.image.depth + 2);
   }
 
   /** Snap instantly to a tile (server drift correction). */
@@ -120,6 +176,7 @@ export class Spark {
     this.stepTween?.stop();
     this.scene.tweens.killTweensOf(this.image);
     this.scene.tweens.killTweensOf(this.labelRise);
+    this.bubble?.destroy();
     this.label?.destroy();
     this.image.destroy();
   }

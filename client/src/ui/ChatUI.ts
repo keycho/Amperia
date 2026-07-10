@@ -43,7 +43,7 @@ export class ChatUI {
 
     session.events.on(SessionEvents.chat, (m: ChatBroadcast) => this.push(m));
     session.events.on(SessionEvents.notice, (text: string) =>
-      this.push({ from: '⚡', text, ts: Date.now() }),
+      this.push({ from: '⚡', sessionId: '', text, ts: Date.now() }),
     );
     this.layout();
   }

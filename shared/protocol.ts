@@ -157,6 +157,8 @@ export interface XpGainEvent {
 
 export interface ChatBroadcast {
   from: string;
+  /** Sender's room session id — lets clients hang a bubble on the Spark. */
+  sessionId: string;
   text: string;
   ts: number;
 }

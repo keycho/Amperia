@@ -419,7 +419,7 @@ export class FilamentRoom extends Room<FilamentState> {
       this.handleCommand(client, rt, text);
       return;
     }
-    const out: ChatBroadcast = { from: rt.sparkName, text, ts: now };
+    const out: ChatBroadcast = { from: rt.sparkName, sessionId: client.sessionId, text, ts: now };
     this.broadcast(MSG.chatMsg, out);
   }
 
