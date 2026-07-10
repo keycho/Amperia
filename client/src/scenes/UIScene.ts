@@ -10,6 +10,7 @@ import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
 import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
+import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { SlotStrip } from '../ui/SlotStrip';
 
@@ -35,6 +36,8 @@ export class UIScene extends Phaser.Scene {
   private skillsPanel!: SkillsPanel;
   private merchantPanel!: MerchantPanel;
   private benchPanel!: BenchPanel;
+  private questPanel!: QuestPanel;
+  private questChip!: Phaser.GameObjects.Text;
   private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
   private hpBar!: Phaser.GameObjects.Graphics;
@@ -130,6 +133,19 @@ export class UIScene extends Phaser.Scene {
     this.skillsPanel = new SkillsPanel(this);
     this.merchantPanel = new MerchantPanel(this);
     this.benchPanel = new BenchPanel(this);
+    this.questPanel = new QuestPanel(this);
+
+    this.questChip = this.add.text(12, 52, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: PALETTE.neonTeal,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.questChip.setDepth(900);
+    session.events.on(SessionEvents.questTracker, (line: string) => {
+      this.questChip.setText(line === '' ? '' : `◈ ${line}`);
+    });
 
     this.boltsChip = this.add.text(12, 32, '', {
       fontFamily: 'monospace',
@@ -207,6 +223,8 @@ export class UIScene extends Phaser.Scene {
     this.merchantPanel.setPosition((w - mp.w) / 2, Math.max(40, (h - mp.h) / 2 - 10));
     const bp = this.benchPanel.pixelSize();
     this.benchPanel.setPosition((w - bp.w) / 2, Math.max(30, (h - bp.h) / 2 - 10));
+    const qp = this.questPanel.pixelSize();
+    this.questPanel.setPosition((w - qp.w) / 2, Math.max(30, (h - qp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
   }
@@ -339,6 +357,7 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-ESC', () => {
       if (typing()) return;
       if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
+      else if (this.questPanel.visible) this.questPanel.setVisible(false);
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);

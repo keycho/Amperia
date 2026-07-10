@@ -25,4 +25,10 @@ export const SessionEvents = {
   openMerchant: 'openMerchant',
   /** Open the Tinkerbench panel (world → UI scene). */
   openBench: 'openBench',
+  /** Open the Dispatcher's quest board (world → UI scene). */
+  openQuests: 'openQuests',
+  /** Personal quest log sync: payload QuestsSync. */
+  quests: 'quests',
+  /** HUD tracker line for the first active quest (string). */
+  questTracker: 'questTracker',
 } as const;

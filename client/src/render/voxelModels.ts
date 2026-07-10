@@ -117,7 +117,7 @@ function stallModel(variant: number): Voxel[] {
   return v;
 }
 
-function sparkModel(facing: 'se' | 'ne'): Voxel[] {
+function sparkModel(facing: 'se' | 'ne', scarf = false): Voxel[] {
   const trousers = mixPalette('structureMid', 'ink', 0.15);
   const jacket = mixPalette('groundAccent', 'warmGlow', 0.35);
   const jacketDark = mixPalette('groundAccent', 'structureMid', 0.35);
@@ -139,6 +139,11 @@ function sparkModel(facing: 'se' | 'ne'): Voxel[] {
   // Arms.
   v.push(...box(-1, 0, 5, 1, 1, 4, jacketDark));
   v.push(...box(3, 1, 5, 1, 1, 4, jacketDark));
+  if (scarf) {
+    // The Dispatch Scarf: a rose wrap at the neck with a trailing tail.
+    v.push(...box(0, 0, 8, 3, 2, 1, PALETTE_INT.neonRose));
+    v.push({ x: facing === 'se' ? 0 : 2, y: 1, z: 7, c: mixPalette('neonRose', 'ink', 0.25) });
+  }
   // Head: jaw (skin), goggle band, hair — slightly big on purpose.
   v.push(...box(0, 0, 9, 3, 2, 2, skin));
   v.push(...box(0, 0, 11, 3, 2, 1, band));
@@ -164,4 +169,14 @@ export function bakeCoreVoxelModels(scene: Phaser.Scene): void {
   }
   bakeVoxelModel(scene, { name: 'spark-se', voxels: sparkModel('se'), warmRim: true });
   bakeVoxelModel(scene, { name: 'spark-ne', voxels: sparkModel('ne'), warmRim: true });
+  bakeVoxelModel(scene, {
+    name: 'spark-se-starterScarf',
+    voxels: sparkModel('se', true),
+    warmRim: true,
+  });
+  bakeVoxelModel(scene, {
+    name: 'spark-ne-starterScarf',
+    voxels: sparkModel('ne', true),
+    warmRim: true,
+  });
 }

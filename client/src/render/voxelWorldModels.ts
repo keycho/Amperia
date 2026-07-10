@@ -300,6 +300,41 @@ function merchantModel(): Voxel[] {
   return v;
 }
 
+// ── The Dispatcher (quest-giver by the Tramgate; amber glow) ──────────────
+
+function dispatcherModel(): Voxel[] {
+  const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const hair = mixPalette('structureMid', 'ink', 0.45);
+  const v: Voxel[] = [];
+  // Lectern with a job board.
+  v.push(...mbox(0, 5, 0, 6, 2, 6, MATERIALS.wood));
+  v.push(...box(1, 6, 6, 4, 1, 3, mixPalette('ink', 'structureMid', 0.25)));
+  v.push({ x: 2, y: 6, z: 8, c: PALETTE_INT.neonAmber });
+  v.push({ x: 4, y: 6, z: 7, c: PALETTE_INT.neonAmber });
+  // The Dispatcher: teal-coated figure with a cap.
+  v.push(...mbox(2, 1, 0, 3, 2, 4, MATERIALS.paintTeal));
+  v.push(...box(2, 1, 4, 3, 2, 2, skin));
+  v.push(...box(2, 1, 6, 3, 2, 1, hair));
+  return v;
+}
+
+// ── The Charge Warden (donation stub at the Dynamo; future Citywide Charge)
+
+function wardenModel(): Voxel[] {
+  const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const v: Voxel[] = [];
+  // Collection kiosk with a charge gauge.
+  v.push(...mbox(0, 4, 0, 6, 3, 5, MATERIALS.gunmetal));
+  v.push(...box(1, 4, 5, 1, 1, 2, PALETTE_INT.neonTeal)); // gauge stub
+  v.push({ x: 4, y: 4, z: 5, c: PALETTE_INT.neonAmber });
+  // The Warden: ochre-robed figure with a teal-tipped staff.
+  v.push(...mbox(2, 0, 0, 3, 2, 4, MATERIALS.paintOchre));
+  v.push(...box(2, 0, 4, 3, 2, 2, skin));
+  v.push(...mbox(6, 1, 0, 1, 1, 8, MATERIALS.wood));
+  v.push({ x: 6, y: 1, z: 8, c: PALETTE_INT.neonTeal });
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -397,4 +432,6 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'ropepost', voxels: ropepostModel() });
   bakeVoxelModel(scene, { name: 'merchant', voxels: merchantModel() });
   bakeVoxelModel(scene, { name: 'tinkerbench', voxels: tinkerbenchModel() });
+  bakeVoxelModel(scene, { name: 'dispatcher', voxels: dispatcherModel() });
+  bakeVoxelModel(scene, { name: 'warden', voxels: wardenModel() });
 }

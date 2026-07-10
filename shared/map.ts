@@ -19,7 +19,9 @@ export type PropKind =
   | 'shack'
   | 'tramgate'
   | 'alleylamp'
-  | 'ropepost';
+  | 'ropepost'
+  | 'dispatcher'
+  | 'warden';
 
 export interface Prop {
   kind: PropKind;
@@ -202,6 +204,19 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     props.push(stall);
     blockFootprint(walkable, stall);
   }
+  // The Dispatcher: quest-giver by the Tramgate arrivals.
+  {
+    const d: Prop = { kind: 'dispatcher', x: 34, y: 23, w: 1, h: 1, variant: 0 };
+    props.push(d);
+    blockFootprint(walkable, d);
+  }
+  // The Charge Warden: donation stub at the Dynamo (future Citywide Charge).
+  {
+    const wdn: Prop = { kind: 'warden', x: 23, y: 20, w: 1, h: 1, variant: 0 };
+    props.push(wdn);
+    blockFootprint(walkable, wdn);
+  }
+
   // The Tinkerbench: crafting + repairs, on the plaza's north-west side.
   {
     const bench: Prop = { kind: 'tinkerbench', x: 15, y: 14, w: 1, h: 1, variant: 0 };

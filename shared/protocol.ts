@@ -20,6 +20,9 @@ export const MSG = {
   useItem: 'useItem',
   craft: 'craft',
   repair: 'repair',
+  quest: 'quest',
+  quests: 'quests',
+  donate: 'donate',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -183,6 +186,23 @@ export interface RepairIntent {
   slot: number;
 }
 
+/** Player → server: accept or turn in a quest at the Dispatcher. */
+export interface QuestIntent {
+  action: 'accept' | 'turnIn';
+  id: string;
+}
+
+/** Player → server: donate to the Charge Warden (future Citywide Charge). */
+export interface DonateIntent {
+  itemId: string;
+  qty: number;
+}
+
+/** Server → player: the full personal quest log. */
+export interface QuestsSync {
+  log: Record<string, { state: string; progress: number; day?: string }>;
+}
+
 export interface SkillsSync {
   xp: Record<string, number>;
 }
@@ -254,6 +274,8 @@ export interface PlayerStateShape {
   gathering: boolean;
   hp: number;
   maxHp: number;
+  /** Worn cosmetic id ('' = none) — quest rewards, never gameplay. */
+  cosmetic: string;
 }
 
 export interface NodeStateShape {

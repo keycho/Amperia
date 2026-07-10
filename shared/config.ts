@@ -227,6 +227,83 @@ export const CONFIG = {
   },
 
   /**
+   * Quests (server-tracked; copy follows the comms rules — quests REWARD,
+   * never "earn"). The tutorial chain teaches the whole core loop; dailies
+   * repeat under a per-day cap.
+   */
+  quests: {
+    /** Max daily-quest turn-ins per UTC day. */
+    dailyTurnInCap: 2,
+    defs: [
+      {
+        id: 'tut1',
+        name: 'First Salvage',
+        copy: 'Gather 10 Salvage from the alley heaps.',
+        step: { type: 'gather', itemId: 'salvage', qty: 10 },
+        rewards: { bolts: 25 },
+        prereq: null,
+        repeatable: null,
+      },
+      {
+        id: 'tut2',
+        name: 'Market Hands',
+        copy: 'Sell 10 resources at the Nightstalls stand.',
+        step: { type: 'sellNpc', itemId: null, qty: 10 },
+        rewards: { bolts: 30 },
+        prereq: 'tut1',
+        repeatable: null,
+      },
+      {
+        id: 'tut3',
+        name: 'Bench Work',
+        copy: 'Craft a piece of gear at the Tinkerbench.',
+        step: { type: 'craft', itemId: null, qty: 1 },
+        rewards: { bolts: 40 },
+        prereq: 'tut2',
+        repeatable: null,
+      },
+      {
+        id: 'tut4',
+        name: 'Wide Hands',
+        copy: 'Gather with two skills beyond Scavving.',
+        step: { type: 'gatherSkills', itemId: null, qty: 2 },
+        rewards: { bolts: 50 },
+        prereq: 'tut3',
+        repeatable: null,
+      },
+      {
+        id: 'tut5',
+        name: 'A Spark for the City',
+        copy: 'Donate 5 Amperite to the Charge Warden at the Dynamo.',
+        step: { type: 'donate', itemId: 'amperite', qty: 5 },
+        rewards: { bolts: 80, cosmetic: 'starterScarf' },
+        prereq: 'tut4',
+        repeatable: null,
+      },
+      {
+        id: 'daily1',
+        name: 'Stand Supply',
+        copy: 'Gather 30 Salvage for the stand.',
+        step: { type: 'gather', itemId: 'salvage', qty: 30 },
+        rewards: { bolts: 40 },
+        prereq: null,
+        repeatable: 'daily',
+      },
+      {
+        id: 'daily2',
+        name: 'Koi for the Kitchens',
+        copy: 'Land 5 Glowkoi from the canal.',
+        step: { type: 'gather', itemId: 'glowkoi', qty: 5 },
+        rewards: { bolts: 50 },
+        prereq: null,
+        repeatable: 'daily',
+      },
+    ],
+    /** Server-checked NPC reach (chebyshev tiles). */
+    npcRadiusTiles: 3,
+  },
+
+  /**
    * Gear tiers + durability (Game Bible: Tinker → Brassbound → Coilworked
    * for now). Tiers buy config multipliers only — never new drop tables.
    * Broken gear is unusable, never lost.

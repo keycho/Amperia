@@ -36,6 +36,14 @@ import {
 } from '@shared/mastery';
 import { chebyshev, nextMobState, type MobAiState } from '@shared/mobs';
 import { advanceMovement, makeMoveState, setPath, type MoveState } from '@shared/movement';
+import {
+  applyProgress,
+  canAccept,
+  dailyTurnInsToday,
+  isComplete,
+  questById,
+  type QuestLog,
+} from '@shared/quests';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
 import {
   CHAT_LIMITS,
@@ -52,6 +60,8 @@ import {
   type NodeEventPayload,
   type SelectSlotIntent,
   type CraftIntent,
+  type DonateIntent,
+  type QuestIntent,
   type RepairIntent,
   type TradeIntent,
   type UseItemIntent,
@@ -126,7 +136,7 @@ interface PlayerRuntime {
   bolts: number;
   dailySaleBolts: number;
   dailySaleDate: string;
-  quests: Record<string, unknown>;
+  quests: QuestLog;
   cosmetics: string[];
   hp: number;
   /** Fractional regen accumulator (hp stays an int on the wire). */
@@ -208,6 +218,8 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
+    this.onMessage<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
+    this.onMessage<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
     void merchant.load();
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
@@ -243,7 +255,7 @@ export class FilamentRoom extends Room<FilamentState> {
       bolts: character.bolts,
       dailySaleBolts: character.dailySaleBolts,
       dailySaleDate: character.dailySaleDate,
-      quests: character.quests,
+      quests: character.quests as QuestLog,
       cosmetics: character.cosmetics,
       hp: CONFIG.combat.player.maxHp,
       healAcc: 0,
@@ -261,11 +273,13 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.tileY = spawn.y;
     ps.hp = runtime.hp;
     ps.maxHp = CONFIG.combat.player.maxHp;
+    ps.cosmetic = runtime.cosmetics.includes('starterScarf') ? 'starterScarf' : '';
     this.state.players.set(client.sessionId, ps);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
     client.send(MSG.prices, { buy: merchant.prices(Date.now()) });
+    client.send(MSG.quests, { log: runtime.quests });
     this.broadcast(
       MSG.notice,
       { text: `${character.sparkName} stepped off the tram.` },
@@ -788,6 +802,7 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       this.broadcast(MSG.prices, { buy: merchant.prices(now) });
       client.send(MSG.notice, { text: `Sold ${qty} ${resource} for ${paid} Bolts.` });
+      this.questProgress(client, rt, { type: 'sellNpc', qty });
       return;
     }
 
@@ -937,6 +952,7 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.inventory, this.inventorySync(rt));
     client.send(MSG.notice, { text: `Crafted: ${ITEMS[recipe.output as ItemId].name}.` });
+    this.questProgress(client, rt, { type: 'craft' });
   }
 
   /** Tinkerbench repair: Bolts + a material fraction restore durability. */
@@ -985,6 +1001,107 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.inventory, this.inventorySync(rt));
     client.send(MSG.notice, { text: `${def.name} mended.` });
+  }
+
+  private questProgress(
+    client: Client,
+    rt: PlayerRuntime,
+    event: Parameters<typeof applyProgress>[1],
+  ): void {
+    if (applyProgress(rt.quests, event)) {
+      client.send(MSG.quests, { log: rt.quests });
+    }
+  }
+
+  private nearProp(rt: PlayerRuntime, kind: string, radius: number): boolean {
+    const prop = this.map.props.find((p) => p.kind === kind);
+    if (prop === undefined) return false;
+    return chebyshev(rt.move.tile, { x: prop.x, y: prop.y }) <= radius;
+  }
+
+  /** Dispatcher quests: accept + turn in (rewards are Bolts ± a cosmetic). */
+  private handleQuest(client: Client, msg: QuestIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || typeof msg.id !== 'string') return;
+    if (!this.nearProp(rt, 'dispatcher', CONFIG.quests.npcRadiusTiles)) {
+      client.send(MSG.notice, { text: 'The Dispatcher waits by the Tramgate.' });
+      return;
+    }
+    const def = questById(msg.id);
+    if (def === undefined) return;
+    const now = Date.now();
+
+    if (msg.action === 'accept') {
+      if (!canAccept(rt.quests, def, now)) return;
+      rt.quests[def.id] = { state: 'active', progress: 0 };
+      client.send(MSG.quests, { log: rt.quests });
+      client.send(MSG.notice, { text: `Quest accepted: ${def.name}.` });
+      return;
+    }
+
+    if (msg.action === 'turnIn') {
+      const st = rt.quests[def.id];
+      if (!isComplete(def, st)) {
+        client.send(MSG.notice, { text: 'Not finished yet.' });
+        return;
+      }
+      if (
+        def.repeatable === 'daily' &&
+        dailyTurnInsToday(rt.quests, now) >= CONFIG.quests.dailyTurnInCap
+      ) {
+        client.send(MSG.notice, { text: 'The Dispatcher is out of daily work — tomorrow.' });
+        return;
+      }
+      rt.quests[def.id] = {
+        state: 'turnedIn',
+        progress: def.step.qty,
+        day: new Date(now).toISOString().slice(0, 10),
+      };
+      rt.bolts += def.rewards.bolts;
+      ledger.log({
+        type: 'quest',
+        account: rt.accountId,
+        data: { questId: def.id, bolts: def.rewards.bolts, cosmetic: def.rewards.cosmetic ?? null },
+      });
+      if (def.rewards.cosmetic !== undefined && !rt.cosmetics.includes(def.rewards.cosmetic)) {
+        rt.cosmetics.push(def.rewards.cosmetic);
+        const ps = this.state.players.get(client.sessionId);
+        if (ps !== undefined) ps.cosmetic = def.rewards.cosmetic;
+        client.send(MSG.notice, { text: 'The Dispatch Scarf settles around your neck.' });
+      }
+      client.send(MSG.quests, { log: rt.quests });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, {
+        text: `Quest complete: ${def.name} — reward ${def.rewards.bolts} Bolts.`,
+      });
+      return;
+    }
+  }
+
+  /** Donations at the Charge Warden (stub for the future Citywide Charge). */
+  private handleDonate(client: Client, msg: DonateIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || typeof msg.itemId !== 'string') return;
+    const qty = Math.floor(Number(msg.qty));
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    if (!this.nearProp(rt, 'warden', CONFIG.quests.npcRadiusTiles)) {
+      client.send(MSG.notice, { text: 'The Charge Warden stands by the Dynamo.' });
+      return;
+    }
+    const r = removeItem(rt.pack, msg.itemId as ItemId, qty);
+    if (r.removed < qty) {
+      client.send(MSG.notice, { text: 'Not enough of that in your Pack.' });
+      return;
+    }
+    rt.pack = r.inv;
+    ledger.log({
+      type: 'quest',
+      account: rt.accountId,
+      data: { sink: 'donation', itemId: msg.itemId, qty },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, { text: `The Warden logs your ${qty} ${msg.itemId} for the city.` });
+    this.questProgress(client, rt, { type: 'donate', itemId: msg.itemId, qty });
   }
 
   // ── mobs ────────────────────────────────────────────────────────────────
@@ -1555,6 +1672,14 @@ export class FilamentRoom extends Room<FilamentState> {
       }
     }
     this.wearActiveTool(client, rt);
+    if (added > 0) {
+      this.questProgress(client, rt, {
+        type: 'gather',
+        itemId,
+        qty: added,
+        skill: SKILL_BY_NODE[(ledgerData.kind ?? 'junkHeap') as keyof typeof SKILL_BY_NODE],
+      });
+    }
     // Every faucet writes to the economy ledger (golden rule 9 habit).
     ledger.log({
       type: 'gather',

@@ -26,6 +26,8 @@ export class Spark {
   private bubbleHeight = 0;
   /** Fired when a walk step lands on its tile (own Spark: footsteps). */
   onStep: (() => void) | null = null;
+  private cosmetic = '';
+  private lastFace: [number, number] = [1, 0];
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -61,10 +63,19 @@ export class Spark {
     else if (dy > 0) [name, flip] = ['spark-se', true];
     else if (dy < 0) [name, flip] = ['spark-ne', false];
     if (name === null) return;
-    const baked = voxelSprite(name);
+    this.lastFace = [dx, dy];
+    const suffix = this.cosmetic !== '' ? `-${this.cosmetic}` : '';
+    const baked = voxelSprite(`${name}${suffix}`);
     this.image.setTexture(baked.key);
     this.image.setOrigin(baked.originX, baked.originY);
     this.image.setFlipX(flip);
+  }
+
+  /** Worn cosmetic (quest rewards — presentation only, never gameplay). */
+  setCosmetic(id: string): void {
+    if (id === this.cosmetic) return;
+    this.cosmetic = id;
+    this.face(this.lastFace[0], this.lastFace[1]);
   }
 
   setNameLabel(name: string): void {

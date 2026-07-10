@@ -21,6 +21,7 @@ import type {
   LootEvent,
   MoveAcceptedEvent,
   PricesSync,
+  QuestsSync,
   NodeStateShape,
   PlayerStateShape,
 } from '@shared/protocol';
@@ -229,6 +230,8 @@ export class WorldScene extends Phaser.Scene {
       }
       // Drift correction: if the server's committed tile diverges while the
       // client isn't animating a path, snap to truth.
+      proxy(p).listen('cosmetic', (v: string) => spark.setCosmetic(v));
+      spark.setCosmetic(p.cosmetic);
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
         if (s === undefined || s.isMoving) return;
@@ -354,6 +357,9 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
+    );
+    room.onMessage(MSG.quests, (sync: QuestsSync) =>
+      session.events.emit(SessionEvents.quests, sync),
     );
     room.onMessage(MSG.skills, (sync: SkillsSync) => gameState.applySkills(sync));
     room.onMessage(MSG.xpGain, (e: XpGainEvent) => {
@@ -1231,6 +1237,88 @@ export class WorldScene extends Phaser.Scene {
           addFlicker(this, screen, bloom(0.7), 0.07);
           const pool2 = this.addGroundPool(x, y - 2, PALETTE_INT.neonTeal, 0.3);
           pool2.setAlpha(0.16);
+          break;
+        }
+        case 'dispatcher': {
+          const img = addVoxelSprite(this, 'dispatcher', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > CONFIG.quests.npcRadiusTiles) {
+                floatText(this, img.x, img.y - 50, 'step up to the board', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              session.events.emit(SessionEvents.openQuests);
+            },
+          );
+          const glow = this.add.image(x - 8, y - 30, 'fx-glow');
+          glow.setTint(PALETTE_INT.neonAmber);
+          glow.setBlendMode(Phaser.BlendModes.ADD);
+          glow.setScale(0.1);
+          glow.setAlpha(bloom(0.7));
+          glow.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, glow, bloom(0.7), 0.08);
+          this.addGroundPool(x, y - 2, PALETTE_INT.neonAmber, 0.34);
+          break;
+        }
+        case 'warden': {
+          const img = addVoxelSprite(this, 'warden', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > CONFIG.quests.npcRadiusTiles) {
+                floatText(this, img.x, img.y - 50, 'the Warden is by the Dynamo', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              // Donate what the tutorial asks for (stub Citywide Charge).
+              send.donate(this.room, { itemId: 'amperite', qty: 5 });
+            },
+          );
+          const glow = this.add.image(x + 12, y - 34, 'fx-glow');
+          glow.setTint(PALETTE_INT.neonTeal);
+          glow.setBlendMode(Phaser.BlendModes.ADD);
+          glow.setScale(0.08);
+          glow.setAlpha(bloom(0.6));
+          glow.setDepth(depthForWorldY(y) + 1);
+          this.addGroundPool(x, y - 2, PALETTE_INT.neonTeal, 0.28);
           break;
         }
         case 'alleylamp': {

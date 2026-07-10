@@ -15,6 +15,7 @@ export class PlayerState extends Schema {
   gathering = false;
   hp = 0;
   maxHp = 0;
+  cosmetic = '';
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
@@ -23,6 +24,7 @@ defineTypes(PlayerState, {
   gathering: 'boolean',
   hp: 'int16',
   maxHp: 'int16',
+  cosmetic: 'string',
 });
 
 export class MobState extends Schema {
