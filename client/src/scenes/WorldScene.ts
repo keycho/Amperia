@@ -1981,6 +1981,14 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+        // V5: rim rails on the overlook (and anywhere a drop needs one).
+        case 'guardrail': {
+          const img = addVoxelSprite(this, `guardrail-${p.variant % 2}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
         // V2 round-ish — the water tank's level-marker lamp.
         case 'watertank': {
           const img = addVoxelSprite(this, 'watertank', x, y);
@@ -2439,6 +2447,20 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
       }
+    }
+
+    // V5: rail the footbridge decks — one rail on each canal-facing edge.
+    for (const fb of this.map.footbridges) {
+      const { x, y } = tileToWorld(fb.x, fb.y);
+      const anchorY = y + TILE_H / 2;
+      const north = addVoxelSprite(this, 'guardrail-0', x + 16, anchorY - 8);
+      const south = addVoxelSprite(this, 'guardrail-0', x - 16, anchorY + 8);
+      const wt = worldSpriteTint();
+      for (const rail of [north, south]) {
+        if (wt !== null) rail.setTint(wt);
+      }
+      north.setDepth(depthForWorldY(anchorY - 8));
+      south.setDepth(depthForWorldY(anchorY + 8));
     }
   }
 

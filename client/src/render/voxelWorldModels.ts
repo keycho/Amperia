@@ -1529,6 +1529,29 @@ function spillModel(): Voxel[] {
   return v;
 }
 
+/**
+ * V5: a low guard rail for drops — rusted double bar on gunmetal posts,
+ * one tile long. Variant 0 runs along x, 1 along y (transposed).
+ */
+function guardrailModel(alongY: boolean): Voxel[] {
+  const v: Voxel[] = [];
+  const put = (x: number, y: number, z: number, mat: (typeof MATERIALS)['rust']) => {
+    v.push(
+      alongY
+        ? { x: y, y: x, z, c: mat.base, mat }
+        : { x, y, z, c: mat.base, mat },
+    );
+  };
+  for (const px of [0, 7]) {
+    for (let z = 0; z < 5; z++) put(px, 3, z, MATERIALS.gunmetalDeep);
+  }
+  for (let x = 0; x < 8; x++) {
+    put(x, 3, 4, MATERIALS.rust); // top bar
+    if (x % 2 === 0) put(x, 3, 2, MATERIALS.rustDeep); // mid bar, gappy
+  }
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -1606,6 +1629,8 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'fountain', voxels: fountainModel() });
   bakeVoxelModel(scene, { name: 'draymule', voxels: draymuleModel() });
   bakeVoxelModel(scene, { name: 'spill', voxels: spillModel() });
+  bakeVoxelModel(scene, { name: 'guardrail-0', voxels: guardrailModel(false) });
+  bakeVoxelModel(scene, { name: 'guardrail-1', voxels: guardrailModel(true) });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

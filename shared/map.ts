@@ -63,7 +63,9 @@ export type PropKind =
   | 'fountain'
   /** V4 — Tangle: a Draymule up on blocks (2×2), a container spill (3×2). */
   | 'draymule'
-  | 'spill';
+  | 'spill'
+  /** V5 — a low rail guarding a drop (variant 0 = along x, 1 = along y). */
+  | 'guardrail';
 
 export interface Prop {
   kind: PropKind;
@@ -111,6 +113,8 @@ export interface WorldMap {
   catwalks: TilePoint[];
   /** The Ledgerhouse hall (S5): bank actions are valid ONLY on these tiles. */
   bankInterior: TilePoint[];
+  /** V5: raised footbridge deck tiles (the client rails their edges). */
+  footbridges: TilePoint[];
   /**
    * Rentable player shop stalls (the Nightstalls come alive — E2), in a
    * FIXED deterministic order: the stall id is the index here, and the
@@ -239,6 +243,9 @@ function stealsNodeAccess(walkable: boolean[][], nodes: GatherNode[], prop: Prop
   }
   return false;
 }
+
+/** V5: the canal row carrying the raised footbridge (kept koi-free). */
+const FOOTBRIDGE_ROW = 10;
 
 /** Every tile of the prop's footprint is currently walkable. */
 function footprintWalkable(walkable: boolean[][], p: Prop): boolean {
@@ -625,6 +632,7 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
       tries++;
       const y = randInt(rng, cv.yMin + 1, cv.yMax - 1);
       if ((cv.bridgeRows as readonly number[]).includes(y)) continue;
+      if (y === FOOTBRIDGE_ROW) continue; // V5: the raised crossing's row
       if (koiRows.some((r) => Math.abs(r - y) < 4)) continue;
       koiRows.push(y);
     }
@@ -698,6 +706,43 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   for (const ty of [19, 20, 21]) {
     (elevation[ty] as number[])[35] = 1;
     (ramp[ty] as boolean[])[35] = true;
+  }
+
+  // ── V5: elevation in USE, not just under the plaza ─────────────────────
+  // The canal footbridge: a raised crossing at y10 — the flat cart decks
+  // at y19-20 stay; this one arches over the coolant for the north side.
+  const footbridges: TilePoint[] = [];
+  for (const bx of [cv.xMin, cv.xMax]) {
+    (walkable[FOOTBRIDGE_ROW] as boolean[])[bx] = true;
+    (canal[FOOTBRIDGE_ROW] as boolean[])[bx] = false;
+    (elevation[FOOTBRIDGE_ROW] as number[])[bx] = 1;
+    footbridges.push({ x: bx, y: FOOTBRIDGE_ROW });
+  }
+  for (const ax of [cv.xMin - 1, cv.xMax + 1]) {
+    if (walkable[FOOTBRIDGE_ROW]?.[ax] === true) (ramp[FOOTBRIDGE_ROW] as boolean[])[ax] = true;
+  }
+  // The north walkway: a raised strip east of the dock with stairs at both
+  // ends — a passing lane that looks DOWN on the alleys it crosses. The
+  // clutter and nodes landed first, so the row is CHOSEN, not assumed:
+  // longest clean run in the north band (deterministic per seed).
+  {
+    let best: { y: number; x0: number; x1: number } | null = null;
+    for (let wy = 6; wy <= 9; wy++) {
+      let run = 0;
+      for (let wx = 16; wx <= 33; wx++) {
+        const clear =
+          walkable[wy]?.[wx] === true && elevation[wy]?.[wx] === 0 && ramp[wy]?.[wx] !== true;
+        run = clear ? run + 1 : 0;
+        if (run >= 3 && (best === null || run > best.x1 - best.x0 + 1)) {
+          best = { y: wy, x0: wx - run + 1, x1: wx };
+        }
+      }
+    }
+    if (best !== null && best.x1 - best.x0 >= 7) {
+      for (let wx = best.x0; wx <= best.x1; wx++) (elevation[best.y] as number[])[wx] = 1;
+      (ramp[best.y] as boolean[])[best.x0] = true;
+      (ramp[best.y] as boolean[])[best.x1] = true;
+    }
   }
 
   // ── I6 vignettes: little scenes that make corners worth walking to ────
@@ -781,7 +826,7 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { x: 20, y: 27 },
     { x: 27, y: 20 },
   ];
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior };
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior, footbridges };
 }
 
 /**
@@ -1003,6 +1048,12 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     // crane yard, and the spilled container run in the south corridor.
     { kind: 'draymule', x: 23, y: 13, w: 2, h: 2, variant: 0 },
     { kind: 'spill', x: 19, y: 24, w: 3, h: 2, variant: 0 },
+    // V5: the SW terrace becomes the OVERLOOK — a stash worth the climb
+    // and a lamp to find it by (rails go on the rim separately below).
+    { kind: 'cablespool', x: 5, y: 33, w: 1, h: 1, variant: 0 },
+    { kind: 'tarp', x: 7, y: 34, w: 1, h: 1, variant: 1 },
+    { kind: 'barrels', x: 4, y: 34, w: 1, h: 1, variant: 1 },
+    { kind: 'alleylamp', x: 8, y: 33, w: 1, h: 1, variant: 0 },
   ];
   for (const prop of decor) {
     if (!footprintWalkable(walkable, prop)) continue;
@@ -1017,6 +1068,23 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     if (wouldSealPocketRect(walkable, prop.x, prop.y, prop.w, prop.h, size)) continue;
     props.push(prop);
     blockFootprint(walkable, prop);
+  }
+
+  // V5: overlook rails along the SW terrace rim. These deliberately skip
+  // the nearRamp guard — a rail belongs beside a stair head; the stair
+  // tiles themselves stay open (never placed ON a ramp).
+  const railSpots: Array<[number, number, number]> = [
+    [4, 30, 0], [5, 30, 0], [7, 30, 0], [8, 30, 0], // north rim (gap = stair)
+    [9, 31, 1], [9, 33, 1], [9, 34, 1], // east rim (gap = stair)
+  ];
+  for (const [rx, ry, rv] of railSpots) {
+    if (onRamp(rx, ry)) continue;
+    const rail: Prop = { kind: 'guardrail', x: rx, y: ry, w: 1, h: 1, variant: rv };
+    if (!footprintWalkable(walkable, rail)) continue;
+    if (stealsNodeAccess(walkable, nodes, rail)) continue;
+    if (wouldSealPocketRect(walkable, rail.x, rail.y, 1, 1, size)) continue;
+    props.push(rail);
+    blockFootprint(walkable, rail);
   }
 
   // ── rust-family clutter, clustered against the walls (no confetti) ─────
@@ -1053,7 +1121,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
 
   // One pool at the gate — arrivals get their entrance moment even here.
   const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [] };
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [] };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {

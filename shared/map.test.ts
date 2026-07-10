@@ -26,6 +26,15 @@ describe('buildTangleMap', () => {
     for (const row of tangle.walkable) for (const w of row) if (w) walkableCount++;
     expect(reached.size).toBe(walkableCount);
   });
+
+  it('V5: the overlook terrace is dressed and its rim railed', () => {
+    const rails = tangle.props.filter((p) => p.kind === 'guardrail');
+    expect(rails.length).toBeGreaterThanOrEqual(4);
+    for (const r of rails) {
+      expect(tangle.elevation[r.y]?.[r.x]).toBe(1); // rails live on the rim
+      expect(tangle.ramp[r.y]?.[r.x]).toBe(false); // never on a stair
+    }
+  });
 });
 
 describe('buildWorldMap', () => {
@@ -42,6 +51,26 @@ describe('buildWorldMap', () => {
     expect(map.size).toBe(CONFIG.map.size);
     expect(map.walkable.length).toBe(map.size);
     expect(map.walkable.every((row) => row.length === map.size)).toBe(true);
+  });
+
+  it('V5: the footbridge crosses the canal raised, both approaches ramped', () => {
+    expect(map.footbridges.length).toBe(2);
+    for (const fb of map.footbridges) {
+      expect(map.walkable[fb.y]?.[fb.x]).toBe(true);
+      expect(map.canal[fb.y]?.[fb.x]).toBe(false);
+      expect(map.elevation[fb.y]?.[fb.x]).toBe(1);
+    }
+    const y = map.footbridges[0]?.y as number;
+    const xs = map.footbridges.map((f) => f.x);
+    const west = Math.min(...xs) - 1;
+    const east = Math.max(...xs) + 1;
+    expect(map.ramp[y]?.[west] === true || map.ramp[y]?.[east] === true).toBe(true);
+  });
+
+  it('V5: no glowkoi spot shares the footbridge row', () => {
+    for (const n of map.nodes) {
+      if (n.kind === 'glowkoi') expect(n.y).not.toBe(map.footbridges[0]?.y);
+    }
   });
 
   it('blocks every prop footprint (the Ledgerhouse hall stays walkable)', () => {
