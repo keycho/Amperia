@@ -20,5 +20,8 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1"
   }
 }

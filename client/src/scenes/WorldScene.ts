@@ -102,6 +102,7 @@ import {
 } from '../render/atmosphere';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
+import { OcclusionFade, type OcclusionTarget } from '../systems/OcclusionFade';
 import { gameState } from '../state/GameState';
 
 
@@ -121,6 +122,8 @@ export class WorldScene extends Phaser.Scene {
   /** Last-inspected Spark: their nameplate never fades (S0). */
   private inspectTarget: string | null = null;
   private nameFadeAcc = 0;
+  /** T0: tall structures fade when they hide the Spark (§5 amendment). */
+  private readonly occlusion = new OcclusionFade();
   /** The Fortune Coil's live face + spin state (S4). */
   private coilWheel: Phaser.GameObjects.Image | null = null;
   private coilSpinning = false;
@@ -387,6 +390,26 @@ export class WorldScene extends Phaser.Scene {
     this.gatherView.update();
     this.tuner.update();
     syncVoxelShadows(this);
+    // T0 occlusion fade: towers clear the view to your Spark + hover.
+    {
+      const targets: OcclusionTarget[] = [];
+      const meSpark = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+      if (meSpark !== undefined) {
+        targets.push({
+          x: meSpark.image.x,
+          y: meSpark.image.y - 14,
+          depth: meSpark.image.depth,
+        });
+      }
+      if (this.hoverMarker !== undefined && this.hoverMarker.visible) {
+        targets.push({
+          x: this.hoverMarker.x,
+          y: this.hoverMarker.y,
+          depth: depthForWorldY(this.hoverMarker.y),
+        });
+      }
+      this.occlusion.update(deltaMs, targets);
+    }
     // Nameplate proximity fade (S0), throttled to ~6Hz.
     this.nameFadeAcc += deltaMs;
     if (this.nameFadeAcc >= 160) {
@@ -1659,10 +1682,7 @@ export class WorldScene extends Phaser.Scene {
       switch (p.kind) {
         case 'dynamo': {
           this.dynamoWorld = { x, y: y - 90 };
-          const img = addVoxelSprite(this, 'dynamo', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('dynamo', x, y);
           // Crown halo — the biggest, SOFTEST instance of the glow language
           // (addendum b): hot core + hue bloom + wide skirt, all amber.
           // Biggest and SOFTEST: wide skirt, restrained core — the coil
@@ -1771,10 +1791,7 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'stall': {
           if (this.stallsWorld.x === 0) this.stallsWorld = { x, y };
-          const img = addVoxelSprite(this, `stall-${p.variant % 4}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite(`stall-${p.variant % 4}`, x, y);
           // Every lane stall is a rentable player pitch: click to browse
           // (the server answers with the stall's detail panel).
           const stallId = stallSeq++;
@@ -1838,10 +1855,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'crate': {
-          const img = addVoxelSprite(this, `crate-${looks.pick('crate', p.x, p.y, 4)}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`crate-${looks.pick('crate', p.x, p.y, 4)}`, x, y);
           break;
         }
         // I6 vignette props: variants pick the sub-style bake.
@@ -1851,46 +1865,31 @@ export class WorldScene extends Phaser.Scene {
         case 'gascans':
         case 'tarp':
         case 'scrapbin': {
-          const img = addVoxelSprite(this, `${p.kind}-${p.variant % 2}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`${p.kind}-${p.variant % 2}`, x, y);
           break;
         }
         // V2 shape vocabulary — fabric / organic families (picker-pooled).
         case 'canopy':
         case 'banner':
         case 'wildbush': {
-          const img = addVoxelSprite(this, `${p.kind}-${looks.pick(p.kind, p.x, p.y, 3)}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`${p.kind}-${looks.pick(p.kind, p.x, p.y, 3)}`, x, y);
           break;
         }
         case 'laundry':
         case 'vinewall': {
-          const img = addVoxelSprite(this, `${p.kind}-${p.variant % 2}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`${p.kind}-${p.variant % 2}`, x, y);
           break;
         }
         // V2 tall/thin — the signpost's junction lamp gets its glow.
         case 'signpost': {
-          const img = addVoxelSprite(this, `signpost-${p.variant % 2}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`signpost-${p.variant % 2}`, x, y);
           const lamp = addLayeredGlow(this, x, y - 86, PALETTE_INT.neonAmber, 0.3, depthForWorldY(y) + 1, 0.35);
           addFlicker(this, lamp.core, 0.55, 0.18);
           break;
         }
         // V2 tall/thin — the stovepipe breathes (steam is life, §12A).
         case 'stovepipe': {
-          const img = addVoxelSprite(this, `stovepipe-${p.variant % 2}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`stovepipe-${p.variant % 2}`, x, y);
           addSteamVent(this, x + 2, y - (p.variant % 2 === 0 ? 76 : 64), depthForWorldY(y) + 2, {
             periodMs: 1700,
             drift: 10,
@@ -1907,10 +1906,7 @@ export class WorldScene extends Phaser.Scene {
         }
         // V4 unique set pieces — each dressed with its own light and life.
         case 'griddle': {
-          const img = addVoxelSprite(this, 'griddle', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('griddle', x, y);
           // The pot steams; the lantern bar spills warmth over the stools.
           addSteamVent(this, x + 22, y - 34, depthForWorldY(y) + 2, { periodMs: 1100, drift: 12 });
           const lantern = addLayeredGlow(this, x - 4, y - 46, PALETTE_INT.warmGlow, 0.5, depthForWorldY(y) + 1, 0.4);
@@ -1926,10 +1922,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'tramcar': {
-          const img = addVoxelSprite(this, 'tramcar', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('tramcar', x, y);
           // One squatter-lit window + the route chip's last cyan breath.
           const win = this.add.image(x + 4, y - 34, 'fx-glow');
           win.setTint(PALETTE_INT.warmGlow);
@@ -1948,10 +1941,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'fountain': {
-          const img = addVoxelSprite(this, 'fountain', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('fountain', x, y);
           // Coolant sheen: a soft teal breath over the pool.
           const sheen = addLayeredGlow(this, x, y - 20, PALETTE_INT.neonTeal, 0.42, depthForWorldY(y) + 1, 0.3);
           this.tweens.add({
@@ -1966,10 +1956,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'draymule': {
-          const img = addVoxelSprite(this, 'draymule', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('draymule', x, y);
           // The rigged work light burns amber over the open panel.
           const work = addLayeredGlow(this, x + 30, y - 40, PALETTE_INT.neonAmber, 0.4, depthForWorldY(y) + 1, 0.4);
           addFlicker(this, work.core, 0.6, 0.14);
@@ -1977,35 +1964,23 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'spill': {
-          const img = addVoxelSprite(this, 'spill', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('spill', x, y);
           break;
         }
         // V5: rim rails on the overlook (and anywhere a drop needs one).
         case 'guardrail': {
-          const img = addVoxelSprite(this, `guardrail-${p.variant % 2}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`guardrail-${p.variant % 2}`, x, y);
           break;
         }
         // V2 round-ish — the water tank's level-marker lamp.
         case 'watertank': {
-          const img = addVoxelSprite(this, 'watertank', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('watertank', x, y);
           const marker = addLayeredGlow(this, x, y - 96, PALETTE_INT.neonAmber, 0.26, depthForWorldY(y) + 1, 0.3);
           addFlicker(this, marker.core, 0.5, 0.15);
           break;
         }
         case 'ledgerhouse': {
-          const img = addVoxelSprite(this, 'ledgerhouse', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('ledgerhouse', x, y);
           // Warm hall light + the door lamp — the bank glows like books.
           const hall = tileToWorld(p.x + 2, p.y + 2);
           addLayeredGlow(this, hall.x, hall.y - 24, PALETTE_INT.warmGlow, 0.6, img.depth + 1, 0.4);
@@ -2029,19 +2004,13 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'fortunecoil': {
-          const img = addVoxelSprite(this, 'fortunecoil', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('fortunecoil', x, y);
           this.placeCoilFace(p, img);
           break;
         }
         case 'ventbox':
         case 'toolrack': {
-          const img = addVoxelSprite(this, p.kind, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(p.kind, x, y);
           if (p.kind === 'ventbox') {
             // The status lamp hums teal (light is life — §12A).
             addFlicker(this, addLayeredGlow(this, x + 10, y - 26, PALETTE_INT.neonTeal, 0.28, depthForWorldY(y) + 1, 0.35).core, 0.5, 0.2);
@@ -2062,10 +2031,7 @@ export class WorldScene extends Phaser.Scene {
             const look = looks.pick('block-paint', p.x, p.y, 6);
             name = look < 3 ? `container-${look}` : `container-d${look - 3}`;
           }
-          const img = addVoxelSprite(this, name, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(name, x, y);
           break;
         }
         case 'stack': {
@@ -2075,17 +2041,11 @@ export class WorldScene extends Phaser.Scene {
           const striped = p.variant >= 10;
           const h = Math.min(4, Math.max(2, striped ? p.variant - 10 : p.variant));
           const alt = looks.pick(`stack-${h}${striped ? 's' : ''}`, p.x, p.y, 2, 1) === 1;
-          const img = addVoxelSprite(this, `stack-${h}${striped ? 's' : ''}${alt ? 'b' : ''}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`stack-${h}${striped ? 's' : ''}${alt ? 'b' : ''}`, x, y);
           break;
         }
         case 'cranehulk': {
-          const img = addVoxelSprite(this, 'cranehulk', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('cranehulk', x, y);
           // The dead Craneking's old beacon: slow rose blink at the apex —
           // visible over the walls from most of the maze (§12B b).
           const beacon = addLayeredGlow(this, x + 10, y - 189, PALETTE_INT.neonRose, 0.16, depthForWorldY(y) + 2, 0.9);
@@ -2108,31 +2068,19 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'deadmachine': {
-          const img = addVoxelSprite(this, `deadmachine-${p.variant % 3}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`deadmachine-${p.variant % 3}`, x, y);
           break;
         }
         case 'pylon': {
-          const img = addVoxelSprite(this, 'pylon', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('pylon', x, y);
           break;
         }
         case 'planter': {
-          const img = addVoxelSprite(this, `planter-${looks.pick('planter', p.x, p.y, 4)}`, x, y);
-          const pt = worldSpriteTint();
-          if (pt !== null) img.setTint(pt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite(`planter-${looks.pick('planter', p.x, p.y, 4)}`, x, y);
           break;
         }
         case 'tramgate': {
-          const img = addVoxelSprite(this, 'tramgate', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('tramgate', x, y);
           // Ride the tram: click sends the travel intent (server checks the
           // gate distance and takes the Bolts toll before the hop).
           const dest: DistrictId = this.district === 'filament' ? 'tangle' : 'filament';
@@ -2188,10 +2136,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'merchant': {
-          const img = addVoxelSprite(this, 'merchant', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('merchant', x, y);
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2230,10 +2175,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'tinkerbench': {
-          const img = addVoxelSprite(this, 'tinkerbench', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('tinkerbench', x, y);
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2273,10 +2215,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'dispatcher': {
-          const img = addVoxelSprite(this, 'dispatcher', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('dispatcher', x, y);
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2314,10 +2253,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'warden': {
-          const img = addVoxelSprite(this, 'warden', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite('warden', x, y);
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2355,10 +2291,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'alleylamp': {
-          const img = addVoxelSprite(this, 'heatlamp', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('heatlamp', x, y);
           // A single dim lantern for the dark corners — barely holding on,
           // but still a proper core + bloom (addendum b). Tangle junctions
           // run HAZARD AMBER per the district brief (§12B a/d).
@@ -2381,10 +2314,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'ropepost': {
-          const img = addVoxelSprite(this, 'ropepost', x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          this.propSprite('ropepost', x, y);
           break;
         }
         case 'shack': {
@@ -2392,10 +2322,7 @@ export class WorldScene extends Phaser.Scene {
           // a silhouette next door. FX anchors (sign/window) follow the
           // design's own door and glazing.
           const design = looks.pick('bldg', p.x, p.y, 8, 6); // reach 6: whole streets vary
-          const img = addVoxelSprite(this, `bldg-${design}`, x, y);
-          const wt = worldSpriteTint();
-          if (wt !== null) img.setTint(wt);
-          img.setDepth(depthForWorldY(y));
+          const img = this.propSprite(`bldg-${design}`, x, y);
           const signTint = [
             PALETTE_INT.neonRose,
             PALETTE_INT.neonAmber,
@@ -2433,6 +2360,8 @@ export class WorldScene extends Phaser.Scene {
           win.setScale(0.09);
           win.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, win, bloom(0.42), 0.05);
+          // T0: the building's own lights fade with it when it occludes.
+          this.occlusion.attach(img, [sign, win]);
           // V6 density: every flue breathes — the city is COOKING dinner.
           const CHIMNEY: Partial<Record<number, [number, number]>> = {
             0: [-24, -56], // parapet roof pipe
@@ -2814,5 +2743,18 @@ export class WorldScene extends Phaser.Scene {
     cam.setBounds(b.x - m, b.y - m, b.w + m * 2, b.h + m * 2);
     const center = tileToWorld(this.map.plaza.cx, this.map.plaza.cy);
     cam.centerOn(center.x, center.y);
+  }
+
+  /**
+   * The standard prop sprite: tinted, depth-sorted, and — if it's tall
+   * enough to hide a Spark — registered for occlusion fade (T0/§5).
+   */
+  private propSprite(name: string, x: number, y: number): Phaser.GameObjects.Image {
+    const img = addVoxelSprite(this, name, x, y);
+    const wt = worldSpriteTint();
+    if (wt !== null) img.setTint(wt);
+    img.setDepth(depthForWorldY(y));
+    this.occlusion.register(img);
+    return img;
   }
 }
