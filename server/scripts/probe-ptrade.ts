@@ -9,6 +9,7 @@
  */
 import { Client, type Room } from 'colyseus.js';
 import { buildWorldMap } from '@shared/map';
+import { prisma } from '../src/services/db.js';
 
 const HTTP = 'http://localhost:2567';
 const TIMEOUT_S = Number(process.env.TRADE_TIMEOUT_SECONDS ?? 5);
@@ -20,6 +21,7 @@ interface Snapshot {
 
 interface Probe {
   room: Room;
+  token: string;
   name: string;
   inv: Snapshot;
   notices: string[];
@@ -41,16 +43,23 @@ async function until(pred: () => boolean, label: string, timeoutMs = 60000): Pro
   }
 }
 
-async function join(label: string): Promise<Probe> {
-  const reg = (await fetch(`${HTTP}/auth/guest`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({}),
-  }).then((r) => r.json())) as { token: string; sparkName: string };
-  const room = await new Client(HTTP).joinOrCreate('filament', { token: reg.token });
+async function join(label: string, token?: string, name?: string): Promise<Probe> {
+  let tok = token ?? '';
+  let sparkName = name ?? '';
+  if (tok === '') {
+    const reg = (await fetch(`${HTTP}/auth/guest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }).then((r) => r.json())) as { token: string; sparkName: string };
+    tok = reg.token;
+    sparkName = reg.sparkName;
+  }
+  const room = await new Client(HTTP).joinOrCreate('filament', { token: tok });
   const p: Probe = {
     room,
-    name: reg.sparkName,
+    token: tok,
+    name: sparkName,
     inv: { bolts: -1, counts: new Map() },
     notices: [],
     asks: [],
@@ -95,26 +104,29 @@ async function moveTo(p: Probe, x: number, y: number): Promise<void> {
 async function gatherSalvage(p: Probe, want: number): Promise<void> {
   const map = buildWorldMap();
   const start = me(p) as { tileX: number; tileY: number };
-  let best: { id: number; x: number; y: number; d: number } | null = null;
-  for (const n of map.nodes) {
-    if (n.kind !== 'junkHeap') continue;
-    const d = Math.abs(n.x - start.tileX) + Math.abs(n.y - start.tileY);
-    if (best === null || d < best.d) best = { id: n.id, x: n.x, y: n.y, d };
-  }
-  const heap = best as { id: number; x: number; y: number };
-  let adj: { x: number; y: number } | null = null;
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-    if (map.walkable[heap.y + dy]?.[heap.x + dx] === true) {
-      adj = { x: heap.x + dx, y: heap.y + dy };
-      break;
-    }
-  }
-  if (adj === null) throw new Error('heap unreachable');
-  await moveTo(p, adj.x, adj.y);
+  // Work the four nearest heaps round-robin so respawn cooldowns overlap
+  // (the server walks the Spark between them on each gather intent).
+  const heaps = map.nodes
+    .filter((n) => n.kind === 'junkHeap')
+    .sort(
+      (a2, b2) =>
+        Math.abs(a2.x - start.tileX) +
+        Math.abs(a2.y - start.tileY) -
+        (Math.abs(b2.x - start.tileX) + Math.abs(b2.y - start.tileY)),
+    )
+    .slice(0, 4);
   p.room.send('selectSlot', { slot: 0 });
+  const st = () =>
+    p.room.state as unknown as {
+      nodes?: { get(id: string): { depleted: boolean } | undefined };
+    };
   const timer = setInterval(() => {
-    if (salvage(p) < want) p.room.send('gather', { nodeId: heap.id });
-  }, 1200);
+    if (salvage(p) >= want) return;
+    const meNow = me(p) as { gathering?: boolean } | undefined;
+    if (meNow?.gathering === true) return;
+    const free = heaps.find((h) => st().nodes?.get(String(h.id))?.depleted !== true);
+    if (free !== undefined) p.room.send('gather', { nodeId: free.id });
+  }, 900);
   await until(() => salvage(p) >= want, `salvage x${want}`, 180000);
   clearInterval(timer);
 }
@@ -126,9 +138,66 @@ async function openTrade(a: Probe, b: Probe): Promise<string> {
   return (b.asks[b.asks.length - 1] as Probe['asks'][0]).tradeId;
 }
 
+/** Backdate an account (guardrail testing) and optionally set its Bolts. */
+async function shapeAccount(sparkName: string, ageDays: number, bolts?: number): Promise<void> {
+  const character = await prisma.character.findUniqueOrThrow({ where: { sparkName } });
+  await prisma.account.update({
+    where: { id: character.accountId },
+    data: { createdAt: new Date(Date.now() - ageDays * 86_400_000) },
+  });
+  if (bolts !== undefined) {
+    await prisma.character.update({ where: { sparkName }, data: { bolts } });
+  }
+}
+
 async function main(): Promise<void> {
-  const a = await join('A');
-  const b = await join('B');
+  let a = await join('A');
+  let b = await join('B');
+
+  // ── 0 · young-account guardrails (E1c) ──────────────────────────────────
+  console.log('\n— guardrail: brand-new accounts cannot trade —');
+  const noticesBefore = a.notices.length;
+  a.room.send('ptrade', { action: 'request', targetSessionId: b.room.sessionId });
+  await until(
+    () => a.notices.slice(noticesBefore).some((t) => t.includes('settle in')),
+    'age-gate refusal',
+  );
+  if (b.asks.length > 0) throw new Error('age gate let the request through!');
+  console.log('age gate refused the fresh Spark ✓');
+
+  console.log('\n— guardrail: young accounts trade under the daily value cap —');
+  // Relog as 3-day-old accounts; A gets a fat wallet to stage.
+  await a.room.leave();
+  await b.room.leave();
+  await sleep(1000); // let the leave-persist settle before writing rows
+  await shapeAccount(a.name, 3, 5000);
+  await shapeAccount(b.name, 3);
+  a = await join('A', a.token, a.name);
+  b = await join('B', b.token, b.name);
+  let tid = await openTrade(a, b);
+  b.room.send('ptrade', { action: 'accept', tradeId: tid });
+  await until(() => a.syncs.some((s) => s.tradeId === tid), 'window open');
+  a.room.send('ptrade', { action: 'stage', tradeId: tid, bolts: 2500, items: [] });
+  await sleep(300);
+  a.room.send('ptrade', { action: 'confirm', tradeId: tid });
+  b.room.send('ptrade', { action: 'confirm', tradeId: tid });
+  await until(
+    () => a.notices.some((t) => t.includes('young')),
+    'young value-cap refusal',
+  );
+  if (lastEnd(a)?.outcome === 'completed') throw new Error('value cap did not hold!');
+  a.room.send('ptrade', { action: 'cancel', tradeId: tid });
+  await until(() => lastEnd(a)?.outcome === 'cancelled', 'window closed');
+  console.log('young-account daily value cap held ✓');
+
+  // Grown-up accounts for the rest of the flow.
+  await a.room.leave();
+  await b.room.leave();
+  await sleep(1000);
+  await shapeAccount(a.name, 30);
+  await shapeAccount(b.name, 30);
+  a = await join('A', a.token, a.name);
+  b = await join('B', b.token, b.name);
 
   console.log('\n— setup: A gathers salvage —');
   await gatherSalvage(a, 12);
@@ -189,17 +258,23 @@ async function main(): Promise<void> {
     throw new Error('stale offer completed — dupe path!');
   }
   console.log('stale offer refused, nothing moved ✓');
-  // Re-stage what A actually has; the swap then completes.
+  // Re-stage what A actually has (plus Bolts); the swap then completes.
   const aBefore = salvage(a);
   const bBefore = salvage(b);
-  a.room.send('ptrade', { action: 'stage', tradeId, bolts: 0, items: [{ slot: 0, qty: 3 }] });
+  const aBoltsBefore = a.inv.bolts;
+  const bBoltsBefore = b.inv.bolts;
+  a.room.send('ptrade', { action: 'stage', tradeId, bolts: 100, items: [{ slot: 0, qty: 3 }] });
   await sleep(300);
   a.room.send('ptrade', { action: 'confirm', tradeId });
   b.room.send('ptrade', { action: 'confirm', tradeId });
   await until(() => lastEnd(a)?.outcome === 'completed', 'swap completes');
-  await until(() => salvage(b) === bBefore + 3, 'B received the goods');
-  if (salvage(a) !== aBefore - 3) throw new Error('A did not pay the goods');
-  console.log(`completed swap moved exactly 3 salvage (A ${aBefore}→${salvage(a)}, B ${bBefore}→${salvage(b)}) ✓`);
+  await until(() => salvage(b) === bBefore + 3 && b.inv.bolts === bBoltsBefore + 100, 'B received goods + Bolts');
+  if (salvage(a) !== aBefore - 3 || a.inv.bolts !== aBoltsBefore - 100) {
+    throw new Error('A did not pay the goods');
+  }
+  console.log(
+    `completed swap moved exactly 3 salvage + 100 Bolts (A ${aBefore}→${salvage(a)}, B ${bBefore}→${salvage(b)}) ✓`,
+  );
 
   // ── 4 · timeout closes an idle window ───────────────────────────────────
   console.log(`\n— timeout path (${TIMEOUT_S}s idle) —`);

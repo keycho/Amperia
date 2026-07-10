@@ -14,6 +14,12 @@ export interface CharacterSnapshot {
   bolts: number;
   dailySaleBolts: number;
   dailySaleDate: string;
+  /** Direct-trade guardrail counters (E1c) — UTC-day rollover. */
+  tradeDayDate: string;
+  tradeDayValueBolts: number;
+  tradeDayCount: number;
+  /** Account birth — young-account trade gates read this. */
+  accountCreatedAtMs: number;
   quests: Record<string, unknown>;
   cosmetics: string[];
   district: string;
@@ -57,7 +63,10 @@ function parseInventory(raw: unknown, slotCount: number): Inventory | null {
 }
 
 export async function loadCharacter(characterId: string): Promise<CharacterSnapshot> {
-  const c = await prisma.character.findUniqueOrThrow({ where: { id: characterId } });
+  const c = await prisma.character.findUniqueOrThrow({
+    where: { id: characterId },
+    include: { account: { select: { createdAt: true } } },
+  });
   const tile =
     typeof c.tileX === 'number' && typeof c.tileY === 'number' && c.tileX >= 0 && c.tileY >= 0
       ? { x: c.tileX, y: c.tileY }
@@ -71,6 +80,10 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     bolts: c.bolts,
     dailySaleBolts: c.dailySaleBolts,
     dailySaleDate: c.dailySaleDate,
+    tradeDayDate: c.tradeDayDate,
+    tradeDayValueBolts: c.tradeDayValueBolts,
+    tradeDayCount: c.tradeDayCount,
+    accountCreatedAtMs: c.account.createdAt.getTime(),
     quests:
       typeof c.questsJson === 'object' && c.questsJson !== null && !Array.isArray(c.questsJson)
         ? (c.questsJson as Record<string, unknown>)
@@ -92,6 +105,9 @@ export async function persistCharacter(
     bolts: number;
     dailySaleBolts: number;
     dailySaleDate: string;
+    tradeDayDate: string;
+    tradeDayValueBolts: number;
+    tradeDayCount: number;
     quests: Record<string, unknown>;
     cosmetics: string[];
     district: string;
@@ -109,6 +125,9 @@ export async function persistCharacter(
         bolts: data.bolts,
         dailySaleBolts: data.dailySaleBolts,
         dailySaleDate: data.dailySaleDate,
+        tradeDayDate: data.tradeDayDate,
+        tradeDayValueBolts: data.tradeDayValueBolts,
+        tradeDayCount: data.tradeDayCount,
         questsJson: data.quests as object,
         cosmeticsJson: data.cosmetics,
         district: data.district,

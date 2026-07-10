@@ -73,7 +73,7 @@ import {
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { recipeById, repairQuote, toolSpeedMult, weaponDamageMult } from '@shared/crafting';
-import { dailySaleHeadroom } from '@shared/economy';
+import { dailySaleHeadroom, dayKey } from '@shared/economy';
 import {
   emptyOffer,
   estimateOfferValue,
@@ -150,6 +150,11 @@ interface PlayerRuntime {
   bolts: number;
   dailySaleBolts: number;
   dailySaleDate: string;
+  /** Direct-trade guardrail counters (E1c), UTC-day rollover. */
+  tradeDayDate: string;
+  tradeDayValueBolts: number;
+  tradeDayCount: number;
+  accountCreatedAtMs: number;
   quests: QuestLog;
   cosmetics: string[];
   hp: number;
@@ -336,6 +341,10 @@ export class FilamentRoom extends Room<FilamentState> {
       bolts,
       dailySaleBolts: character.dailySaleBolts,
       dailySaleDate: character.dailySaleDate,
+      tradeDayDate: character.tradeDayDate,
+      tradeDayValueBolts: character.tradeDayValueBolts,
+      tradeDayCount: character.tradeDayCount,
+      accountCreatedAtMs: character.accountCreatedAtMs,
       quests: character.quests as QuestLog,
       cosmetics: character.cosmetics,
       hp: CONFIG.combat.player.maxHp,
@@ -1009,6 +1018,34 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
+  /** Roll a Spark's trade-day counters over on a new UTC day. */
+  private rollTradeDay(rt: PlayerRuntime, now: number): void {
+    const today = dayKey(now);
+    if (rt.tradeDayDate !== today) {
+      rt.tradeDayDate = today;
+      rt.tradeDayValueBolts = 0;
+      rt.tradeDayCount = 0;
+    }
+  }
+
+  /**
+   * Young-account + rate guardrails (E1c). Deliberately GENEROUS numbers —
+   * the mechanism is what matters: it's the throttle the token layer's
+   * anti-RMT posture depends on. Returns a player-facing refusal, or null.
+   */
+  private tradeGuardProblem(rt: PlayerRuntime, now: number): string | null {
+    const cfg = CONFIG.economy.trade;
+    const ageHours = (now - rt.accountCreatedAtMs) / 3_600_000;
+    if (ageHours < cfg.minAccountAgeHours) {
+      return 'Fresh Sparks settle in for a day before trading.';
+    }
+    this.rollTradeDay(rt, now);
+    if (rt.tradeDayCount >= cfg.dailyTradeCountCap) {
+      return 'The stalls are closed on you for today — too many trades.';
+    }
+    return null;
+  }
+
   /** Open a trade window with a nearby Spark (also used by /trade). */
   private requestTrade(client: Client, rt: PlayerRuntime, targetSessionId: string): void {
     const cfg = CONFIG.economy.trade;
@@ -1017,6 +1054,16 @@ export class FilamentRoom extends Room<FilamentState> {
     const targetClient = this.clients.find((c) => c.sessionId === targetSessionId);
     if (target === undefined || targetClient === undefined || target.hp <= 0) {
       client.send(MSG.notice, { text: 'No such Spark to trade with here.' });
+      return;
+    }
+    const now = Date.now();
+    const mine = this.tradeGuardProblem(rt, now);
+    if (mine !== null) {
+      client.send(MSG.notice, { text: mine });
+      return;
+    }
+    if (this.tradeGuardProblem(target, now) !== null) {
+      client.send(MSG.notice, { text: `${target.sparkName} can't trade right now.` });
       return;
     }
     if (this.tradeBySession.has(client.sessionId)) {
@@ -1122,6 +1169,42 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     const offerA = trade.offers[trade.a] ?? emptyOffer();
     const offerB = trade.offers[trade.b] ?? emptyOffer();
+
+    // Guardrails re-check at the moment of truth (E1c). The trade's counted
+    // value for BOTH accounts is the larger staged side — that reads mule
+    // flows in either direction.
+    const now = Date.now();
+    const tradeCfg = CONFIG.economy.trade;
+    const countedValue = Math.max(estimateOfferValue(offerA), estimateOfferValue(offerB));
+    for (const [rt, c] of [
+      [rtA, clientA],
+      [rtB, clientB],
+    ] as const) {
+      const hardBlock = this.tradeGuardProblem(rt, now);
+      if (hardBlock !== null) {
+        clientA.send(MSG.notice, { text: hardBlock });
+        clientB.send(MSG.notice, { text: hardBlock });
+        this.endTrade(trade, 'failed', 'The trade could not go through.');
+        return;
+      }
+      const ageDays = (now - rt.accountCreatedAtMs) / 86_400_000;
+      if (
+        ageDays < tradeCfg.youngAccountDays &&
+        rt.tradeDayValueBolts + countedValue > tradeCfg.youngDailyValueCapBolts
+      ) {
+        const text = `${rt.sparkName}'s account is young — today's trade value limit would be passed.`;
+        clientA.send(MSG.notice, { text });
+        clientB.send(MSG.notice, { text });
+        c.send(MSG.notice, {
+          text: 'Young accounts trade under a daily value cap for their first week.',
+        });
+        trade.confirmed[trade.a] = false;
+        trade.confirmed[trade.b] = false;
+        this.syncTrade(trade);
+        return;
+      }
+    }
+
     const r = settleTrade(
       rtA.pack,
       rtA.bolts,
@@ -1158,6 +1241,13 @@ export class FilamentRoom extends Room<FilamentState> {
     rtA.bolts = r.boltsA;
     rtB.pack = r.packB;
     rtB.bolts = r.boltsB;
+
+    // Bump the per-day guardrail counters (persisted with the character).
+    for (const rt of [rtA, rtB]) {
+      this.rollTradeDay(rt, now);
+      rt.tradeDayValueBolts += countedValue;
+      rt.tradeDayCount += 1;
+    }
 
     // Ledger rows for BOTH sides with the estimated (NPC-band) valuation —
     // this is what trade-anomaly detection reads later (E1b).
@@ -2302,6 +2392,9 @@ export class FilamentRoom extends Room<FilamentState> {
       bolts: rt.bolts,
       dailySaleBolts: rt.dailySaleBolts,
       dailySaleDate: rt.dailySaleDate,
+      tradeDayDate: rt.tradeDayDate,
+      tradeDayValueBolts: rt.tradeDayValueBolts,
+      tradeDayCount: rt.tradeDayCount,
       quests: rt.quests,
       cosmetics: rt.cosmetics,
       district,
