@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
+import { makeAtmosphereTextures } from '../render/atmosphere';
 import { bakeFloorTiles } from '../render/floorTiles';
 import { bakeCoreVoxelModels } from '../render/voxelModels';
 import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
@@ -30,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     makeItemIconTextures(this);
     makeKoiTextures(this);
     makeShadowTextures(this);
+    makeAtmosphereTextures(this);
     bakeCoreVoxelModels(this);
     bakeWorldVoxelModels(this);
     bakeFloorTiles(this);

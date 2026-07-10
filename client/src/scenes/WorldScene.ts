@@ -78,6 +78,14 @@ import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
+import {
+  addBadFlicker,
+  addFilmGrain,
+  addGodRays,
+  addHaze,
+  addHueCycle,
+  addLampCone,
+} from '../render/atmosphere';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -110,6 +118,8 @@ export class WorldScene extends Phaser.Scene {
   /** String-light bulb glows — the Citywide Charge scales their density. */
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
   private chargeLightingTier = 0;
+  /** Puddle-decal budget per map (R5b). */
+  private puddleCount = 0;
   private spatialAt = 0;
   private connectingText: Phaser.GameObjects.Text | null = null;
 
@@ -135,6 +145,7 @@ export class WorldScene extends Phaser.Scene {
     this.stallFronts = new Map();
     this.stringBulbGlows = [];
     this.chargeLightingTier = 0;
+    this.puddleCount = 0;
   }
 
   create(): void {
@@ -151,6 +162,15 @@ export class WorldScene extends Phaser.Scene {
     this.placeCanalLife();
     this.spawnAmbientBots();
     addSkyline(this, -70);
+    // Atmosphere (R5c): warm haze over the dense light clusters + a film
+    // of grain over the whole frame to kill banding.
+    if (this.dynamoWorld.x !== 0) {
+      addHaze(this, this.dynamoWorld.x, this.dynamoWorld.y + 40, PALETTE_INT.warmGlow, 2.6);
+    }
+    if (this.stallsWorld.x !== 0) {
+      addHaze(this, this.stallsWorld.x + 60, this.stallsWorld.y + 40, PALETTE_INT.neonAmber, 2.1);
+    }
+    addFilmGrain(this);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
     this.setupCamera();
@@ -1113,6 +1133,42 @@ export class WorldScene extends Phaser.Scene {
             const sy = y - 3 + rng() * 6;
             g.lineBetween(sx, sy, sx + 14, sy - 5);
           }
+
+          // Puddles (R5b): sparse decals near real lights that mirror-smear
+          // the light's hue — a flipped gradient blob under a dark glaze.
+          if (
+            this.puddleCount < 24 &&
+            !inLane &&
+            rugVariant === undefined &&
+            kind !== 'deck' &&
+            light.d <= 3.5 &&
+            this.map.walkable[ty]?.[tx] === true &&
+            rng() < 0.07
+          ) {
+            this.puddleCount += 1;
+            const px = x - 8 + rng() * 16;
+            const py = y - 3 + rng() * 6;
+            g.fillStyle(mixPalette('ink', 'duskSky', 0.35), 0.42);
+            g.fillEllipse(px, py, 22 + rng() * 14, 9 + rng() * 5);
+            const smearTint = light.cool ? PALETTE_INT.neonCyan : PALETTE_INT.neonAmber;
+            const smear = this.add.image(px, py + 3, 'fx-glow');
+            smear.setTint(smearTint);
+            smear.setBlendMode(Phaser.BlendModes.ADD);
+            smear.setScale(0.055, 0.2);
+            smear.setFlipY(true);
+            smear.setAlpha(0.22);
+            smear.setDepth(DEPTH_FLOOR + 4);
+            // Neon shimmer on the wet surface (R5d).
+            this.tweens.add({
+              targets: smear,
+              alpha: { from: 0.15, to: 0.28 },
+              scaleX: { from: 0.05, to: 0.062 },
+              duration: 1700 + rng() * 900,
+              yoyo: true,
+              repeat: -1,
+              ease: 'sine.inout',
+            });
+          }
         }
 
       }
@@ -1337,6 +1393,8 @@ export class WorldScene extends Phaser.Scene {
           });
           // Teal beacon glint on the cap (layered mini-glow, own hue).
           addLayeredGlow(this, x, y - 210, PALETTE_INT.neonTeal, 0.12, depthForWorldY(y) + 2);
+          // God-rays (R5a): soft shafts fanning from the crown.
+          addGodRays(this, x, y - 190, depthForWorldY(y) + 1);
           const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
@@ -1726,6 +1784,8 @@ export class WorldScene extends Phaser.Scene {
           const glow = addLayeredGlow(this, x, y - 32, PALETTE_INT.warmGlow, 0.09, depthForWorldY(y) + 1, 0.55);
           addFlicker(this, glow.mid, bloom(0.28), 0.16);
           addFlicker(this, glow.core, bloom(0.5), 0.12);
+          // Faint light cone under the head (R5a).
+          addLampCone(this, x, y - 30, PALETTE_INT.warmGlow, depthForWorldY(y));
           const pool = this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.34);
           pool.setAlpha(0.15);
           break;
@@ -1752,7 +1812,12 @@ export class WorldScene extends Phaser.Scene {
           sign.setAlpha(bloom(0.66));
           sign.setScale(0.1);
           sign.setDepth(depthForWorldY(y) + 1);
-          addFlicker(this, sign, bloom(0.66), 0.12);
+          // Selective animation (R5d): one sign flickers BADLY (character),
+          // two cycle their hue lazily; the rest keep the quiet waver.
+          if (p.variant === 7) addBadFlicker(this, sign, bloom(0.66));
+          else if (p.variant === 2) addHueCycle(this, sign, signTint, PALETTE_INT.violetNeon);
+          else if (p.variant === 10) addHueCycle(this, sign, signTint, PALETTE_INT.emberOrange);
+          else addFlicker(this, sign, bloom(0.66), 0.12);
           const win = this.add.image(x + 20, y - 24, 'fx-glow');
           win.setTint(PALETTE_INT.warmGlow);
           win.setBlendMode(Phaser.BlendModes.ADD);
