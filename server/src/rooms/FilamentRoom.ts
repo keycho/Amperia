@@ -85,6 +85,7 @@ import {
   validateOffer,
   type TradeOffer,
 } from '@shared/trade';
+import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
@@ -295,7 +296,11 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<ShopIntent>(MSG.shop, (client, msg) => {
       void this.handleShop(client, msg);
     });
+    this.onMessage(MSG.chargeInfo, (client) => {
+      void this.replyChargeInfo(client);
+    });
     if (this.map.shopStalls.length > 0) void this.loadStalls();
+    void this.refreshCharge(true);
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
@@ -381,7 +386,11 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.hp = runtime.hp;
     ps.maxHp = CONFIG.combat.player.maxHp;
     ps.cosmetic = runtime.cosmetics.includes('starterScarf') ? 'starterScarf' : '';
+    ps.trim = runtime.cosmetics.includes(CONFIG.charge.trimCosmetic)
+      ? CONFIG.charge.trimCosmetic
+      : '';
     this.state.players.set(client.sessionId, ps);
+    void this.deliverChargeAwards(client, runtime);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
@@ -656,9 +665,40 @@ export class FilamentRoom extends Room<FilamentState> {
         return;
       }
       this.requestTrade(client, rt, targetSid);
+    } else if (cmd === '/charge') {
+      void (async () => {
+        try {
+          const now = Date.now();
+          const m = await charge.meter(now);
+          const top = await charge.leaderboard(m.weekKey, CONFIG.charge.topContributors);
+          const tierLine =
+            m.tier >= m.thresholds.length
+              ? 'festival blaze'
+              : `tier ${m.tier} — ${m.thresholds[m.tier] ?? 0} Amperite lights tier ${m.tier + 1}`;
+          client.send(MSG.notice, {
+            text: `Citywide Charge (week of ${m.weekKey}): ${m.total} Amperite · ${tierLine}.`,
+          });
+          if (charge.xpMultiplier(now) > 1) {
+            client.send(MSG.notice, {
+              text: `The weekend buff glows: +${m.buffPct}% gather XP citywide.`,
+            });
+          }
+          client.send(MSG.notice, {
+            text:
+              top.length > 0
+                ? `Brightest Sparks: ${top
+                    .slice(0, 10)
+                    .map((t, i) => `${i + 1}. ${t.sparkName} (${t.amperite})`)
+                    .join(' · ')}`
+                : 'No donations yet this week — the Dynamo waits.',
+          });
+        } catch (err) {
+          console.error('[charge] /charge failed', err);
+        }
+      })();
     } else if (cmd === '/help') {
       client.send(MSG.notice, {
-        text: `Commands: /near /wave /trade <name> /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
+        text: `Commands: /near /wave /trade <name> /charge /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
@@ -699,12 +739,12 @@ export class FilamentRoom extends Room<FilamentState> {
       for (const rt of this.runtimes.values()) void this.persist(rt);
     }
 
-    // Stall rent sweep (~every 60s): lapsed stalls vacate even if nobody
-    // touches them, so the lane never shows a dead shingle for long.
-    if (this.map.shopStalls.length > 0) {
-      this.stallTicker += dtMs;
-      if (this.stallTicker >= 60_000) {
-        this.stallTicker = 0;
+    // Slow sweep (~every 60s): lapsed stalls vacate even if nobody touches
+    // them, and the Charge meter refreshes (+ past weeks finalize).
+    this.stallTicker += dtMs;
+    if (this.stallTicker >= 60_000) {
+      this.stallTicker = 0;
+      if (this.map.shopStalls.length > 0) {
         void shops
           .getAll(Date.now())
           .then((views) => {
@@ -712,6 +752,78 @@ export class FilamentRoom extends Room<FilamentState> {
           })
           .catch((err) => console.error('[shops] sweep failed', err));
       }
+      void this.refreshCharge(true);
+    }
+  }
+
+  // ── the Citywide Charge (E3) ────────────────────────────────────────────
+
+  /** Mirror the weekly meter into synced state (lighting reads the tier). */
+  private syncChargeMeter(m: ChargeMeter): void {
+    const c = this.state.charge;
+    c.weekTotal = m.total;
+    c.tier = m.tier;
+    c.t1 = m.thresholds[0] ?? 0;
+    c.t2 = m.thresholds[1] ?? 0;
+    c.t3 = m.thresholds[2] ?? 0;
+    c.buffActive = charge.xpMultiplier(Date.now()) > 1;
+    c.buffPct = m.buffPct;
+  }
+
+  /** Refresh the meter (and optionally finalize finished weeks). */
+  private async refreshCharge(finalize: boolean): Promise<void> {
+    try {
+      if (finalize) await charge.finalizePastWeeks(Date.now());
+      this.syncChargeMeter(await charge.meter(Date.now()));
+    } catch (err) {
+      console.error('[charge] refresh failed', err);
+    }
+  }
+
+  /** The warden's panel / detail view: meter + weekly leaderboard. */
+  private async replyChargeInfo(client: Client): Promise<void> {
+    try {
+      const now = Date.now();
+      const m = await charge.meter(now);
+      const top = await charge.leaderboard(m.weekKey, CONFIG.charge.topContributors);
+      this.syncChargeMeter(m);
+      client.send(MSG.chargeSync, {
+        weekKey: m.weekKey,
+        total: m.total,
+        tier: m.tier,
+        thresholds: m.thresholds,
+        activePlayers: m.activePlayers,
+        buffActive: charge.xpMultiplier(now) > 1,
+        buffPct: m.buffPct,
+        top,
+      });
+    } catch (err) {
+      console.error('[charge] info failed', err);
+    }
+  }
+
+  /**
+   * Top-contributor trims waiting from finalized weeks land on login:
+   * the untradeable name-glow trim + a Manifest entry. REGALIA ONLY —
+   * never Bolts, never tradeable (load-bearing; see shared/charge.ts).
+   */
+  private async deliverChargeAwards(client: Client, rt: PlayerRuntime): Promise<void> {
+    try {
+      const awards = await charge.undeliveredAwards(rt.accountId);
+      for (const award of awards) {
+        if (this.runtimes.get(client.sessionId) !== rt) return;
+        if (!rt.cosmetics.includes(CONFIG.charge.trimCosmetic)) {
+          rt.cosmetics.push(CONFIG.charge.trimCosmetic);
+        }
+        const ps = this.state.players.get(client.sessionId);
+        if (ps !== undefined) ps.trim = CONFIG.charge.trimCosmetic;
+        await charge.markDelivered(award.id);
+        client.send(MSG.notice, {
+          text: `The city remembers: rank ${award.rank} on the week of ${award.weekKey}'s Citywide Charge — your name carries the glow.`,
+        });
+      }
+    } catch (err) {
+      console.error('[charge] award delivery failed', err);
     }
   }
 
@@ -1964,7 +2076,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
-  /** Donations at the Charge Warden (stub for the future Citywide Charge). */
+  /** Donations at the Charge Warden — Amperite feeds the Citywide Charge. */
   private handleDonate(client: Client, msg: DonateIntent): void {
     const rt = this.runtimes.get(client.sessionId);
     if (rt === undefined || typeof msg.itemId !== 'string') return;
@@ -1986,8 +2098,25 @@ export class FilamentRoom extends Room<FilamentState> {
       data: { sink: 'donation', itemId: msg.itemId, qty },
     });
     client.send(MSG.inventory, this.inventorySync(rt));
-    client.send(MSG.notice, { text: `The Warden logs your ${qty} ${msg.itemId} for the city.` });
     this.questProgress(client, rt, { type: 'donate', itemId: msg.itemId, qty });
+    if (msg.itemId === 'amperite') {
+      // The communal loop: the donation climbs the week's meter (rewards
+      // are regalia only — no Bolts, nothing tradeable; shared/charge.ts).
+      void charge
+        .donate(rt.accountId, rt.sparkName, qty, Date.now())
+        .then((m) => {
+          this.syncChargeMeter(m);
+          const next = m.thresholds.find((t) => m.total < t);
+          client.send(MSG.notice, {
+            text:
+              `The Dynamo drinks in ${qty} Amperite — the Citywide Charge stands at ${m.total}` +
+              (next !== undefined ? `/${next} toward tier ${m.tier + 1}.` : ` — festival blaze!`),
+          });
+        })
+        .catch((err) => console.error('[charge] donate failed', err));
+    } else {
+      client.send(MSG.notice, { text: `The Warden logs your ${qty} ${msg.itemId} for the city.` });
+    }
   }
 
   /** Tram travel between districts: a Bolts toll, then a room hop. */
@@ -2689,8 +2818,12 @@ export class FilamentRoom extends Room<FilamentState> {
 
   private grantXp(client: Client, rt: PlayerRuntime, skill: SkillId, amount: number): void {
     if (amount <= 0) return;
-    rt.skills[skill] += amount;
-    client.send(MSG.xpGain, { skill, amount });
+    // Weekend city buff (E3): the Charge meter's tier boosts GATHER XP on
+    // Sat/Sun — never combat, never drops, never Bolts.
+    const boosted =
+      skill === 'brawling' ? amount : Math.round(amount * charge.xpMultiplier(Date.now()));
+    rt.skills[skill] += boosted;
+    client.send(MSG.xpGain, { skill, amount: boosted });
     client.send(MSG.skills, { xp: rt.skills });
   }
 

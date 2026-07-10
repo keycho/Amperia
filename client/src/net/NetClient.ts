@@ -83,6 +83,7 @@ export const send = {
   trade: (room: FilamentRoom, msg: TradeIntent) => room.send(MSG.trade, msg),
   ptrade: (room: FilamentRoom, msg: PlayerTradeIntent) => room.send(MSG.ptrade, msg),
   shop: (room: FilamentRoom, msg: ShopIntent) => room.send(MSG.shop, msg),
+  chargeInfo: (room: FilamentRoom) => room.send(MSG.chargeInfo, {}),
   useItem: (room: FilamentRoom, msg: UseItemIntent) => room.send(MSG.useItem, msg),
   craft: (room: FilamentRoom, msg: CraftIntent) => room.send(MSG.craft, msg),
   repair: (room: FilamentRoom, msg: RepairIntent) => room.send(MSG.repair, msg),

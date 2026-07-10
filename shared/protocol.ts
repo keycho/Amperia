@@ -32,6 +32,8 @@ export const MSG = {
   tradeEnd: 'tradeEnd',
   shop: 'shop',
   shopSync: 'shopSync',
+  chargeInfo: 'chargeInfo',
+  chargeSync: 'chargeSync',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -305,6 +307,35 @@ export interface StallStateShape {
   goods: string;
 }
 
+/**
+ * Server → the asking client: the Citywide Charge in detail (the warden's
+ * panel / the /charge command). The always-synced ChargeState carries the
+ * meter for lighting; this adds the leaderboard.
+ */
+export interface ChargeSyncEvent {
+  weekKey: string;
+  total: number;
+  tier: number;
+  thresholds: number[];
+  activePlayers: number;
+  /** True while the weekend city buff glows. */
+  buffActive: boolean;
+  /** Gather-XP bonus percent while buffed. */
+  buffPct: number;
+  top: Array<{ sparkName: string; amperite: number }>;
+}
+
+/** Mirror of the synced ChargeState schema (client-side typing only). */
+export interface ChargeStateShape {
+  weekTotal: number;
+  tier: number;
+  t1: number;
+  t2: number;
+  t3: number;
+  buffActive: boolean;
+  buffPct: number;
+}
+
 /** Mirror of the synced CacheState schema (client-side typing only). */
 export interface CacheStateShape {
   tileX: number;
@@ -384,6 +415,8 @@ export interface PlayerStateShape {
   maxHp: number;
   /** Worn cosmetic id ('' = none) — quest rewards, never gameplay. */
   cosmetic: string;
+  /** Name-glow trim id ('' = none) — Charge regalia, never gameplay. */
+  trim: string;
 }
 
 export interface NodeStateShape {

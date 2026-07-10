@@ -77,6 +77,34 @@ model ShopStall {
   updatedAt      DateTime  @updatedAt
 }
 
+/// One Spark's Amperite donations to the Citywide Charge for one week
+/// (weekKey = the UTC Monday's ISO date — the meter "resets" by keying).
+model ChargeContribution {
+  weekKey   String
+  accountId String
+  /// Denormalized for the leaderboard display.
+  sparkName String   @default("")
+  amperite  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([weekKey, accountId])
+  @@index([weekKey, amperite])
+}
+
+/// A finalized week's top-contributor award (regalia only — the untradeable
+/// name-glow trim + Manifest entry; NEVER Bolts, NEVER tradeable).
+model ChargeAward {
+  id          String    @id @default(cuid())
+  accountId   String
+  weekKey     String
+  rank        Int
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([weekKey, accountId])
+  @@index([accountId, deliveredAt])
+}
+
 /// Mailbox for goods coming back to a Spark outside a live session: an
 /// expired stall's stock + cashbox wait here and deliver on next login.
 model StallReturn {

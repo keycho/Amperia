@@ -16,6 +16,8 @@ export class PlayerState extends Schema {
   hp = 0;
   maxHp = 0;
   cosmetic = '';
+  /** Charge-regalia name-glow trim ('' = none) — never gameplay. */
+  trim = '';
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
@@ -25,6 +27,7 @@ defineTypes(PlayerState, {
   hp: 'int16',
   maxHp: 'int16',
   cosmetic: 'string',
+  trim: 'string',
 });
 
 export class MobState extends Schema {
@@ -73,6 +76,30 @@ export class StallState extends Schema {
 }
 defineTypes(StallState, { ownerName: 'string', goods: 'string' });
 
+/**
+ * The Citywide Charge meter as the whole room sees it: total, tier and the
+ * three thresholds (for meter rendering + lighting density), plus whether
+ * the weekend buff is glowing. Leaderboard detail goes per-client.
+ */
+export class ChargeState extends Schema {
+  weekTotal = 0;
+  tier = 0;
+  t1 = 0;
+  t2 = 0;
+  t3 = 0;
+  buffActive = false;
+  buffPct = 0;
+}
+defineTypes(ChargeState, {
+  weekTotal: 'int32',
+  tier: 'int8',
+  t1: 'int32',
+  t2: 'int32',
+  t3: 'int32',
+  buffActive: 'boolean',
+  buffPct: 'int8',
+});
+
 export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
   /** Keyed by node id (stringified). */
@@ -85,6 +112,8 @@ export class FilamentState extends Schema {
   caches = new MapSchema<CacheState>();
   /** Keyed by stall id (Filament market lane only). */
   stalls = new MapSchema<StallState>();
+  /** The Citywide Charge meter (shared across districts). */
+  charge = new ChargeState();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
@@ -93,4 +122,5 @@ defineTypes(FilamentState, {
   lamps: { map: LampState },
   caches: { map: CacheState },
   stalls: { map: StallState },
+  charge: ChargeState,
 });

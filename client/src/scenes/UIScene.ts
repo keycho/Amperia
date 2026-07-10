@@ -12,6 +12,7 @@ import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
+import { ChargePanel } from '../ui/ChargePanel';
 import { ShopPanel } from '../ui/ShopPanel';
 import { SlotStrip } from '../ui/SlotStrip';
 import { TradePanel } from '../ui/TradePanel';
@@ -41,6 +42,8 @@ export class UIScene extends Phaser.Scene {
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
   private shopPanel!: ShopPanel;
+  private chargePanel!: ChargePanel;
+  private buffChip!: Phaser.GameObjects.Text;
   private questChip!: Phaser.GameObjects.Text;
   private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
@@ -140,6 +143,29 @@ export class UIScene extends Phaser.Scene {
     this.questPanel = new QuestPanel(this);
     this.tradePanel = new TradePanel(this);
     this.shopPanel = new ShopPanel(this);
+    this.chargePanel = new ChargePanel(this);
+
+    // The weekend city buff, worn like a banner (comms rules: a reward
+    // line, never "earn"). Driven by the synced Charge meter.
+    this.buffChip = this.add.text(12, 72, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: PALETTE.neonAmber,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.buffChip.setDepth(900);
+    session.events.on(
+      SessionEvents.charge,
+      (c: { buffActive: boolean; buffPct: number; tier: number }) => {
+        this.buffChip.setText(
+          c.buffActive
+            ? `☀ Weekend city buff — +${c.buffPct}% gather XP, with the city's thanks`
+            : '',
+        );
+        if (this.chargePanel.visible) this.chargePanel.refresh();
+      },
+    );
 
     this.questChip = this.add.text(12, 52, '', {
       fontFamily: 'monospace',
@@ -172,6 +198,7 @@ export class UIScene extends Phaser.Scene {
       if (this.benchPanel.visible) this.benchPanel.refresh();
       if (this.tradePanel.visible) this.tradePanel.refresh();
       if (this.shopPanel.visible) this.shopPanel.refresh();
+      if (this.chargePanel.visible) this.chargePanel.refresh();
     });
     gameState.events.on(GameEvents.boltsChanged, () => {
       if (this.benchPanel.visible) this.benchPanel.refresh();
@@ -243,6 +270,8 @@ export class UIScene extends Phaser.Scene {
     this.tradePanel.setPosition((w - tp.w) / 2, Math.max(30, (h - tp.h) / 2 - 10));
     const sp = this.shopPanel.pixelSize();
     this.shopPanel.setPosition((w - sp.w) / 2, Math.max(30, (h - sp.h) / 2 - 10));
+    const cp = this.chargePanel.pixelSize();
+    this.chargePanel.setPosition((w - cp.w) / 2, Math.max(30, (h - cp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
   }
@@ -378,6 +407,7 @@ export class UIScene extends Phaser.Scene {
         // Esc = walk away: the server closes both windows.
         this.tradePanel.requestCancel();
       } else if (this.shopPanel.visible) this.shopPanel.setVisible(false);
+      else if (this.chargePanel.visible) this.chargePanel.setVisible(false);
       else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
       else if (this.questPanel.visible) this.questPanel.setVisible(false);
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);

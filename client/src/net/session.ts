@@ -37,4 +37,8 @@ export const SessionEvents = {
   tradeEnd: 'tradeEnd',
   /** Shop stall detail answered by the server: payload ShopSyncEvent. */
   shopSync: 'shopSync',
+  /** Synced Charge meter changed: payload ChargeStateShape. */
+  charge: 'charge',
+  /** Charge detail (meter + leaderboard): payload ChargeSyncEvent. */
+  chargeSync: 'chargeSync',
 } as const;

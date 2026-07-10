@@ -503,6 +503,27 @@ export const CONFIG = {
     },
   },
 
+  /**
+   * The Citywide Charge (Game Bible B9): weekly Amperite meter at the
+   * Dynamo, Monday (UTC) reset, thresholds indexed to active players.
+   * Rewards are REGALIA ONLY — no Bolts, nothing tradeable (load-bearing
+   * for the token economy; see shared/charge.ts).
+   */
+  charge: {
+    /** Amperite per active player for tiers 1/2/3. */
+    tierPerActivePlayer: [15, 40, 90],
+    /** Threshold floor: pretend at least this many Sparks are active. */
+    minActivePlayers: 5,
+    /** A character counts as active if seen within this many days. */
+    activeWindowDays: 7,
+    /** Weekend gather-XP bonus per tier reached (0.05 = +5%/tier). */
+    weekendXpBonusPerTier: 0.05,
+    /** Top weekly contributors who receive the name-glow trim. */
+    topContributors: 10,
+    /** The untradeable cosmetic id awarded to top contributors. */
+    trimCosmetic: 'chargeTrim',
+  },
+
   /** Skill Mastery 1-50 (Game Bible B3): fast early, long-horizon late. */
   mastery: {
     maxLevel: 50,

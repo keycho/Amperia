@@ -5,6 +5,8 @@ import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@sh
 import { MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   CacheStateShape,
+  ChargeStateShape,
+  ChargeSyncEvent,
   ChatBroadcast,
   CombatEvent,
   EmoteBroadcast,
@@ -102,6 +104,9 @@ export class WorldScene extends Phaser.Scene {
   private stallsWorld = { x: 0, y: 0 };
   /** Shop-stall presence layers (shingle + counter goods), by stall id. */
   private stallFronts = new Map<number, { destroy(): void }>();
+  /** String-light bulb glows — the Citywide Charge scales their density. */
+  private stringBulbGlows: Phaser.GameObjects.Image[] = [];
+  private chargeLightingTier = 0;
   private spatialAt = 0;
   private connectingText: Phaser.GameObjects.Text | null = null;
 
@@ -124,6 +129,9 @@ export class WorldScene extends Phaser.Scene {
     this.dynamoWorld = { x: 0, y: 0 };
     this.stallsWorld = { x: 0, y: 0 };
     this.activeSessionNode = null;
+    this.stallFronts = new Map();
+    this.stringBulbGlows = [];
+    this.chargeLightingTier = 0;
   }
 
   create(): void {
@@ -273,6 +281,8 @@ export class WorldScene extends Phaser.Scene {
       // client isn't animating a path, snap to truth.
       proxy(p).listen('cosmetic', (v: string) => spark.setCosmetic(v));
       spark.setCosmetic(p.cosmetic);
+      proxy(p).listen('trim', (v: string) => spark.setTrim(v));
+      spark.setTrim(p.trim);
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
         if (s === undefined || s.isMoving) return;
@@ -351,6 +361,18 @@ export class WorldScene extends Phaser.Scene {
       this.renderStallFront(Number(id), s);
       proxy(s).onChange(() => this.renderStallFront(Number(id), s));
     });
+
+    // The Citywide Charge: lighting density tracks the meter's tier, and
+    // the UI scene shows the weekend-buff banner.
+    const chargeState = (room.state as { charge?: ChargeStateShape }).charge;
+    if (chargeState !== undefined) {
+      const apply = () => {
+        this.applyChargeLighting(chargeState.tier);
+        session.events.emit(SessionEvents.charge, { ...chargeState });
+      };
+      apply();
+      (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
+    }
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
     room.onMessage(MSG.travelGo, (e: TravelGo) => {
@@ -458,6 +480,9 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(MSG.shopSync, (e: ShopSyncEvent) =>
       session.events.emit(SessionEvents.shopSync, e),
+    );
+    room.onMessage(MSG.chargeSync, (e: ChargeSyncEvent) =>
+      session.events.emit(SessionEvents.chargeSync, e),
     );
 
     room.onLeave(() => {
@@ -1554,8 +1579,8 @@ export class WorldScene extends Phaser.Scene {
                 if (step !== null) send.move(this.room, step);
                 return;
               }
-              // Donate what the tutorial asks for (stub Citywide Charge).
-              send.donate(this.room, { itemId: 'amperite', qty: 5 });
+              // The Warden's ledger: meter + leaderboard + donate buttons.
+              send.chargeInfo(this.room);
             },
           );
           const glow = this.add.image(x + 12, y - 34, 'fx-glow');
@@ -1748,8 +1773,28 @@ export class WorldScene extends Phaser.Scene {
         // Every third bulb wavers a touch — strings feel strung, not printed.
         if (i % 3 === 0) addFlicker(this, glow, bloom(0.85), 0.09);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
+        // The Citywide Charge dims/relights these (E3b) — keep the handle.
+        this.stringBulbGlows.push(glow);
       }
     }
+    this.applyChargeLighting(this.chargeLightingTier);
+  }
+
+  /**
+   * The Citywide Charge's visible payoff (E3b): string-light density
+   * scales with the week's meter tier — low charge leaves the lane on
+   * sparse bulbs, festival blaze lights every one.
+   */
+  private applyChargeLighting(tier: number): void {
+    this.chargeLightingTier = tier;
+    if (this.stringBulbGlows.length === 0) return;
+    const fraction = Math.min(1, 0.45 + 0.19 * tier);
+    this.stringBulbGlows.forEach((glow, i) => {
+      // Deterministic thinning: bulb i stays lit if its slot falls inside
+      // the fraction (stable as the tier climbs — lights ADD, never shuffle).
+      const lit = (i % 100) / 100 < fraction;
+      glow.setVisible(lit);
+    });
   }
 
   /**

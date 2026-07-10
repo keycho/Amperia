@@ -27,6 +27,7 @@ export class Spark {
   /** Fired when a walk step lands on its tile (own Spark: footsteps). */
   onStep: (() => void) | null = null;
   private cosmetic = '';
+  private trim = '';
   private lastFace: [number, number] = [1, 0];
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
@@ -78,6 +79,27 @@ export class Spark {
     this.face(this.lastFace[0], this.lastFace[1]);
   }
 
+  /**
+   * Citywide Charge regalia: top weekly contributors carry a warm glow on
+   * their name. Presentation only — never gameplay, never tradeable.
+   */
+  setTrim(id: string): void {
+    if (id === this.trim) return;
+    this.trim = id;
+    this.applyTrim();
+  }
+
+  private applyTrim(): void {
+    if (this.label === null) return;
+    if (this.trim !== '') {
+      this.label.setColor(PALETTE.neonAmber);
+      this.label.setShadow(0, 0, PALETTE.warmGlow, 6, true, true);
+    } else {
+      this.label.setColor(UI_TEXT_WARM);
+      this.label.setShadow(0, 0, PALETTE.ink, 0, false, false);
+    }
+  }
+
   setNameLabel(name: string): void {
     this.label?.destroy();
     this.label = this.scene.add.text(this.image.x, this.image.y, name, {
@@ -106,6 +128,7 @@ export class Spark {
       ease: 'quad.out',
       onUpdate: () => this.syncLabel(),
     });
+    this.applyTrim();
     this.syncLabel();
   }
 
