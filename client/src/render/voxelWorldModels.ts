@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { hexToInt, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import { MATERIALS, voxelHash, type Material } from './materials';
 import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
@@ -2083,6 +2083,123 @@ function compostHeapModel(depleted: boolean): Voxel[] {
   return v;
 }
 
+// ── G6b WORLD EDGES — the city ends on the plant's decking ────────────────
+
+/** Rim palette: deck metal stepping down into the dark below. The fade
+ *  happens UNDER the city (never at street level) — by the last girder
+ *  row the color is a breath above ink. */
+function rimShade(depth: number): number {
+  return blendInt(MATERIAL_INT.gunmetalDeep, PALETTE_INT.ink, Math.min(1, 0.25 + depth * 0.17));
+}
+
+export type RimLook = 'metal' | 'hazard' | 'broken' | 'garden';
+
+/**
+ * One tile of deck-edge rim: the dark metal lip at deck level, 2–3 voxels
+ * of exposed under-structure (plate face, recessed shadow, girder ribs),
+ * fading into the void. Looks: plain metal, hazard striping, the Tangle's
+ * torn-out sections, the Terrarium's wood overhang with hanging vines.
+ */
+function rimsegModel(alongY: boolean, variant: number, look: RimLook): Voxel[] {
+  const v: Voxel[] = [];
+  const at = (i: number, z: number, c: number): void => {
+    v.push(alongY ? { x: 0, y: i, z, c } : { x: i, y: 0, z, c });
+  };
+  for (let i = 0; i < 8; i++) {
+    const h = voxelHash(i, variant, alongY ? 1 : 0, 3);
+    // The Tangle's collapsed spans: the lip is torn out mid-segment.
+    const torn = look === 'broken' && i >= 2 && i <= 5 && h < 0.7;
+    if (!torn) {
+      const lip =
+        look === 'garden'
+          ? blendInt(MATERIAL_INT.woodDeep, PALETTE_INT.ink, 0.22)
+          : shade(rimShade(0), (h - 0.5) * 0.14);
+      at(i, 0, lip);
+    }
+    // Plate face — hazard variant paints warning blocks every other pair.
+    const plate =
+      look === 'hazard' && (i >> 1) % 2 === 0
+        ? blendInt(PALETTE_INT.neonAmber, PALETTE_INT.ink, 0.6)
+        : shade(rimShade(1), (voxelHash(i, variant, 1, 5) - 0.5) * 0.1);
+    if (!(look === 'broken' && torn && h < 0.4)) at(i, -1, plate);
+    at(i, -2, rimShade(voxelHash(i, variant, 2, 7) < 0.3 ? 3 : 2));
+  }
+  // Girder ribs running deeper — the exposed under-structure.
+  for (const i of [1, 4, 7]) {
+    if (look === 'broken' && i === 4) {
+      // A bent rib dangles one step over.
+      at(5, -3, rimShade(3));
+      at(5, -4, rimShade(4));
+      continue;
+    }
+    at(i, -3, rimShade(3));
+    at(i, -4, rimShade(4));
+  }
+  // The Terrarium's garden overhang: vines spill over the lip.
+  if (look === 'garden') {
+    for (const i of [2, 5]) {
+      const len = 2 + Math.floor(voxelHash(i, variant, 3, 11) * 3);
+      for (let z = -1; z >= -len; z--) {
+        at(i, z, blendInt(PALETTE_INT.solarGreen, PALETTE_INT.ink, 0.3 + -z * 0.16));
+      }
+    }
+  }
+  return v;
+}
+
+/** A support truss/pylon descending from the rim and fading into the
+ *  dark below the city — the structure AMPERIA actually stands on. */
+function rimtrussModel(): Voxel[] {
+  const v: Voxel[] = [];
+  for (let z = -1; z >= -8; z--) {
+    const c = rimShade(-z * 0.8);
+    v.push({ x: 2, y: 0, z, c });
+    v.push({ x: 5, y: 0, z, c });
+    // Cross-braces every third row.
+    if (z === -3 || z === -6) {
+      for (let i = 3; i <= 4; i++) v.push({ x: i, y: 0, z, c: rimShade(-z * 0.9) });
+    }
+  }
+  return v;
+}
+
+/** One tile of tram trestle marching off the deck across the void —
+ *  beams, rails, and legs that fade downward. Placed off-map at gates. */
+function trestleSegModel(alongY: boolean): Voxel[] {
+  const v: Voxel[] = [];
+  const at = (i: number, k: number, z: number, c: number): void => {
+    v.push(alongY ? { x: k, y: i, z, c } : { x: i, y: k, z, c });
+  };
+  for (let i = 0; i < 8; i++) {
+    const deck = shade(rimShade(1), (voxelHash(i, 0, alongY ? 1 : 0, 13) - 0.5) * 0.1);
+    at(i, 3, 0, deck);
+    at(i, 4, 0, deck);
+    // Rails catch a little of the city's glow.
+    if (i % 2 === 0) {
+      at(i, 3, 1, blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.warmGlow, 0.18));
+      at(i, 4, 1, blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.warmGlow, 0.18));
+    }
+  }
+  // Leg pair mid-segment, gone by the bottom.
+  for (let z = -1; z >= -6; z--) {
+    const c = rimShade(-z * 1.1);
+    at(3, 3, z, c);
+    at(3, 4, z, c);
+  }
+  return v;
+}
+
+/** The far (north) edges: a low curb lip so the deck visibly ENDS —
+ *  the bake's face ramp gives it a quiet bright boundary line. */
+function rimlipModel(alongY: boolean): Voxel[] {
+  const v: Voxel[] = [];
+  for (let i = 0; i < 8; i++) {
+    const c = shade(rimShade(0), (voxelHash(i, 9, alongY ? 1 : 0, 17) - 0.5) * 0.1);
+    v.push(alongY ? { x: 0, y: i, z: 0, c } : { x: i, y: 0, z: 0, c });
+  }
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -2194,4 +2311,27 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
+  // G6b world edges: rim segments per orientation/look, trusses, trestles,
+  // and the far-edge lips. No outlines/shadows — they belong to the void.
+  const rimOpts = { outline: false, shadow: false, grounding: false } as const;
+  for (const alongY of [false, true]) {
+    const o = alongY ? 'y' : 'x';
+    for (let rv = 0; rv < 3; rv++) {
+      bakeVoxelModel(scene, {
+        name: `rim-metal-${o}-${rv}`,
+        voxels: rimsegModel(alongY, rv, 'metal'),
+        ...rimOpts,
+      });
+    }
+    for (const look of ['hazard', 'broken', 'garden'] as const) {
+      bakeVoxelModel(scene, {
+        name: `rim-${look}-${o}`,
+        voxels: rimsegModel(alongY, 7, look),
+        ...rimOpts,
+      });
+    }
+    bakeVoxelModel(scene, { name: `trestle-${o}`, voxels: trestleSegModel(alongY), ...rimOpts });
+    bakeVoxelModel(scene, { name: `rimlip-${o}`, voxels: rimlipModel(alongY), ...rimOpts });
+  }
+  bakeVoxelModel(scene, { name: 'rimtruss', voxels: rimtrussModel(), ...rimOpts });
 }

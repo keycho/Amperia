@@ -203,6 +203,7 @@ export class WorldScene extends Phaser.Scene {
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
     makeSkylineTexture(this);
     this.drawFloor();
+    this.placeWorldRim();
     this.placeProps();
     this.placeLoftBerths();
     placeAmbientNpcs(this, this.map.district);
@@ -1599,20 +1600,97 @@ export class WorldScene extends Phaser.Scene {
     // two walls darken further — the crisp baked cast shadows layer on top.
     this.drawWallShadows();
 
-    // THE VOID (§B5): the map is an island of light — its last rows fade
-    // into near-black so screenshot corners are dark, not plum.
+    // THE VOID (§B5, amended by G6b): the map ENDS, it doesn't fade. The
+    // deck stays readable out to the rim — only a mild dimming settles on
+    // the outermost rows; the darkness lives BELOW the deck (the rim's
+    // under-structure), never at street level.
     const voidG = this.add.graphics();
     voidG.setDepth(DEPTH_FLOOR + 2);
-    const FADE = 5;
+    const FADE = 3;
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
         const distToEdge = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
         if (distToEdge >= FADE) continue;
-        const a = Math.pow((FADE - distToEdge) / FADE, 1.6) * 0.92;
+        const a = Math.pow((FADE - distToEdge) / FADE, 1.6) * 0.45;
         const { x, y } = tileToWorld(tx, ty);
         voidG.fillStyle(MATERIAL_INT.voidBlack, a);
         this.traceDiamond(voidG, x, y);
         voidG.fillPath();
+      }
+    }
+  }
+
+  /**
+   * G6b WORLD EDGES: the city is built on the plant's decking, and the
+   * deck visibly ENDS. The two camera-facing borders carry a deck-edge
+   * rim (dark metal lip, exposed girders, occasional hazard striping),
+   * support trusses descending into the dark BELOW the city, and a few
+   * rim lamps so the edge itself is faintly lit. District character per
+   * brief: the Tangle's rim is torn open in places, the Filament rails
+   * its promenade, the Terrarium spills vines over a wood overhang. Tram
+   * trestles march off-map from every gate — the line crosses the void
+   * on visible bridgework.
+   */
+  private placeWorldRim(): void {
+    const size = this.map.size;
+    const d = this.map.district;
+    const place = (name: string, tx: number, ty: number, depthOff: number): void => {
+      const w = tileToWorld(tx, ty);
+      const img = addVoxelSprite(this, name, w.x, w.y);
+      const wt = worldSpriteTint();
+      if (wt !== null) img.setTint(wt);
+      img.setDepth(depthForWorldY(w.y) + depthOff);
+    };
+    const lookFor = (i: number, edge: number): string => {
+      const o = edge === 0 ? 'y' : 'x';
+      const h = ((i * 31 + edge * 17 + size * 7) % 100) / 100;
+      if (d === 'tangle' && h < 0.28) return `rim-broken-${o}`;
+      if (d === 'terrarium' && i % 3 === 1) return `rim-garden-${o}`;
+      if (h > 0.55 && h < 0.67) return `rim-hazard-${o}`;
+      return `rim-metal-${o}-${(i * 7 + edge * 13) % 3}`;
+    };
+    for (let i = 0; i < size; i++) {
+      // Camera-facing edges: the full rim treatment.
+      place(lookFor(i, 0), size - 1, i, -2);
+      place(lookFor(i, 1), i, size - 1, -2);
+      if (i % 6 === 3) {
+        place('rimtruss', size - 1, i, -3);
+        place('rimtruss', i, size - 1, -3);
+      }
+      // The Filament: promenade rails where the market meets the void.
+      if (d === 'filament' && i % 2 === 0 && i > 1 && i < size - 2) {
+        place('guardrail-1', size - 1, i, -1);
+        place('guardrail-0', i, size - 1, -1);
+      }
+      // Rim lamps — a handful, so the edge reads at distance.
+      if (i % 9 === 4) {
+        for (const [tx, ty] of [
+          [size - 1, i],
+          [i, size - 1],
+        ] as const) {
+          const w = tileToWorld(tx, ty);
+          addLayeredGlow(
+            this,
+            w.x,
+            w.y + 10,
+            PALETTE_INT.warmGlow,
+            0.22,
+            depthForWorldY(w.y) - 1,
+            0.28,
+          );
+        }
+      }
+      // Far edges: the low curb lip — the deck ends behind the city too.
+      place('rimlip-y', 0, i, -2);
+      place('rimlip-x', i, 0, -2);
+    }
+    // Tram trestles: the line leaves the deck on visible bridgework.
+    const gate = this.map.props.find((p) => p.kind === 'tramgate');
+    if (gate !== undefined) {
+      const east = gate.x > size / 2;
+      const gy = gate.y + Math.floor(gate.h / 2);
+      for (let k = 1; k <= 3; k++) {
+        place('trestle-x', east ? size - 1 + k : -k, gy, -2);
       }
     }
   }
