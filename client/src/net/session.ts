@@ -47,4 +47,8 @@ export const SessionEvents = {
   identity: 'identity',
   /** Another Spark's inspect card facts: payload InspectInfoEvent. */
   inspect: 'inspect',
+  /** Manifest sync on join: payload ManifestSync (S1). */
+  manifest: 'manifest',
+  /** A Manifest tick / first discovery: payload ManifestFoundEvent. */
+  manifestFound: 'manifestFound',
 } as const;

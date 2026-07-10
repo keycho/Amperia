@@ -89,6 +89,10 @@ export class InspectCard {
     const glow = eq.nameGlow !== undefined;
     const name = add(14, 10, ev.sparkName, glow ? PALETTE.neonAmber : UI_TEXT_WARM, 15);
     if (glow) name.setShadow(0, 0, PALETTE.warmGlow, 6, true, true);
+    if (ev.title !== null) {
+      // Manifest title (S1) — the city's word for this Spark.
+      add(name.x + name.width + 8, 14, `“${ev.title}”`, PALETTE.neonTeal, 11);
+    }
     add(14, 172, ev.crew ?? 'No crew — yet.', ev.crew !== null ? PALETTE.neonTeal : PALETTE.groundAccent, 11);
 
     let y = 194;

@@ -21,6 +21,7 @@ model Account {
   createdAt     DateTime    @default(now())
   character     Character?
   ledgerEvents  LedgerEvent[]
+  manifest      ManifestEntry[]
 }
 
 model Character {
@@ -49,10 +50,24 @@ model Character {
   /// Worn wardrobe cosmetics (shared/cosmetics.ts wire); "" = never set
   /// (derive from owned on load), "none" = explicitly bare.
   equipped       String @default("")
+  /// Untradeable Manifest titles earned (shared/manifest.ts), in earn order.
+  titlesJson     Json   @default("[]")
   /// Which district the Spark was last in ('filament' | 'tangle').
   district       String @default("filament")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// The Manifest (S1): account-wide collection log — one row per discovered
+/// entry. Counts tick on repeats; firstAt is the discovery moment.
+model ManifestEntry {
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  entryId   String
+  count     Int      @default(1)
+  firstAt   DateTime @default(now())
+
+  @@id([accountId, entryId])
 }
 
 /// World-shared merchant price pressure per resource (0 = ceiling price).

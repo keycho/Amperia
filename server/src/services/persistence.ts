@@ -27,6 +27,8 @@ export interface CharacterSnapshot {
   appearance: string;
   /** Worn wardrobe wire; '' = never set, 'none' = explicitly bare. */
   equipped: string;
+  /** Untradeable Manifest titles, earn order. */
+  titles: string[];
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -98,6 +100,9 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     district: c.district,
     appearance: c.appearance,
     equipped: c.equipped,
+    titles: Array.isArray(c.titlesJson)
+      ? (c.titlesJson as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [],
   };
 }
 
@@ -118,6 +123,7 @@ export async function persistCharacter(
     cosmetics: string[];
     district: string;
     equipped: string;
+    titles: string[];
   },
 ): Promise<void> {
   try {
@@ -139,6 +145,7 @@ export async function persistCharacter(
         cosmeticsJson: data.cosmetics,
         district: data.district,
         equipped: data.equipped,
+        titlesJson: data.titles,
       },
     });
   } catch (err) {

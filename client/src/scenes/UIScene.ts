@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InspectInfoEvent } from '@shared/protocol';
+import type { InspectInfoEvent, ManifestFoundEvent } from '@shared/protocol';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
@@ -18,6 +18,7 @@ import { ShopPanel } from '../ui/ShopPanel';
 import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
+import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 
 interface DragState {
@@ -45,6 +46,7 @@ export class UIScene extends Phaser.Scene {
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
   private inspectCard!: InspectCard;
+  private manifestPanel!: ManifestPanel;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
   private buffChip!: Phaser.GameObjects.Text;
@@ -147,6 +149,10 @@ export class UIScene extends Phaser.Scene {
     this.questPanel = new QuestPanel(this);
     this.tradePanel = new TradePanel(this);
     this.inspectCard = new InspectCard(this);
+    this.manifestPanel = new ManifestPanel(this);
+    session.events.on(SessionEvents.manifestFound, (ev: ManifestFoundEvent) =>
+      showManifestToast(this, ev),
+    );
     session.events.on(SessionEvents.inspect, (ev: InspectInfoEvent) =>
       this.inspectCard.show(ev),
     );
@@ -403,6 +409,9 @@ export class UIScene extends Phaser.Scene {
       sound.uiClick();
       this.skillsPanel.setVisible(false);
       this.inventoryPanel.setVisible(!this.inventoryPanel.visible);
+    });
+    kb.on('keydown-M', () => {
+      this.manifestPanel.toggle();
     });
     kb.on('keydown-K', () => {
       if (typing()) return;

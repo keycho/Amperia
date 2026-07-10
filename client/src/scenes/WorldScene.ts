@@ -22,6 +22,8 @@ import type {
   GlintShowEvent,
   IdentityEvent,
   InspectInfoEvent,
+  ManifestFoundEvent,
+  ManifestSync,
   InventorySync,
   LootEvent,
   MoveAcceptedEvent,
@@ -529,6 +531,12 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(MSG.inspectInfo, (e: InspectInfoEvent) =>
       session.events.emit(SessionEvents.inspect, e),
+    );
+    room.onMessage(MSG.manifest, (e: ManifestSync) =>
+      session.events.emit(SessionEvents.manifest, e),
+    );
+    room.onMessage(MSG.manifestFound, (e: ManifestFoundEvent) =>
+      session.events.emit(SessionEvents.manifestFound, e),
     );
     session.events.off(SessionEvents.openWardrobe);
     session.events.on(SessionEvents.openWardrobe, () => {

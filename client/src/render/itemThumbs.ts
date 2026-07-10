@@ -261,8 +261,70 @@ function bakeThumb(scene: Phaser.Scene, key: string, voxels: Voxel[]): void {
   g.destroy();
 }
 
+// ── cosmetic thumbs (S1: the Manifest wardrobe page + wardrobe UI) ────────
+
+const COSMETIC_MODELS: Record<string, () => Voxel[]> = {
+  bulbHat: () => {
+    const v = box(1, 1, 0, 2, 2, 1, blendInt(C.metal, C.ink, 0.15));
+    v.push(...box(0, 0, 1, 4, 4, 3, blendInt(C.glow, C.amber, 0.25)));
+    v.push({ x: 1, y: 1, z: 4, c: C.glow });
+    v.push({ x: 2, y: 2, z: 4, c: C.glow });
+    return v;
+  },
+  alleyBeanie: () => {
+    const brim = blendInt(PALETTE_INT.emberOrange, PALETTE_INT.structureMid, 0.3);
+    const v = box(0, 0, 0, 4, 4, 1, brim);
+    v.push(...box(0, 0, 1, 4, 4, 1, C.ochre));
+    v.push(...box(1, 1, 2, 2, 2, 1, C.ochre));
+    v.push({ x: 1, y: 2, z: 3, c: C.amber }); // bobble
+    return v;
+  },
+  starterScarf: () => {
+    const rose = PALETTE_INT.neonRose;
+    const deep = blendInt(rose, C.ink, 0.3);
+    const v = box(0, 0, 1, 4, 3, 1, rose);
+    v.push(...box(0, 2, 0, 1, 1, 1, deep)); // trailing tail
+    v.push({ x: 0, y: 2, z: 2, c: deep });
+    return v;
+  },
+  salvagerSatchel: () => {
+    const v = box(0, 0, 0, 4, 2, 2, C.rust);
+    v.push(...box(0, 0, 2, 4, 2, 1, C.wood));
+    v.push({ x: 1, y: 1, z: 1, c: C.amber }); // clasp
+    return v;
+  },
+  brassToolSkin: () => {
+    const brass = blendInt(C.amber, C.ochre, 0.55);
+    const v = box(0, 0, 0, 2, 1, 2, brass);
+    v.push({ x: 2, y: 0, z: 2, c: C.teal });
+    v.push({ x: 2, y: 0, z: 0, c: C.teal });
+    return v;
+  },
+  chargeTrim: () => [
+    { x: 0, y: 0, z: 0, c: C.amber },
+    { x: 1, y: 1, z: 1, c: C.glow },
+    { x: 2, y: 2, z: 2, c: C.amber },
+    { x: 0, y: 2, z: 1, c: blendInt(C.amber, C.glow, 0.5) },
+    { x: 2, y: 0, z: 1, c: blendInt(C.amber, C.glow, 0.5) },
+  ],
+  archivistGlow: () => [
+    { x: 0, y: 0, z: 0, c: C.teal },
+    { x: 1, y: 1, z: 1, c: blendInt(C.teal, C.glow, 0.5) },
+    { x: 2, y: 2, z: 2, c: C.teal },
+    { x: 0, y: 2, z: 1, c: PALETTE_INT.neonCyan },
+    { x: 2, y: 0, z: 1, c: PALETTE_INT.neonCyan },
+  ],
+};
+
+export function cosmeticThumbKey(id: string): string {
+  return `thumb:cosmetic:${id}`;
+}
+
 /** Bake every (icon, accent) pair the item table actually uses. */
 export function bakeItemThumbs(scene: Phaser.Scene): void {
+  for (const [id, build] of Object.entries(COSMETIC_MODELS)) {
+    bakeThumb(scene, cosmeticThumbKey(id), build());
+  }
   for (const def of Object.values(ITEMS)) {
     const builder = BUILDERS[def.icon];
     if (builder === undefined) continue;

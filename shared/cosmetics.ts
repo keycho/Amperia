@@ -55,6 +55,13 @@ export const COSMETICS: Record<string, CosmeticDef> = {
     label: "Warden's Glow",
     source: 'Top-10 weekly Charge donors',
   },
+  /** The full-Manifest trim (S1) — a cool teal glow, rarer than amber. */
+  archivistGlow: {
+    id: 'archivistGlow',
+    slot: 'nameGlow',
+    label: "Archivist's Glow",
+    source: 'Complete the whole Manifest',
+  },
 };
 
 export type EquippedMap = Partial<Record<CosmeticSlot, string>>;

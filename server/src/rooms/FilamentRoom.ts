@@ -67,6 +67,8 @@ import {
   type IdentityEvent,
   type InspectIntent,
   type InspectInfoEvent,
+  type ManifestFoundEvent,
+  type ManifestSync,
   type GatherIntent,
   type GlintClickIntent,
   type InventorySync,
@@ -107,6 +109,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
+import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
 import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
 import {
   CacheState,
@@ -200,6 +203,8 @@ interface PlayerRuntime {
   appearance: string;
   /** Worn wardrobe cosmetics by slot (validated against `cosmetics`). */
   equipped: EquippedMap;
+  /** Untradeable Manifest titles (S1), earn order. */
+  titles: string[];
   hp: number;
   /** Set when the player pays the tram toll; persisted as the district. */
   pendingDistrict: DistrictId | null;
@@ -425,6 +430,7 @@ export class FilamentRoom extends Room<FilamentState> {
               character.equipped === 'none' ? '' : character.equipped,
               character.cosmetics,
             ),
+      titles: character.titles,
       hp: CONFIG.combat.player.maxHp,
       pendingDistrict: null,
       healAcc: 0,
@@ -453,6 +459,17 @@ export class FilamentRoom extends Room<FilamentState> {
 
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
+    void loadManifest(auth.accountId).then((entries) => {
+      if (this.runtimes.get(client.sessionId) !== runtime) return;
+      client.send(MSG.manifest, {
+        entries: entries.map((e) => ({
+          entryId: e.entryId,
+          count: e.count,
+          firstAtMs: e.firstAtMs,
+        })),
+        titles: [...runtime.titles],
+      } satisfies ManifestSync);
+    });
     client.send(MSG.prices, { buy: merchant.prices(Date.now()) });
     client.send(MSG.quests, { log: runtime.quests });
     // Stall mail: expired-stall returns + the "sold while you were away"
@@ -721,6 +738,42 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   /**
+   * Tick the Manifest (S1) off a REAL grant path. First discoveries send
+   * the moment (toast + chime client-side); page/full completion awards
+   * untradeable titles and, for the whole book, the Archivist trim.
+   */
+  private recordManifest(client: Client, rt: PlayerRuntime, entryId: string): void {
+    void recordEntry(rt.accountId, entryId, rt.titles)
+      .then((res) => {
+        if (res === null || this.runtimes.get(client.sessionId) !== rt) return;
+        if (!res.first) return;
+        ledger.log({
+          type: 'trophy',
+          account: rt.accountId,
+          data: { manifest: entryId, count: res.count },
+        });
+        client.send(MSG.manifestFound, {
+          entryId,
+          count: res.count,
+          first: true,
+          newTitles: res.newTitles,
+        } satisfies ManifestFoundEvent);
+        for (const title of res.newTitles) {
+          rt.titles.push(title);
+          ledger.log({
+            type: 'cosmetic',
+            account: rt.accountId,
+            data: { title, source: 'manifest completion' },
+          });
+          client.send(MSG.notice, { text: `The Manifest remembers: you are ${title}.` });
+        }
+        if (res.fullComplete) this.grantCosmetic(client, rt, FULL_MANIFEST_TRIM, 'the whole Manifest');
+        if (res.newTitles.length > 0) void this.persist(rt);
+      })
+      .catch((err) => console.error('[manifest] record failed', err));
+  }
+
+  /**
    * Grant an untradeable cosmetic (I3). The ONLY way cosmetics enter a
    * wardrobe: quest rewards, the junk-heap beanie roll, the Tinkerbench
    * brass-skin recipe, and Charge trims. Ledger-logged, auto-equipped into
@@ -741,6 +794,7 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.notice, { text: `Wardrobe: ${def.label} is yours.` });
     client.send(MSG.identity, this.identitySnapshot(rt));
+    this.recordManifest(client, rt, id);
     void this.persist(rt);
     return true;
   }
@@ -780,6 +834,7 @@ export class FilamentRoom extends Room<FilamentState> {
       sessionId: msg.sessionId,
       sparkName: target.sparkName,
       crew: null,
+      title: target.titles.length > 0 ? (target.titles[target.titles.length - 1] as string) : null,
       appearance: target.appearance !== '' ? target.appearance : DEFAULT_APPEARANCE_CODE,
       equipped: encodeEquipped(target.equipped),
       topSkills,
@@ -1072,6 +1127,7 @@ export class FilamentRoom extends Room<FilamentState> {
           glintHit: false,
         });
         client.send(MSG.inventory, this.inventorySync(rt));
+        this.recordManifest(client, rt, 'dentedCrest');
       }
     }
   }
@@ -3043,6 +3099,7 @@ export class FilamentRoom extends Room<FilamentState> {
       if (rr.added > 0) {
         rt.pack = rr.inv;
         rareGranted = rare;
+        this.recordManifest(client, rt, rare);
       }
     }
     // The Alley Beanie (I3): a rare junk-heap COSMETIC roll — presentation
@@ -3129,6 +3186,7 @@ export class FilamentRoom extends Room<FilamentState> {
       district,
       skills: rt.skills,
       equipped: encodeEquipped(rt.equipped) === '' ? 'none' : encodeEquipped(rt.equipped),
+      titles: rt.titles,
     });
   }
 }

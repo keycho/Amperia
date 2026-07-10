@@ -57,6 +57,8 @@ export const MSG = {
   combat: 'combat',
   identity: 'identity',
   inspectInfo: 'inspectInfo',
+  manifest: 'manifest',
+  manifestFound: 'manifestFound',
 } as const;
 
 export interface MoveIntent {
@@ -411,6 +413,20 @@ export const CHAT_LIMITS = {
  * Read-side shapes of the synced room state (mirrors server schema classes;
  * lets the client stay `any`-free when reading Colyseus state).
  */
+/** Server → client: full Manifest sync on join (S1). */
+export interface ManifestSync {
+  entries: Array<{ entryId: string; count: number; firstAtMs: number }>;
+  titles: string[];
+}
+
+/** Server → client: a Manifest tick — first discoveries make the moment. */
+export interface ManifestFoundEvent {
+  entryId: string;
+  count: number;
+  first: boolean;
+  newTitles: string[];
+}
+
 /** Client → server: look another Spark over (click-to-inspect, I5). */
 export interface InspectIntent {
   sessionId: string;
@@ -422,6 +438,8 @@ export interface InspectInfoEvent {
   sparkName: string;
   /** Crew system lands later — null renders the placeholder line. */
   crew: string | null;
+  /** Latest Manifest title, or null. */
+  title: string | null;
   appearance: string;
   equipped: string;
   /** Top Mastery lines, highest first (max 3, level ≥ 2). */
