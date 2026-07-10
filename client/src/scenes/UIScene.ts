@@ -30,6 +30,44 @@ export class UIScene extends Phaser.Scene {
   private presenceChip!: Phaser.GameObjects.Text;
   private chat!: ChatUI;
   private skillsPanel!: SkillsPanel;
+  private toast: Phaser.GameObjects.Container | null = null;
+
+  /** A soft chip that slides in top-center and fades — tram arrivals etc. */
+  private showToast(text: string): void {
+    this.toast?.destroy();
+    const txt = this.add.text(0, 0, `⚡ ${text}`, {
+      fontFamily: 'monospace',
+      fontSize: '13px',
+      color: UI_TEXT_WARM,
+    });
+    txt.setOrigin(0.5, 0.5);
+    const w = txt.width + 26;
+    const h = txt.height + 14;
+    const g = this.add.graphics();
+    g.fillStyle(PALETTE_INT.ink, 0.78);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    g.lineStyle(1.5, PALETTE_INT.warmGlow, 0.5);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+    const toast = this.add.container(this.scale.width / 2, 26, [g, txt]);
+    toast.setDepth(940);
+    toast.setAlpha(0);
+    this.toast = toast;
+    this.tweens.add({ targets: toast, alpha: 1, y: 48, duration: 320, ease: 'quad.out' });
+    this.time.delayedCall(3200, () => {
+      if (this.toast !== toast) return;
+      this.tweens.add({
+        targets: toast,
+        alpha: 0,
+        y: 30,
+        duration: 380,
+        ease: 'quad.in',
+        onComplete: () => {
+          if (this.toast === toast) this.toast = null;
+          toast.destroy();
+        },
+      });
+    });
+  }
 
   constructor() {
     super('ui');
@@ -83,6 +121,13 @@ export class UIScene extends Phaser.Scene {
     this.skillsPanel = new SkillsPanel(this);
     gameState.events.on(GameEvents.skillsChanged, () => {
       if (this.skillsPanel.visible) this.skillsPanel.refresh();
+    });
+
+    // Tram arrivals get a warm toast up top (the chat log keeps the line too).
+    session.events.on(SessionEvents.notice, (text: string) => {
+      if (text.includes('stepped off the tram') || text.includes('rode the tram out')) {
+        this.showToast(text);
+      }
     });
 
     this.layout();
