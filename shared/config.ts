@@ -44,6 +44,74 @@ export const CONFIG = {
     spawn: { x: 35, y: 20 },
   },
 
+  /** The Fortune Coil (S4): ONE free spin daily — the wheel takes NO
+   *  currency input of ANY kind (asserted in shared/coil.ts and the
+   *  handler). Prizes are consumables, small Bolts, Coil shards toward
+   *  the exclusive trail, and Manifest fillers — all untradeable. */
+  coil: {
+    shardsForCosmetic: 6,
+    /** Extra shard weight per shardless spin (duplicate-pity ramp). */
+    pityWeightStep: 3,
+    /** The Coil-exclusive cosmetic (TRAIL slot). */
+    cosmetic: 'glimmerTrail',
+    prizes: [
+      { id: 'bolts-s', label: '15 Bolts', kind: 'bolts', weight: 24, amount: 15 },
+      { id: 'bolts-m', label: '40 Bolts', kind: 'bolts', weight: 12, amount: 40 },
+      { id: 'bolts-l', label: '90 Bolts', kind: 'bolts', weight: 4, amount: 90 },
+      { id: 'warmcup', label: 'Warmcups', kind: 'item', weight: 15, amount: 2, itemId: 'warmcup' },
+      { id: 'cellwax', label: 'Cellwax', kind: 'item', weight: 14, amount: 3, itemId: 'cellwax' },
+      { id: 'salvage', label: 'A Salvage haul', kind: 'item', weight: 14, amount: 20, itemId: 'salvage' },
+      { id: 'filler', label: 'Gilded Scrap', kind: 'item', weight: 3, amount: 1, itemId: 'gildedScrap' },
+      { id: 'shard', label: 'A Coil Shard', kind: 'shard', weight: 8, amount: 1 },
+      { id: 'shard2', label: 'Twin Coil Shards', kind: 'shard', weight: 3, amount: 2 },
+    ],
+  },
+
+  /** The Ledgerhouse (S5): banked slots, inside the building only.
+   *  Expansion is the hoarder sink — steeply rising Bolts per +8. */
+  bank: {
+    baseSlots: 48,
+    slotsPerExpansion: 8,
+    maxSlots: 96,
+    expansionCosts: [400, 1200, 3600, 9000, 20000, 45000],
+  },
+
+  /** Rested Charge (S3): the first N minutes of GATHERING each UTC day
+   *  boost gather XP only — never resources, never combat XP; the faucet
+   *  is untouched. Missing days never punishes; it just refills daily. */
+  restedCharge: {
+    dailyMinutes: 40,
+    xpMultiplier: 1.25,
+  },
+
+  /** The weekly goal board (S2): pool → 8 deterministic picks per UTC
+   *  Monday week; rewards claimable on any 5, hard ceiling. NO streaks,
+   *  no penalties — a missed week costs nothing, ever. */
+  goals: {
+    perWeek: 8,
+    /** Weekly claim ceiling — the "any 5" rule. */
+    maxClaims: 5,
+    /** Regalia tokens toward the seasonal cosmetic (granted on the 5th
+     *  claim of a week); at this many tokens the Circuit Banner arrives. */
+    tokensForSeasonal: 4,
+    seasonalCosmetic: 'circuitBanner',
+    pool: [
+      { id: 'g-salvage', label: 'Haul 120 Salvage from the heaps', kind: 'gather', itemId: 'salvage', target: 120, bolts: 40 },
+      { id: 'g-brass', label: 'Delve 40 Brass from the seams', kind: 'gather', itemId: 'brass', target: 40, bolts: 45 },
+      { id: 'g-amperite', label: 'Pull 15 Amperite out of the pulse', kind: 'gather', itemId: 'amperite', target: 15, bolts: 50 },
+      { id: 'g-koi', label: 'Skim 12 Glowkoi from the canal', kind: 'gather', itemId: 'glowkoi', target: 12, bolts: 45 },
+      { id: 'g-signal', label: 'Tune in 10 Signal from the masts', kind: 'gather', itemId: 'signal', target: 10, bolts: 45 },
+      { id: 'g-craft', label: 'Craft 2 pieces at the Tinkerbench', kind: 'craft', target: 2, bolts: 40 },
+      { id: 'g-craft2', label: 'Craft a Brassbound-or-better piece', kind: 'craft', minTier: 2, target: 1, bolts: 55 },
+      { id: 'g-donate', label: 'Donate 10 Amperite to the Charge', kind: 'donate', target: 10, bolts: 50 },
+      { id: 'g-sell', label: 'Sell 40 resources at the Nightstalls stand', kind: 'sellNpc', target: 40, bolts: 35 },
+      { id: 'g-shop', label: 'Move goods through a player shop', kind: 'shopSale', target: 1, bolts: 45 },
+      { id: 'g-trade', label: 'Settle a trade with another Spark', kind: 'trade', target: 1, bolts: 40 },
+      { id: 'g-discover', label: 'Log something new in the Manifest', kind: 'discover', target: 1, bolts: 55 },
+      { id: 'g-brawl', label: 'Put down 8 feral junkbots', kind: 'brawl', target: 8, bolts: 45 },
+    ],
+  },
+
   /** Nameplate proximity fading (S0) — crowds must not become text piles.
    *  Presentation only; the last-inspected Spark stays readable. */
   nameplates: {

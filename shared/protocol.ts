@@ -40,6 +40,7 @@ export const MSG = {
   appearance: 'appearance',
   wardrobe: 'wardrobe',
   inspect: 'inspect',
+  goalClaim: 'goalClaim',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -59,6 +60,8 @@ export const MSG = {
   inspectInfo: 'inspectInfo',
   manifest: 'manifest',
   manifestFound: 'manifestFound',
+  goals: 'goals',
+  rested: 'rested',
 } as const;
 
 export interface MoveIntent {
@@ -413,6 +416,31 @@ export const CHAT_LIMITS = {
  * Read-side shapes of the synced room state (mirrors server schema classes;
  * lets the client stay `any`-free when reading Colyseus state).
  */
+/** Client → server: claim a completed weekly goal (S2). */
+export interface GoalClaimIntent {
+  goalId: string;
+}
+
+/**
+ * Server → client (S2): the week's board state. Rows may be PARTIAL
+ * (merge by goalId) on progress ticks; join sends everything. Clients
+ * derive the goal list itself from shared/goals.ts + weekKey.
+ */
+export interface GoalsSync {
+  weekKey: string;
+  rows: Array<{ goalId: string; progress: number; claimed: boolean }>;
+  claimsUsed?: number;
+  tokens?: number;
+}
+
+/** Server → client (own client only): Rested Charge state (S3). */
+export interface RestedSync {
+  /** Boosted-gathering milliseconds left today (0 = spent). */
+  msLeft: number;
+  /** Gather-XP multiplier while rested (display only). */
+  multiplier: number;
+}
+
 /** Server → client: full Manifest sync on join (S1). */
 export interface ManifestSync {
   entries: Array<{ entryId: string; count: number; firstAtMs: number }>;

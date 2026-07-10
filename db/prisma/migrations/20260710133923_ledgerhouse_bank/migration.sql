@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Character" ADD COLUMN     "bankJson" JSONB NOT NULL DEFAULT '[]',
+ADD COLUMN     "bankSlots" INTEGER NOT NULL DEFAULT 48;

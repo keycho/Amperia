@@ -51,4 +51,8 @@ export const SessionEvents = {
   manifest: 'manifest',
   /** A Manifest tick / first discovery: payload ManifestFoundEvent. */
   manifestFound: 'manifestFound',
+  /** Weekly goal board state (S2): payload GoalsSync (rows may be partial). */
+  goals: 'goals',
+  /** Rested Charge state (S3): payload RestedSync. */
+  rested: 'rested',
 } as const;

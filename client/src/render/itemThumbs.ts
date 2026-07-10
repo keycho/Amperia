@@ -307,6 +307,20 @@ const COSMETIC_MODELS: Record<string, () => Voxel[]> = {
     { x: 0, y: 2, z: 1, c: blendInt(C.amber, C.glow, 0.5) },
     { x: 2, y: 0, z: 1, c: blendInt(C.amber, C.glow, 0.5) },
   ],
+  circuitBanner: () => {
+    const v = box(3, 0, 0, 1, 1, 5, C.metal);
+    v.push(...box(1, 0, 3, 2, 1, 2, C.teal));
+    v.push({ x: 0, y: 0, z: 4, c: PALETTE_INT.neonCyan });
+    v.push({ x: 3, y: 0, z: 5, c: C.amber });
+    return v;
+  },
+  glimmerTrail: () => [
+    { x: 0, y: 0, z: 0, c: C.glow },
+    { x: 1, y: 1, z: 1, c: C.amber },
+    { x: 2, y: 2, z: 0, c: C.glow },
+    { x: 3, y: 3, z: 1, c: blendInt(C.amber, C.glow, 0.5) },
+    { x: 1, y: 3, z: 0, c: blendInt(C.glow, C.amber, 0.3) },
+  ],
   archivistGlow: () => [
     { x: 0, y: 0, z: 0, c: C.teal },
     { x: 1, y: 1, z: 1, c: blendInt(C.teal, C.glow, 0.5) },

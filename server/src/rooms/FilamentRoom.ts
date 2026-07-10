@@ -51,6 +51,7 @@ import {
   DEFAULT_APPEARANCE_CODE,
   SPARK_NAME_RE,
 } from '@shared/appearance';
+import { type GoalEvent, goalWeekKey } from '@shared/goals';
 import {
   COSMETICS,
   decodeEquipped,
@@ -71,6 +72,9 @@ import {
   type ManifestSync,
   type GatherIntent,
   type GlintClickIntent,
+  type GoalClaimIntent,
+  type GoalsSync,
+  type RestedSync,
   type InventorySync,
   type MoveIntent,
   type MoveStackIntent,
@@ -109,6 +113,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
+import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
 import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
 import {
@@ -205,6 +210,11 @@ interface PlayerRuntime {
   equipped: EquippedMap;
   /** Untradeable Manifest titles (S1), earn order. */
   titles: string[];
+  /** Weekly-goal regalia tokens toward the seasonal cosmetic (S2). */
+  goalTokens: number;
+  /** Rested Charge (S3): boosted-gathering ms burned + their UTC day. */
+  restedMsUsed: number;
+  restedDate: string;
   hp: number;
   /** Set when the player pays the tram toll; persisted as the district. */
   pendingDistrict: DistrictId | null;
@@ -286,6 +296,7 @@ export class FilamentRoom extends Room<FilamentState> {
   private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
+  private restedNotifyAcc = 0;
   private stallTicker = 0;
   /** Live trade windows, by trade id. */
   private trades = new Map<string, PlayerTradeState>();
@@ -339,6 +350,9 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<InspectIntent>(MSG.inspect, (client, msg) =>
       this.handleInspect(client, msg),
     );
+    this.onMessage<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
+      void this.handleGoalClaim(client, msg);
+    });
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
@@ -431,6 +445,9 @@ export class FilamentRoom extends Room<FilamentState> {
               character.cosmetics,
             ),
       titles: character.titles,
+      goalTokens: character.goalTokens,
+      restedMsUsed: character.restedMsUsed,
+      restedDate: character.restedDate,
       hp: CONFIG.combat.player.maxHp,
       pendingDistrict: null,
       healAcc: 0,
@@ -459,6 +476,19 @@ export class FilamentRoom extends Room<FilamentState> {
 
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
+    this.sendRested(client, runtime);
+    {
+      const wk = goalWeekKey(Date.now());
+      void loadGoals(auth.accountId, wk).then((rows) => {
+        if (this.runtimes.get(client.sessionId) !== runtime) return;
+        client.send(MSG.goals, {
+          weekKey: wk,
+          rows,
+          claimsUsed: rows.filter((r) => r.claimed).length,
+          tokens: runtime.goalTokens,
+        } satisfies GoalsSync);
+      });
+    }
     void loadManifest(auth.accountId).then((entries) => {
       if (this.runtimes.get(client.sessionId) !== runtime) return;
       client.send(MSG.manifest, {
@@ -758,6 +788,7 @@ export class FilamentRoom extends Room<FilamentState> {
           first: true,
           newTitles: res.newTitles,
         } satisfies ManifestFoundEvent);
+        this.goalEvent(client, rt.accountId, { kind: 'discover', qty: 1 });
         for (const title of res.newTitles) {
           rt.titles.push(title);
           ledger.log({
@@ -839,6 +870,64 @@ export class FilamentRoom extends Room<FilamentState> {
       equipped: encodeEquipped(target.equipped),
       topSkills,
     } satisfies InspectInfoEvent);
+  }
+
+  /**
+   * Weekly-goal progress (S2): fired ONLY from server-verified actions
+   * (the same paths that grant loot, settle trades, credit sales). Fire
+   * and forget; partial rows stream to the client for live bars.
+   */
+  private goalEvent(client: Client | null, accountId: string, ev: GoalEvent): void {
+    const wk = goalWeekKey(Date.now());
+    void bumpGoals(accountId, wk, ev)
+      .then((rows) => {
+        if (rows.length === 0 || client === null) return;
+        client.send(MSG.goals, { weekKey: wk, rows } satisfies GoalsSync);
+      })
+      .catch((err) => console.error('[goals] bump failed', err));
+  }
+
+  /** Claim: Bolts on any completed goal, any-5 ceiling; 5th claim = token. */
+  private async handleGoalClaim(client: Client, msg: GoalClaimIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || typeof msg.goalId !== 'string') return;
+    const wk = goalWeekKey(Date.now());
+    const res = await claimGoal(rt.accountId, wk, msg.goalId);
+    if (this.runtimes.get(client.sessionId) !== rt) return;
+    if (!res.ok) {
+      client.send(MSG.notice, { text: res.error ?? 'Not yet.' });
+      return;
+    }
+    rt.bolts += res.bolts ?? 0;
+    ledger.log({
+      type: 'quest',
+      account: rt.accountId,
+      data: { source: 'weeklyGoal', goalId: msg.goalId, bolts: res.bolts ?? 0 },
+    });
+    client.send(MSG.notice, { text: `The board rewards you: ${res.bolts} Bolts.` });
+    if (res.tokenAwarded === true) {
+      rt.goalTokens += 1;
+      await saveGoalTokens(rt.characterId, rt.goalTokens);
+      ledger.log({
+        type: 'cosmetic',
+        account: rt.accountId,
+        data: { source: 'weeklyGoal', token: rt.goalTokens },
+      });
+      client.send(MSG.notice, {
+        text: `Regalia token ${Math.min(rt.goalTokens, CONFIG.goals.tokensForSeasonal)}/${CONFIG.goals.tokensForSeasonal} toward the ${COSMETICS[CONFIG.goals.seasonalCosmetic]?.label ?? 'seasonal regalia'}.`,
+      });
+      if (rt.goalTokens >= CONFIG.goals.tokensForSeasonal) {
+        this.grantCosmetic(client, rt, CONFIG.goals.seasonalCosmetic, 'weekly goal regalia');
+      }
+    }
+    const rows = await loadGoals(rt.accountId, wk);
+    client.send(MSG.goals, {
+      weekKey: wk,
+      rows,
+      claimsUsed: rows.filter((r) => r.claimed).length,
+      tokens: rt.goalTokens,
+    } satisfies GoalsSync);
+    client.send(MSG.inventory, this.inventorySync(rt));
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {
@@ -959,6 +1048,28 @@ export class FilamentRoom extends Room<FilamentState> {
     this.tickCaches();
     this.tickTrades();
 
+    // Rested Charge (S3): the daily clock burns ONLY while gathering.
+    for (const [sid, rt] of this.runtimes) {
+      if (rt.session === null) continue;
+      const before = this.restedMsLeft(rt, Date.now());
+      if (before <= 0) continue;
+      rt.restedMsUsed += dtMs;
+      const after = this.restedMsLeft(rt, Date.now());
+      this.restedNotifyAcc += 0; // (throttle below)
+      if (after <= 0) {
+        const c = this.clients.find((cc) => cc.sessionId === sid);
+        if (c !== undefined) this.sendRested(c, rt);
+      }
+    }
+    this.restedNotifyAcc += dtMs;
+    if (this.restedNotifyAcc >= 20_000) {
+      this.restedNotifyAcc = 0;
+      for (const [sid, rt] of this.runtimes) {
+        if (rt.session === null) continue;
+        const c = this.clients.find((cc) => cc.sessionId === sid);
+        if (c !== undefined) this.sendRested(c, rt);
+      }
+    }
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
     if (this.persistTicker >= 30_000) {
@@ -1108,6 +1219,7 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     this.grantXp(client, rt, 'brawling', this.mobCfg(m.kind).xpBrawlingPerKill);
 
+    this.goalEvent(client, rt.accountId, { kind: 'brawl', qty: 1 });
     // The ONLY drop of any kind: a rare Manifest trophy (server-rolled,
     // ledger-logged). Mobs never print Bolts or resources (golden rule 9).
     if (this.rng() < this.mobCfg(m.kind).trophyChance) {
@@ -1292,6 +1404,7 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       this.broadcast(MSG.prices, { buy: merchant.prices(now) });
       client.send(MSG.notice, { text: `Sold ${qty} ${resource} for ${paid} Bolts.` });
+      this.goalEvent(client, rt.accountId, { kind: 'sellNpc', qty });
       this.questProgress(client, rt, { type: 'sellNpc', qty });
       return;
     }
@@ -2177,6 +2290,7 @@ export class FilamentRoom extends Room<FilamentState> {
         data: { sink: 'craft', recipeId: recipe.id, output: recipe.output, bolts: recipe.bolts, materials: recipe.materials },
       });
       this.grantCosmetic(client, rt, cosmeticId, 'crafted at the Tinkerbench');
+      this.goalEvent(client, rt.accountId, { kind: 'craft', qty: 1 });
       client.send(MSG.inventory, this.inventorySync(rt));
       return;
     }
@@ -2195,6 +2309,11 @@ export class FilamentRoom extends Room<FilamentState> {
       type: 'spend',
       account: rt.accountId,
       data: { sink: 'craft', recipeId: recipe.id, output: recipe.output, bolts: recipe.bolts, materials: recipe.materials },
+    });
+    this.goalEvent(client, rt.accountId, {
+      kind: 'craft',
+      qty: 1,
+      tier: ITEMS[recipe.output as ItemId].tier ?? 1,
     });
     client.send(MSG.inventory, this.inventorySync(rt));
     client.send(MSG.notice, { text: `Crafted: ${ITEMS[recipe.output as ItemId].name}.` });
@@ -2343,6 +2462,7 @@ export class FilamentRoom extends Room<FilamentState> {
       data: { sink: 'donation', itemId: msg.itemId, qty },
     });
     client.send(MSG.inventory, this.inventorySync(rt));
+    this.goalEvent(client, rt.accountId, { kind: 'donate', qty });
     this.questProgress(client, rt, { type: 'donate', itemId: msg.itemId, qty });
     if (msg.itemId === 'amperite') {
       // The communal loop: the donation climbs the week's meter (rewards
@@ -2865,6 +2985,11 @@ export class FilamentRoom extends Room<FilamentState> {
       }
     }
     this.setGatheringFlag(sessionId, true);
+    {
+      const c = this.clients.find((cc) => cc.sessionId === sessionId);
+      const rt2 = this.runtimes.get(sessionId);
+      if (c !== undefined && rt2 !== undefined) this.sendRested(c, rt2);
+    }
   }
 
   private advanceSession(sessionId: string, rt: PlayerRuntime, dt: number): void {
@@ -3053,6 +3178,23 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
+  /** Boosted ms left today; flips the day-bucket on UTC midnight. */
+  private restedMsLeft(rt: PlayerRuntime, now: number): number {
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (rt.restedDate !== day) {
+      rt.restedDate = day;
+      rt.restedMsUsed = 0;
+    }
+    return Math.max(0, CONFIG.restedCharge.dailyMinutes * 60_000 - rt.restedMsUsed);
+  }
+
+  private sendRested(client: Client, rt: PlayerRuntime): void {
+    client.send(MSG.rested, {
+      msLeft: this.restedMsLeft(rt, Date.now()),
+      multiplier: CONFIG.restedCharge.xpMultiplier,
+    } satisfies RestedSync);
+  }
+
   private setGatheringFlag(sessionId: string, gathering: boolean): void {
     const ps = this.state.players.get(sessionId);
     if (ps === undefined) return;
@@ -3071,8 +3213,14 @@ export class FilamentRoom extends Room<FilamentState> {
     if (amount <= 0) return;
     // Weekend city buff (E3): the Charge meter's tier boosts GATHER XP on
     // Sat/Sun — never combat, never drops, never Bolts.
-    const boosted =
+    let boosted =
       skill === 'brawling' ? amount : Math.round(amount * charge.xpMultiplier(Date.now()));
+    // Rested Charge (S3): the first N daily minutes of gathering boost
+    // GATHER XP ONLY — never combat XP, never resources (the faucet is
+    // untouched; XP is pacing, not value).
+    if (skill !== 'brawling' && this.restedMsLeft(rt, Date.now()) > 0) {
+      boosted = Math.round(boosted * CONFIG.restedCharge.xpMultiplier);
+    }
     rt.skills[skill] += boosted;
     client.send(MSG.xpGain, { skill, amount: boosted });
     client.send(MSG.skills, { xp: rt.skills });
@@ -3112,6 +3260,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     this.wearActiveTool(client, rt);
     if (added > 0) {
+      this.goalEvent(client, rt.accountId, { kind: 'gather', itemId, qty: added });
       this.questProgress(client, rt, {
         type: 'gather',
         itemId,
@@ -3187,6 +3336,8 @@ export class FilamentRoom extends Room<FilamentState> {
       skills: rt.skills,
       equipped: encodeEquipped(rt.equipped) === '' ? 'none' : encodeEquipped(rt.equipped),
       titles: rt.titles,
+      restedMsUsed: rt.restedMsUsed,
+      restedDate: rt.restedDate,
     });
   }
 }

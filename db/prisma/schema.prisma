@@ -52,6 +52,19 @@ model Character {
   equipped       String @default("")
   /// Untradeable Manifest titles earned (shared/manifest.ts), in earn order.
   titlesJson     Json   @default("[]")
+  /// Weekly-goal regalia tokens toward the seasonal cosmetic (S2).
+  goalTokens     Int    @default(0)
+  /// Rested Charge (S3): gathering ms burned today + the UTC day it belongs to.
+  restedMsUsed   Int    @default(0)
+  restedDate     String @default("")
+  /// The Fortune Coil (S4): last free-spin UTC day, pity counter, shards.
+  coilDate       String @default("")
+  coilPity       Int    @default(0)
+  coilShards     Int    @default(0)
+  /// The Ledgerhouse (S5): banked slots (same shape as packJson) + the
+  /// purchased capacity. Death NEVER touches this column.
+  bankJson       Json   @default("[]")
+  bankSlots      Int    @default(48)
   /// Which district the Spark was last in ('filament' | 'tangle').
   district       String @default("filament")
   createdAt DateTime @default(now())
@@ -68,6 +81,18 @@ model ManifestEntry {
   firstAt   DateTime @default(now())
 
   @@id([accountId, entryId])
+}
+
+/// Weekly goal board (S2): per-account, per-week, per-goal progress.
+model GoalProgress {
+  accountId String
+  weekKey   String
+  goalId    String
+  progress  Int     @default(0)
+  claimed   Boolean @default(false)
+
+  @@id([accountId, weekKey, goalId])
+  @@index([accountId, weekKey])
 }
 
 /// World-shared merchant price pressure per resource (0 = ceiling price).

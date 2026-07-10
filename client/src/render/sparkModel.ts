@@ -453,6 +453,13 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     v.push(...cbox(1, 2 + lean, 4 + lift, 4, 1, 3, BODY_COLORS.toolRust, MATERIALS.rust));
     v.push(...cbox(1, 2 + lean, 7 + lift, 4, 1, 1, BODY_COLORS.toolWood, MATERIALS.wood));
     v.push({ x: 2, y: 2 + lean, z: 5 + lift, c: C.tag });
+  } else if (eq.back === 'circuitBanner') {
+    // The Circuit Banner (weekly regalia): mast + teal pennant overhead.
+    v.push(...cbox(3, 2 + lean, 5 + lift, 1, 1, 9, BODY_COLORS.toolMetal, MATERIALS.gunmetal));
+    v.push(...cbox(2, 2 + lean, 11 + lift, 1, 1, 3, PALETTE_INT.neonTeal));
+    v.push({ x: 1, y: 2 + lean, z: 13 + lift, c: PALETTE_INT.neonTeal });
+    v.push({ x: 2, y: 2 + lean, z: 10 + lift, c: PALETTE_INT.neonCyan });
+    v.push({ x: 3, y: 2 + lean, z: 14 + lift, c: PALETTE_INT.neonAmber }); // finial
   } else {
     v.push(...cbox(2, 2 + lean, 5 + lift, 2, 1, 2, BODY_COLORS.toolRust, MATERIALS.rust));
   }

@@ -4,6 +4,7 @@ import { MSG } from '@shared/protocol';
 import type {
   AppearanceIntent,
   AttackIntent,
+  GoalClaimIntent,
   InspectIntent,
   WardrobeIntent,
   ChatIntent,
@@ -100,4 +101,5 @@ export const send = {
   appearance: (room: FilamentRoom, msg: AppearanceIntent) => room.send(MSG.appearance, msg),
   wardrobe: (room: FilamentRoom, msg: WardrobeIntent) => room.send(MSG.wardrobe, msg),
   inspect: (room: FilamentRoom, msg: InspectIntent) => room.send(MSG.inspect, msg),
+  goalClaim: (room: FilamentRoom, msg: GoalClaimIntent) => room.send(MSG.goalClaim, msg),
 };

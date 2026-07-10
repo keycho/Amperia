@@ -55,6 +55,20 @@ export const COSMETICS: Record<string, CosmeticDef> = {
     label: "Warden's Glow",
     source: 'Top-10 weekly Charge donors',
   },
+  /** The weekly-goal seasonal (S2): a back banner, pure regalia. */
+  circuitBanner: {
+    id: 'circuitBanner',
+    slot: 'back',
+    label: 'Circuit Banner',
+    source: 'Weekly goal regalia tokens',
+  },
+  /** The Coil-exclusive trail (S4): warm motes behind a walking Spark. */
+  glimmerTrail: {
+    id: 'glimmerTrail',
+    slot: 'trail',
+    label: 'Glimmer Trail',
+    source: 'Coil shards from the daily free spin',
+  },
   /** The full-Manifest trim (S1) — a cool teal glow, rarer than amber. */
   archivistGlow: {
     id: 'archivistGlow',

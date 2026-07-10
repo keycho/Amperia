@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InspectInfoEvent, ManifestFoundEvent } from '@shared/protocol';
+import type { InspectInfoEvent, ManifestFoundEvent, RestedSync } from '@shared/protocol';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
@@ -18,6 +18,7 @@ import { ShopPanel } from '../ui/ShopPanel';
 import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
+import { GoalPanel } from '../ui/GoalPanel';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 
@@ -47,6 +48,8 @@ export class UIScene extends Phaser.Scene {
   private tradePanel!: TradePanel;
   private inspectCard!: InspectCard;
   private manifestPanel!: ManifestPanel;
+  private goalPanel!: GoalPanel;
+  private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
   private buffChip!: Phaser.GameObjects.Text;
@@ -150,6 +153,27 @@ export class UIScene extends Phaser.Scene {
     this.tradePanel = new TradePanel(this);
     this.inspectCard = new InspectCard(this);
     this.manifestPanel = new ManifestPanel(this);
+    this.goalPanel = new GoalPanel(this);
+    // Rested Charge HUD (S3): a warm line while the daily boost has time
+    // left; fades out once it's spent. XP pacing only — never resources.
+    this.restedText = this.add.text(12, 58, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: PALETTE.warmGlow,
+    });
+    this.restedText.setDepth(900);
+    this.restedText.setShadow(0, 0, PALETTE.neonAmber, 4, true, true);
+    session.events.on(SessionEvents.rested, (e: RestedSync) => {
+      if (e.msLeft > 0) {
+        const mins = Math.ceil(e.msLeft / 60_000);
+        const pct = Math.round((e.multiplier - 1) * 100);
+        this.restedText.setText(`✦ Rested — +${pct}% gather XP · ${mins}m left today`);
+        this.restedText.setAlpha(1);
+      } else if (this.restedText.text !== '') {
+        this.restedText.setText('✦ Rested spent for today — back tomorrow');
+        this.tweens.add({ targets: this.restedText, alpha: 0, delay: 4000, duration: 600 });
+      }
+    });
     session.events.on(SessionEvents.manifestFound, (ev: ManifestFoundEvent) =>
       showManifestToast(this, ev),
     );
@@ -412,6 +436,9 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-M', () => {
       this.manifestPanel.toggle();
+    });
+    kb.on('keydown-G', () => {
+      this.goalPanel.toggle();
     });
     kb.on('keydown-K', () => {
       if (typing()) return;

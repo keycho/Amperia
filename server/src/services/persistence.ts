@@ -29,6 +29,11 @@ export interface CharacterSnapshot {
   equipped: string;
   /** Untradeable Manifest titles, earn order. */
   titles: string[];
+  /** Weekly-goal regalia tokens (S2). */
+  goalTokens: number;
+  /** Rested Charge (S3): gathering ms burned + which UTC day they belong to. */
+  restedMsUsed: number;
+  restedDate: string;
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -103,6 +108,9 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     titles: Array.isArray(c.titlesJson)
       ? (c.titlesJson as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
+    goalTokens: c.goalTokens,
+    restedMsUsed: c.restedMsUsed,
+    restedDate: c.restedDate,
   };
 }
 
@@ -124,6 +132,8 @@ export async function persistCharacter(
     district: string;
     equipped: string;
     titles: string[];
+    restedMsUsed: number;
+    restedDate: string;
   },
 ): Promise<void> {
   try {
@@ -146,6 +156,8 @@ export async function persistCharacter(
         district: data.district,
         equipped: data.equipped,
         titlesJson: data.titles,
+        restedMsUsed: data.restedMsUsed,
+        restedDate: data.restedDate,
       },
     });
   } catch (err) {
