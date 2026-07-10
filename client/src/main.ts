@@ -18,6 +18,16 @@ declare global {
       gameState: typeof gameState;
       voxelSprite: typeof voxelSprite;
       session: typeof session;
+      /**
+       * PHOTO MODE — every marketing shot goes through this. `enter`
+       * hides all UI (HUD, hotbar, chat hint, panels; player nameplates
+       * unless `nameplates: true`), locks the camera on `tile` at `zoom`.
+       * Render size = browser viewport (size the window to 2560×1440).
+       */
+      photo: {
+        enter: (opts: { tile: { x: number; y: number }; zoom?: number; nameplates?: boolean }) => void;
+        exit: () => void;
+      };
     };
   }
 }
@@ -57,7 +67,16 @@ if (STYLE.pixelHeight !== null) {
   game.canvas.style.imageRendering = 'pixelated';
 }
 
-window.__amperia = { game, gameState, voxelSprite, session };
+window.__amperia = {
+  game,
+  gameState,
+  voxelSprite,
+  session,
+  photo: {
+    enter: (opts) => (game.scene.getScene('world') as WorldScene).enterPhotoMode(opts),
+    exit: () => (game.scene.getScene('world') as WorldScene).exitPhotoMode(),
+  },
+};
 
 // Sound stays silent until the first real gesture (autoplay policy), then
 // comes up at the persisted volume.

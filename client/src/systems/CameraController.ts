@@ -12,6 +12,7 @@ export class CameraController {
   private target: Phaser.GameObjects.Components.Transform | null = null;
   private following = false;
   private dragging = false;
+  private locked = false;
   private lastDrag = new Phaser.Math.Vector2();
 
   constructor(scene: Phaser.Scene) {
@@ -70,7 +71,18 @@ export class CameraController {
     this.following = true;
   }
 
+  /**
+   * Photo mode (marketing shots): a locked camera holds a composed frame
+   * — edge pan, drag, and the follow lerp all stand down. Unlocking
+   * re-engages follow if a target exists.
+   */
+  setLocked(locked: boolean): void {
+    this.locked = locked;
+    if (!locked && this.target !== null) this.following = true;
+  }
+
   update(deltaMs: number): void {
+    if (this.locked) return;
     const pointer = this.scene.input.activePointer;
 
     // Edge pan (disabled while dragging; pauses follow when used).

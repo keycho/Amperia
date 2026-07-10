@@ -124,6 +124,8 @@ export class WorldScene extends Phaser.Scene {
   private nameFadeAcc = 0;
   /** T0: tall structures fade when they hide the Spark (§5 amendment). */
   private readonly occlusion = new OcclusionFade();
+  /** Photo mode (marketing shots): non-null while a frame is composed. */
+  private photoMode: { nameplates: boolean } | null = null;
   /** The Fortune Coil's live face + spin state (S4). */
   private coilWheel: Phaser.GameObjects.Image | null = null;
   private coilSpinning = false;
@@ -414,32 +416,37 @@ export class WorldScene extends Phaser.Scene {
     this.nameFadeAcc += deltaMs;
     if (this.nameFadeAcc >= 160) {
       this.nameFadeAcc = 0;
-      const cfg = CONFIG.nameplates;
-      const room = this.room;
-      const me = room !== null ? this.sparks.get(room.sessionId) : undefined;
-      const alwaysOn = this.sparks.size <= cfg.alwaysOnAtOrBelow || me === undefined;
-      for (const [sid, spark] of this.sparks) {
-        if (me !== undefined && sid === room?.sessionId) {
-          spark.setNameFade(1);
-          continue;
+      if (this.photoMode !== null && !this.photoMode.nameplates) {
+        // Photo mode: player nameplates drop unless explicitly kept.
+        for (const [, spark] of this.sparks) spark.setNameFade(0);
+      } else {
+        const cfg = CONFIG.nameplates;
+        const room = this.room;
+        const me = room !== null ? this.sparks.get(room.sessionId) : undefined;
+        const alwaysOn = this.sparks.size <= cfg.alwaysOnAtOrBelow || me === undefined;
+        for (const [sid, spark] of this.sparks) {
+          if (me !== undefined && sid === room?.sessionId) {
+            spark.setNameFade(1);
+            continue;
+          }
+          if (alwaysOn || sid === this.inspectTarget) {
+            spark.setNameFade(1);
+            continue;
+          }
+          const d = Math.max(
+            Math.abs(spark.settledTile.x - (me as Spark).settledTile.x),
+            Math.abs(spark.settledTile.y - (me as Spark).settledTile.y),
+          );
+          const t =
+            d <= cfg.fullTiles
+              ? 1
+              : d >= cfg.hideTiles
+                ? 0
+                : cfg.fadedAlpha +
+                  (1 - cfg.fadedAlpha) *
+                    (1 - (d - cfg.fullTiles) / (cfg.hideTiles - cfg.fullTiles));
+          spark.setNameFade(t);
         }
-        if (alwaysOn || sid === this.inspectTarget) {
-          spark.setNameFade(1);
-          continue;
-        }
-        const d = Math.max(
-          Math.abs(spark.settledTile.x - (me as Spark).settledTile.x),
-          Math.abs(spark.settledTile.y - (me as Spark).settledTile.y),
-        );
-        const t =
-          d <= cfg.fullTiles
-            ? 1
-            : d >= cfg.hideTiles
-              ? 0
-              : cfg.fadedAlpha +
-                (1 - cfg.fadedAlpha) *
-                  (1 - (d - cfg.fullTiles) / (cfg.hideTiles - cfg.fullTiles));
-        spark.setNameFade(t);
       }
     }
     for (const node of this.nodes.values()) {
@@ -1258,6 +1265,10 @@ export class WorldScene extends Phaser.Scene {
       this.hoverMarker.setAlpha(0.4);
       this.hoverMarker.setVisible(false);
       this.hoverMarker.setDepth(DEPTH_FLOOR + 1);
+    }
+    if (this.photoMode !== null) {
+      this.hoverMarker.setVisible(false);
+      return;
     }
     const pointer = this.input.activePointer;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -2756,5 +2767,38 @@ export class WorldScene extends Phaser.Scene {
     img.setDepth(depthForWorldY(y));
     this.occlusion.register(img);
     return img;
+  }
+
+  // ── PHOTO MODE (the marketing-shot handle; window.__amperia.photo) ──────
+  // Hides every screen-space UI surface, locks the camera on a composed
+  // frame, and (by default) drops player nameplates. World-space flavor —
+  // merchant names, stall shingles — stays: it's part of the city. Pure
+  // presentation; render size comes from the browser viewport (shoot at
+  // 2560×1440 by sizing the window).
+
+  /**
+   * Compose a frame: camera to `tile` at `zoom`, all UI hidden.
+   * `nameplates: true` keeps player nameplates (default: hidden).
+   */
+  enterPhotoMode(opts: { tile: { x: number; y: number }; zoom?: number; nameplates?: boolean }): void {
+    this.photoMode = { nameplates: opts.nameplates === true };
+    this.scene.setVisible(false, 'ui');
+    this.cameraCtl.setLocked(true);
+    const cam = this.cameras.main;
+    cam.removeBounds();
+    if (opts.zoom !== undefined) cam.setZoom(opts.zoom);
+    const c = tileToWorld(opts.tile.x, opts.tile.y);
+    cam.centerOn(c.x, c.y);
+    this.hoverMarker?.setVisible(false);
+  }
+
+  /** Back to gameplay: UI, camera bounds, follow, nameplate fading. */
+  exitPhotoMode(): void {
+    this.photoMode = null;
+    this.scene.setVisible(true, 'ui');
+    this.setupCamera();
+    this.cameraCtl.setLocked(false);
+    const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+    if (me !== undefined) this.cameraCtl.followTarget(me.image);
   }
 }
