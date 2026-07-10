@@ -122,13 +122,57 @@ Perpetual golden dusk stays — but one mood forever means every screenshot for 
 The style target is **"Kintara construction, Amperia palette"**: a uniform chunky-voxel world where cohesion comes from every asset obeying the same mechanical build rules — not from asset quality. Mixing construction styles (textured packs + smooth procedural + stock-colored sprites) is what makes a scene read as placeholder soup; these rules exist so that can never happen again.
 
 1. **One voxel unit, everywhere.** All world objects are built from the same voxel unit (~1/8 tile width for props). An object may be big or small; its *grain* never changes.
-2. **Three-tone flat face shading, one light direction.** Top face = base color +20% light; left face = base; right face = −20% dark. Light always from top-left/up. No gradients, no texture noise, no baked shadows other than the soft contact shadow beneath the object.
+2. **Three-tone flat face shading, one light direction.** Top face = base color **+30%** light; left face = base; right face = **−35%** dark (widened from ±20% in the 2026-07-10 render overhaul — the timid spread read soft). Light always from top-left/up. *Render-overhaul amendments (R1/R2, binding):* every model also bakes a directional CAST shadow (sheared toward screen bottom-right, length by height), a 1px top-edge highlight bevel, whisper-dark same-material voxel seams, and crevice/overhang AO. Per-material value noise, wear and stains (the materials pass) remain.
 3. **Crisp edges; optional 1px ink outline** (`#1E1930`) around the whole silhouette only — never per-voxel.
 4. **Palette colors only**, plus at most one neon accent per asset, and only where it earns it (signage, glow cores, interactable highlights).
 5. **Contrast = value separation between elements, not global darkness:** ground tiles sit dark-mid (plum range), objects sit clearly lighter/more saturated, neon accents run hot with bloom, sky/backdrop is darkest. Big flat color planes that read at a glance.
 6. **Assets are generated, not sourced:** objects are defined as voxel models in code and rendered to sprites at boot through a shared pipeline — which enforces rules 1–5 automatically. Third-party packs are limited to UI chrome, item icons, and particles; no third-party *world* sprites.
 7. **Sparks** are chunky voxel figures ~1.5–2 tile-heights (rule §10.1), slightly oversized head, strong silhouette, 4-direction facing, subtle warm rim-light. Cosmetics attach to the anchor slots (§10.2) as voxel add-ons that change silhouette or emit light.
 8. **The hero-asset budget:** the Dynamo, the five resource nodes, stalls, and the Spark base figure deserve disproportionate voxel-model care — they are on screen constantly and define how good the whole game looks.
+
+## 12B. District art briefs *(binding — added with the Tangle art pass)*
+
+**Every district ships with a brief BEFORE its map is built.** A district
+without a brief is a spec violation; so is a screenful of evenly-scattered
+same-sized props in ANY district. The brief defines:
+
+- **(a) Dominant hue + accent discipline** (per Part I §2's one-hue rule):
+  name the hue that owns the district and list which accents may appear,
+  each with its assigned meaning. Anything not listed stays out.
+- **(b) One XL landmark**, visible from most of the district — navigation
+  aid and identity in a single silhouette.
+- **(c) The mass hierarchy:** every screenful must contain all four sizes —
+  **XL** (1: the landmark or a wall of it), **L** (2–3: buildings, stacks,
+  gates), **M** (clutter: crates, machines, nodes), **S** (detail: lamps,
+  posts, cables, debris). Even scatter of same-sized props violates this
+  section.
+- **(d) A light plan:** source types, density (pool spacing), and the
+  district's darkness level relative to the Filament.
+
+### The Tangle — district brief (first under this rule)
+
+- **FANTASY:** wire-maze canyon — threading dark corridors between towering
+  walls of stacked dead containers, under sagging cable trusses, past the
+  hulks of dead machines. Danger lives in the dark stretches.
+- **(a) Dominant hue:** rust + gunmetal (weathered browns, dark steel).
+  Accents: **hazard amber** (junction lamps, warning stripes on the odd
+  container — ember orange `#FF8C42` for the stripes); **teal ONLY as
+  amperite glow and antenna beacons** ("something valuable glowing in the
+  dark"); **rose ONLY for Scrapcache beacons and mob eye-flares**. The old
+  teal/pink/tan crate confetti is recolored into the rust/gunmetal family.
+- **(b) XL landmark:** one ruined crane-bot hulk — a dead **Craneking**
+  silhouette rising above the container walls near map center, visible
+  from most of the maze; navigation aid and foreshadowing for Deep
+  Tangle's living ones. Its old beacon blinks slow rose at the top.
+- **(c) Mass hierarchy:** XL = the crane hulk · L = container-stack
+  corridor walls (2–4 high) and the tramgate · M = junk/brass/amperite
+  nodes, dead machines, drums · S = hazard lamps, pylon posts, cables,
+  scattered plates.
+- **(d) Light plan:** DARKER than the Filament. Sparse amber hazard lamps
+  at junctions (pools ≤5 tiles apart — never fully blind), amperite
+  clusters as cool light sources in the dark, the crane beacon's slow
+  rose blink on top. Corners and dead ends genuinely dark. Corridor
+  floors: cracked asphalt + plating, with real wall shadows.
 
 ## 12. Build notes for this addendum
 
