@@ -1,5 +1,41 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 GRIT PASS (G1–G6b)
+
+The world stopped reading smooth at medium/wide zoom. Two bake-level
+fixes, A/B'd and owner-picked, plus the launch image and real world edges.
+Shots: `grit-{A-none,B-6px,C-8px}-{close,play,wide}.png` ·
+`docs/marketing/world-{poster,banner-x,square}.png`.
+
+- **G1 fixed texel density** — every voxel model, shadow, and floor tile
+  still bakes at 2× with all its R2 detail, then decimates to N texels
+  per voxel edge (nearest) and draws scaled back up: the chunky pixel
+  grid rides the WORLD at every zoom. Toggle `?grit=none|6|8` follows the
+  parked ?style pattern (`render/grit.ts`). Outlines/bevels/seams/stains
+  widen to survive as exactly one texel.
+- **G2 face grit at texel scale** — per-texel speckle mosaics on exposed
+  material faces (per-material amounts in materials.ts: strong rust/
+  concrete, subtle paint), scratch ticks on ~20% of faces, corner
+  edge-wear texels, per-texel floor speckle by floor kind. Smooth bake
+  untouched when grit is off.
+- **G3** film grain 0.05 → 0.075 (felt, not seen).
+- **G4/G5** — nine A/B shots at the same Nightstalls angle; the owner
+  picked **B (6 texels per voxel edge)**; default flipped, §7 readability
+  re-checked in the Tangle and on the lane: neon-pop discipline, Spark
+  warm-rim pop, and silhouette outlines all hold. No dial-backs needed.
+- **G6b world edges** — the map ENDS, it doesn't fade: camera-facing
+  borders carry a deck-edge rim (metal lip, exposed girders, hazard
+  striping), support trusses fading into the dark BELOW the city, warm
+  rim lamps, and per-district character (Tangle torn spans, Filament
+  promenade rails, Terrarium vine overhang); far edges get a curb lip;
+  tram trestles march off-map at every gate. The §B5 street-level fade
+  dialed way back to a mild edge dimming.
+- **G6 the launch image** — `tools/world-poster.mjs` re-rendered
+  `docs/marketing/world-poster.png` at 4096×2304: all four districts as
+  screen-blended islands in true black void, tram line strung gate to
+  gate, the Dynamo as the city's bright heart, rims selling "structure
+  floating in the dark." Plus the 1500×500 X banner and 2048×2048 square.
+
 ## Status after the 2026-07-10 NEW DISTRICTS block (T0 + D1–D4)
 
 The city grew from two districts to four — THE STACKS (the vertical
