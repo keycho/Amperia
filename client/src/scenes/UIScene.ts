@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { InspectInfoEvent } from '@shared/protocol';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
@@ -16,6 +17,7 @@ import { ChargePanel } from '../ui/ChargePanel';
 import { ShopPanel } from '../ui/ShopPanel';
 import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
+import { InspectCard } from '../ui/InspectCard';
 import { TradePanel } from '../ui/TradePanel';
 
 interface DragState {
@@ -42,6 +44,7 @@ export class UIScene extends Phaser.Scene {
   private benchPanel!: BenchPanel;
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
+  private inspectCard!: InspectCard;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
   private buffChip!: Phaser.GameObjects.Text;
@@ -143,6 +146,10 @@ export class UIScene extends Phaser.Scene {
     this.benchPanel = new BenchPanel(this);
     this.questPanel = new QuestPanel(this);
     this.tradePanel = new TradePanel(this);
+    this.inspectCard = new InspectCard(this);
+    session.events.on(SessionEvents.inspect, (ev: InspectInfoEvent) =>
+      this.inspectCard.show(ev),
+    );
     this.shopPanel = new ShopPanel(this);
     this.chargePanel = new ChargePanel(this);
 

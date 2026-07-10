@@ -21,6 +21,7 @@ import type {
   GlintHideEvent,
   GlintShowEvent,
   IdentityEvent,
+  InspectInfoEvent,
   InventorySync,
   LootEvent,
   MoveAcceptedEvent,
@@ -169,6 +170,29 @@ export class WorldScene extends Phaser.Scene {
     this.placeCanalLife();
     this.spawnAmbientBots();
     addSkyline(this, -70);
+    // Catwalk lighting (I5): warm pools at the tram platform + plaza rim —
+    // the spots where a Spark's look gets seen. Light only, never gameplay.
+    for (const t of this.map.catwalks) {
+      const cw = tileToWorld(t.x, t.y);
+      const depth = DEPTH_FLOOR + 3;
+      const outer = this.add.ellipse(cw.x, cw.y, 96, 48, PALETTE_INT.warmGlow, 0.09);
+      outer.setDepth(depth);
+      outer.setBlendMode(Phaser.BlendModes.ADD);
+      const inner = this.add.ellipse(cw.x, cw.y, 54, 27, PALETTE_INT.warmGlow, 0.13);
+      inner.setDepth(depth);
+      inner.setBlendMode(Phaser.BlendModes.ADD);
+      addLayeredGlow(this, cw.x, cw.y - 6, PALETTE_INT.warmGlow, 0.55, depth, 0.3);
+      // A slow breathing shimmer so the pool feels powered, not painted.
+      this.tweens.add({
+        targets: [outer, inner],
+        alpha: { from: 1, to: 0.72 },
+        duration: 2400,
+        delay: (t.x * 137) % 900,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inout',
+      });
+    }
     // Atmosphere (R5c): warm haze over the dense light clusters + a film
     // of grain over the whole frame to kill banding.
     if (this.dynamoWorld.x !== 0) {
@@ -324,6 +348,23 @@ export class WorldScene extends Phaser.Scene {
       proxy(p).listen('appearance', (v: string) => spark.setAppearance(v));
       spark.setAppearance(p.appearance);
       proxy(p).listen('sparkName', (v: string) => spark.setNameLabel(v));
+      // Click-to-inspect (I5): meet a person, not a sprite.
+      if (sessionId !== room.sessionId) {
+        spark.image.setInteractive({ useHandCursor: true });
+        spark.image.on(
+          'pointerdown',
+          (
+            pointer: Phaser.Input.Pointer,
+            _lx: number,
+            _ly: number,
+            ev: Phaser.Types.Input.EventData,
+          ) => {
+            if (!pointer.leftButtonDown() || this.room === null) return;
+            ev.stopPropagation();
+            send.inspect(this.room, { sessionId });
+          },
+        );
+      }
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
         if (s === undefined || s.isMoving) return;
@@ -450,6 +491,9 @@ export class WorldScene extends Phaser.Scene {
         this.creator = null;
       }
     });
+    room.onMessage(MSG.inspectInfo, (e: InspectInfoEvent) =>
+      session.events.emit(SessionEvents.inspect, e),
+    );
     session.events.off(SessionEvents.openWardrobe);
     session.events.on(SessionEvents.openWardrobe, () => {
       if (this.creator === null && this.identity !== null) this.openCreator('wardrobe');

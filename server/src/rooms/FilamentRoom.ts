@@ -31,6 +31,7 @@ import {
   effectiveSeconds,
   levelForXp,
   SKILL_BY_NODE,
+  SKILLS,
   type SkillId,
   type SkillXp,
 } from '@shared/mastery';
@@ -64,6 +65,8 @@ import {
   type ChatBroadcast,
   type ChatIntent,
   type IdentityEvent,
+  type InspectIntent,
+  type InspectInfoEvent,
   type GatherIntent,
   type GlintClickIntent,
   type InventorySync,
@@ -327,6 +330,9 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     this.onMessage<WardrobeIntent>(MSG.wardrobe, (client, msg) =>
       this.handleWardrobe(client, msg),
+    );
+    this.onMessage<InspectIntent>(MSG.inspect, (client, msg) =>
+      this.handleInspect(client, msg),
     );
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
@@ -753,6 +759,31 @@ export class FilamentRoom extends Room<FilamentState> {
     rt.equipped = decodeEquipped(String(msg.equipped ?? ''), rt.cosmetics);
     this.applyEquipState(client.sessionId, rt);
     void this.persist(rt);
+  }
+
+  /**
+   * Click-to-inspect (I5): presentation-safe facts only — name, look,
+   * worn cosmetics, top Mastery lines. Never inventories, never Bolts.
+   */
+  private handleInspect(client: Client, msg: InspectIntent): void {
+    if (typeof msg.sessionId !== 'string') return;
+    const target = this.runtimes.get(msg.sessionId);
+    if (target === undefined) return;
+    const topSkills = SKILLS.map((skill) => ({
+      skill,
+      level: levelForXp(target.skills[skill]),
+    }))
+      .filter((s2) => s2.level >= 2)
+      .sort((a, b) => b.level - a.level)
+      .slice(0, 3);
+    client.send(MSG.inspectInfo, {
+      sessionId: msg.sessionId,
+      sparkName: target.sparkName,
+      crew: null,
+      appearance: target.appearance !== '' ? target.appearance : DEFAULT_APPEARANCE_CODE,
+      equipped: encodeEquipped(target.equipped),
+      topSkills,
+    } satisfies InspectInfoEvent);
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {

@@ -45,4 +45,6 @@ export const SessionEvents = {
   openWardrobe: 'openWardrobe',
   /** Identity snapshot / creator save result: payload IdentityEvent. */
   identity: 'identity',
+  /** Another Spark's inspect card facts: payload InspectInfoEvent. */
+  inspect: 'inspect',
 } as const;

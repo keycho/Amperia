@@ -1,5 +1,5 @@
 import { CONFIG, type NodeKind } from './config';
-import { canStep } from './pathfinding';
+import { canStep, type TilePoint } from './pathfinding';
 import { makeRng, randInt, type Rng } from './rng';
 
 /**
@@ -73,6 +73,9 @@ export interface WorldMap {
   nodes: GatherNode[];
   /** Tiles inside the plaza decking (warmer floor variant). */
   plaza: { cx: number; cy: number; radius: number };
+  /** Catwalk light pools (I5): warm spots where Sparks show a look off —
+   *  the tram platform arrivals step into one, the plaza rim holds court. */
+  catwalks: TilePoint[];
   /**
    * Rentable player shop stalls (the Nightstalls come alive — E2), in a
    * FIXED deterministic order: the stall id is the index here, and the
@@ -560,7 +563,16 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     (ramp[ty] as boolean[])[35] = true;
   }
 
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp };
+  // Catwalk light pools (I5): the tram-platform landing + the plaza rim.
+  const catwalks: TilePoint[] = [
+    { x: 34, y: 19 },
+    { x: 34, y: 21 },
+    { x: 20, y: 13 },
+    { x: 13, y: 20 },
+    { x: 20, y: 27 },
+    { x: 27, y: 20 },
+  ];
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks };
 }
 
 /**
@@ -795,7 +807,9 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
   }
 
 
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp };
+  // One pool at the gate — arrivals get their entrance moment even here.
+  const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {

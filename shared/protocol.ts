@@ -39,6 +39,7 @@ export const MSG = {
   chat: 'chat',
   appearance: 'appearance',
   wardrobe: 'wardrobe',
+  inspect: 'inspect',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -55,6 +56,7 @@ export const MSG = {
   emote: 'emote',
   combat: 'combat',
   identity: 'identity',
+  inspectInfo: 'inspectInfo',
 } as const;
 
 export interface MoveIntent {
@@ -409,6 +411,23 @@ export const CHAT_LIMITS = {
  * Read-side shapes of the synced room state (mirrors server schema classes;
  * lets the client stay `any`-free when reading Colyseus state).
  */
+/** Client → server: look another Spark over (click-to-inspect, I5). */
+export interface InspectIntent {
+  sessionId: string;
+}
+
+/** Server → client: the inspect card's facts — all presentation-safe. */
+export interface InspectInfoEvent {
+  sessionId: string;
+  sparkName: string;
+  /** Crew system lands later — null renders the placeholder line. */
+  crew: string | null;
+  appearance: string;
+  equipped: string;
+  /** Top Mastery lines, highest first (max 3, level ≥ 2). */
+  topSkills: Array<{ skill: string; level: number }>;
+}
+
 /** Client → server: wear/remove cosmetics (full worn-state set). */
 export interface WardrobeIntent {
   /** shared/cosmetics.ts wire form; server validates against OWNED. */
