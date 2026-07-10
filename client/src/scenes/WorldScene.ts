@@ -149,6 +149,8 @@ export class WorldScene extends Phaser.Scene {
   private stallFronts = new Map<number, { destroy(): void }>();
   /** D2b: rendered Loftpods keyed by berth id. */
   private loftpodViews = new Map<string, Phaser.GameObjects.GameObject[]>();
+  /** Empty-berth pad markers — hidden in photo mode (placement UI). */
+  private berthMarkers: Array<Phaser.GameObjects.Graphics | Phaser.GameObjects.Text> = [];
   /** String-light bulb glows — the Citywide Charge scales their density. */
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
   /** District structural lights (D3): the Stacks window blaze — the same
@@ -185,6 +187,7 @@ export class WorldScene extends Phaser.Scene {
     this.stallsWorld = { x: 0, y: 0 };
     this.activeSessionNode = null;
     this.stallFronts = new Map();
+    this.berthMarkers = [];
     this.stringBulbGlows = [];
     this.chargeWindowGlows = [];
     this.chargeGardenGlows = [];
@@ -2706,6 +2709,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.map.loftberths.length === 0) return;
     const g = this.add.graphics();
     g.setDepth(DEPTH_FLOOR + 2);
+    this.berthMarkers.push(g);
     this.map.loftberths.forEach((b, i) => {
       const nw = tileToWorld(b.x, b.y);
       const se = tileToWorld(b.x + 2, b.y + 2);
@@ -2732,6 +2736,7 @@ export class WorldScene extends Phaser.Scene {
       label.setOrigin(0.5);
       label.setAlpha(0.8);
       label.setDepth(DEPTH_FLOOR + 3);
+      this.berthMarkers.push(label);
       const zone = this.add.zone(cx2, cy2, TILE_W * 3, TILE_H * 3);
       zone.setInteractive({ useHandCursor: true });
       zone.on('pointerdown', () => {
@@ -3300,6 +3305,8 @@ export class WorldScene extends Phaser.Scene {
     const c = tileToWorld(opts.tile.x, opts.tile.y);
     cam.centerOn(c.x, c.y);
     this.hoverMarker?.setVisible(false);
+    // Placement affordances (empty berth pads) read as dev chrome on film.
+    for (const m of this.berthMarkers) m.setVisible(false);
   }
 
   /** Back to gameplay: UI, camera bounds, follow, nameplate fading. */
@@ -3308,6 +3315,7 @@ export class WorldScene extends Phaser.Scene {
     this.scene.setVisible(true, 'ui');
     this.setupCamera();
     this.cameraCtl.setLocked(false);
+    for (const m of this.berthMarkers) m.setVisible(true);
     const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
     if (me !== undefined) this.cameraCtl.followTarget(me.image);
   }
