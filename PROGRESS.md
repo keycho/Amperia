@@ -1,5 +1,49 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 U0 DOORS-OPEN HARDENING (H1–H5)
+
+The gate before deploy — onboarding, moderation, load, ops, and the
+weekly balance habit. All green; U0 no longer blocks the doors.
+
+- **H1 how-to-play** — four intro cards in the city's voice (move &
+  gather · tools & trades · the city works · the Tangle bites) auto-show
+  once after the first-login creator, skippable at every step, reopenable
+  from the [?] HUD button; /help speaks the same four breaths. Comms-
+  rules clean.
+- **H2 moderation minimum** — `/mute <name>` persisted per account (chat
+  AND bubbles stop arriving; survives relog; the muted are never told),
+  `/unmute`, `/report <name> <reason>` → Report row + ledger event +
+  quiet confirm, chat rolling rate window (config 6 per 10s, one
+  cooldown notice per burst), and a leet-aware profanity SOFT filter
+  (masks, never blocks). Weekly review: `npx tsx scripts/list-reports.ts`.
+  Verified live with a three-bot probe.
+- **H3 LOAD TEST (the numbers)** — 50-bot weighted swarm (45% move, 20%
+  gather, 10% chat, 10% shop browse, 5% trade asks, 5% tram hops with
+  real tolls), 10 minutes, 16,770 intents, 23 cross-room tram hops,
+  **zero errors, zero reconnects**. Peak **46 CCU in one filament room**:
+  tick p50 0.1–0.2ms, **p95 ≤ 0.6ms, max single tick 2.3ms against the
+  50ms budget (~1% utilization)**. Memory rss 149→182MB over the run
+  (heap steady at 24–32MB — no heap growth; rss is allocator pools), DB
+  pool steady at 10 connections (prisma default), no saturation. **No
+  hotspots to fix** — nothing rose above noise.
+  **Documented capacity: keep `maxClients = 40` per room instance** (the
+  cap is gameplay density + patch fan-out, not CPU — measured headroom
+  says one instance could carry 100+ CCU before the tick budget matters).
+  **The instance-spawn threshold IS the cap: Colyseus opens a fresh room
+  instance automatically when one fills at 40.** Load tests can raise it
+  via ROOM_MAX_CLIENTS. VM sizing: 4 idle district rooms ≈ 150MB rss,
+  ~+30MB under a full house.
+- **H4 ops basics** — structured JSON logs to daily rotating files
+  (LOG_DIR/LOG_KEEP_DAYS), boot + uncaught-error alerts to an optional
+  ALERT_WEBHOOK (a restart announces itself), crash-fast on uncaught
+  exceptions under a supervisor, per-IP /auth rate limit
+  (AUTH_RATE_PER_MIN, default 20 — verified 20/30 in a burst), and a
+  full .env.example audit (every var the server reads, no secrets).
+- **H5 balance watch** — `npx tsx scripts/weekly-report.ts`: sink/faucet
+  ratio, median + P90 Bolts, top sinks/faucets, trade + anomaly counts,
+  rollup trail — one command; the §5 levers and the one-lever-a-week
+  rule documented in its header.
+
 ## Status after the 2026-07-10 GRIT PASS (G1–G6b)
 
 The world stopped reading smooth at medium/wide zoom. Two bake-level
@@ -731,6 +775,15 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
 - NEW (districts block): the server now defines FOUR room types
   (filament, tangle, stacks, terrarium) — an idle room per district per
   instance. Size the Fly VM for four rooms + headroom, not two.
+- NEW (U0): when creating the production database project (Supabase),
+  ENABLE DAILY BACKUPS + point-in-time recovery from day one — it's a
+  checkbox at project creation, and there is no honest recovery story
+  without it.
+- NEW (U0): set ALERT_WEBHOOK in prod (any Slack/Discord-style POST
+  {text} hook) so restarts and uncaught errors reach a phone; logs
+  rotate under LOG_DIR (default ./logs) on the instance disk.
+- NEW (U0): one more migration for production — `20260710210612_moderation`
+  (Mute + Report tables); 11 unshipped total, same `prisma migrate deploy`.
 - Nothing else is blocked on accounts; no token/chain code exists (M4 gate).
 
 ## Next up
