@@ -1326,6 +1326,209 @@ function watertankModel(): Voxel[] {
   return v;
 }
 
+// ── V4 unique set pieces: one-offs that make a district THE district ──────
+
+/**
+ * The Griddle noodle corner (3×2 tiles): an L-counter, the big round
+ * broth pot over a firebox, stools, and a lantern bar. Steam + warm glow
+ * land at placement. First thing you smell off the tram.
+ */
+function griddleModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // L-counter in worn timber with a lighter top.
+  v.push(...mbox(2, 2, 0, 20, 4, 6, MATERIALS.wood));
+  v.push(...mbox(2, 6, 0, 5, 8, 6, MATERIALS.wood));
+  for (const vox of mbox(2, 2, 6, 20, 4, 1, MATERIALS.wood)) v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  for (const vox of mbox(2, 6, 6, 5, 8, 1, MATERIALS.wood)) v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  // The POT: fat round drum (corner-cut discs) on a rustDeep firebox.
+  v.push(...mbox(14, 6, 0, 6, 6, 3, MATERIALS.rustDeep));
+  v.push({ x: 16, y: 11, z: 1, c: PALETTE_INT.emberOrange }); // fire slit
+  const potDisc = (z: number, r: number, mat: (typeof MATERIALS)['gunmetal']) => {
+    for (let x = 12; x < 23; x++) {
+      for (let y = 4; y < 15; y++) {
+        const d2 = (x - 17) * (x - 17) + (y - 9) * (y - 9);
+        if (d2 <= r * r) v.push({ x, y, z, c: mat.base, mat });
+      }
+    }
+  };
+  potDisc(3, 4.4, MATERIALS.gunmetal);
+  potDisc(4, 4.4, MATERIALS.gunmetal);
+  potDisc(5, 4.4, MATERIALS.gunmetalDeep);
+  potDisc(6, 4.2, MATERIALS.gunmetal);
+  // Broth glimmer at the rim + the ladle.
+  v.push({ x: 15, y: 8, z: 7, c: mixPalette('warmGlow', 'neonAmber', 0.3) });
+  v.push({ x: 17, y: 10, z: 7, c: mixPalette('warmGlow', 'neonAmber', 0.4) });
+  v.push(...mbox(20, 6, 7, 1, 1, 3, MATERIALS.woodDeep)); // ladle handle
+  // Stools along the counter's front.
+  for (const sx of [4, 10, 16]) {
+    v.push(...mbox(sx, 0, 0, 2, 1, 3, MATERIALS.woodDeep));
+  }
+  // Lantern bar overhead: two posts, a beam, three warm lantern voxels.
+  v.push(...mbox(1, 5, 0, 1, 1, 12, MATERIALS.woodDeep));
+  v.push(...mbox(22, 5, 0, 1, 1, 12, MATERIALS.woodDeep));
+  v.push(...mbox(1, 5, 12, 22, 1, 1, MATERIALS.woodDeep));
+  for (const lx of [5, 12, 19]) {
+    v.push({ x: lx, y: 5, z: 11, c: PALETTE_INT.warmGlow });
+    v.push({ x: lx, y: 5, z: 10, c: mixPalette('warmGlow', 'neonAmber', 0.5) });
+  }
+  // The menu board — ink with two neon strokes.
+  v.push(...box(3, 6, 8, 3, 1, 3, mixPalette('ink', 'structureMid', 0.2)));
+  v.push({ x: 4, y: 6, z: 10, c: PALETTE_INT.neonRose });
+  v.push({ x: 4, y: 6, z: 9, c: PALETTE_INT.neonAmber });
+  return v;
+}
+
+/**
+ * The retired tram car (4×2 tiles): a carriage on a stub of siding —
+ * gunmetal shell, ochre stripe, dead pantograph, one squatter-lit window.
+ */
+function tramcarModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // The siding: two rails on sleepers.
+  for (let x = 0; x < 32; x += 3) v.push(...mbox(x, 4, 0, 2, 8, 1, MATERIALS.woodDeep));
+  for (const ry of [5, 10]) {
+    for (let x = 0; x < 32; x++) v.push({ x, y: ry, z: 1, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  }
+  // Bogies + shell.
+  v.push(...mbox(4, 6, 1, 5, 4, 2, MATERIALS.gunmetalDeep));
+  v.push(...mbox(23, 6, 1, 5, 4, 2, MATERIALS.gunmetalDeep));
+  for (const vox of mbox(2, 4, 3, 28, 8, 9, MATERIALS.gunmetal)) {
+    // The ochre waistline stripe + rust blooming on the skirt.
+    if (vox.z === 5) v.push({ ...vox, c: MATERIALS.paintOchre.base, mat: MATERIALS.paintOchre });
+    else if (vox.z === 3 && vox.x % 5 < 2) v.push({ ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+    else v.push(vox);
+  }
+  // Rounded cab ends (stepped).
+  v.push(...mbox(0, 5, 4, 2, 6, 7, MATERIALS.gunmetal));
+  v.push(...mbox(30, 5, 4, 2, 6, 7, MATERIALS.gunmetal));
+  // Window band: dark glass, ONE lit from inside (somebody lives here).
+  for (let x = 4; x < 28; x += 4) {
+    const lit = x === 16;
+    v.push(...box(x, 12, 7, 3, 0, 3, lit ? PALETTE_INT.warmGlow : mixPalette('ink', 'structureMid', 0.35)));
+  }
+  // Roof: conduit spine, vents, and the dead pantograph folded down.
+  v.push(...mbox(2, 4, 12, 28, 8, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(6, 7, 13, 20, 2, 1, MATERIALS.gunmetal));
+  v.push(...mbox(10, 6, 13, 2, 4, 1, MATERIALS.rustDeep));
+  v.push(...mbox(14, 7, 14, 6, 1, 1, MATERIALS.gunmetalDeep)); // folded pantograph
+  v.push(...mbox(16, 7, 13, 2, 1, 1, MATERIALS.gunmetalDeep));
+  // Door (aft, +y face) + route chip still glowing faintly.
+  v.push(...mbox(26, 12, 3, 3, 0, 6, MATERIALS.gunmetalDeep));
+  v.push({ x: 3, y: 12, z: 9, c: PALETTE_INT.neonCyan }); // route number chip
+  return v;
+}
+
+/**
+ * The scrap fountain (2×2 tiles): a concrete basin with a welded-scrap
+ * spire, coolant trickling teal. The city's oddest little monument.
+ */
+function fountainModel(): Voxel[] {
+  const v: Voxel[] = [];
+  const basin = (z: number, r: number, hollow: boolean) => {
+    for (let x = 0; x < 16; x++) {
+      for (let y = 0; y < 16; y++) {
+        const d2 = (x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5);
+        if (d2 > r * r) continue;
+        if (hollow && d2 < (r - 1.6) * (r - 1.6)) continue;
+        v.push({ x, y, z, c: MATERIALS.concrete.base, mat: MATERIALS.concrete });
+      }
+    }
+  };
+  basin(0, 7.4, false);
+  basin(1, 7.4, true);
+  basin(2, 7.4, true);
+  // The coolant pool surface inside the rim.
+  const pool = mixPalette('neonTeal', 'ink', 0.55);
+  for (let x = 0; x < 16; x++) {
+    for (let y = 0; y < 16; y++) {
+      const d2 = (x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5);
+      if (d2 <= 5.8 * 5.8) v.push({ x, y, z: 1, c: (x + y) % 3 === 0 ? mixPalette('neonTeal', 'ink', 0.35) : pool });
+    }
+  }
+  // The welded spire: scrap odds stacked into a monument.
+  v.push(...mbox(6, 6, 2, 4, 4, 3, MATERIALS.rustDeep));
+  v.push(...mbox(7, 6, 5, 3, 3, 3, MATERIALS.gunmetal));
+  v.push(...mbox(7, 7, 8, 2, 2, 3, MATERIALS.rust));
+  v.push(...mbox(6, 7, 6, 1, 1, 4, MATERIALS.gunmetalDeep)); // a welded strut
+  v.push(...mbox(9, 8, 10, 1, 1, 2, MATERIALS.rustDeep));
+  // The spout stream: teal falling from the crown to the pool.
+  v.push({ x: 8, y: 8, z: 12, c: PALETTE_INT.neonTeal });
+  v.push({ x: 8, y: 9, z: 11, c: mixPalette('neonTeal', 'ink', 0.2) });
+  v.push({ x: 8, y: 10, z: 9, c: mixPalette('neonTeal', 'ink', 0.3) });
+  v.push({ x: 8, y: 11, z: 6, c: mixPalette('neonTeal', 'ink', 0.35) });
+  v.push({ x: 8, y: 11, z: 3, c: mixPalette('neonTeal', 'ink', 0.3) });
+  return v;
+}
+
+/**
+ * A Draymule up on blocks (2×2 tiles, Tangle): somebody's pack-hauler
+ * mid-repair — legs off, panels open, work light rigged on a pole.
+ */
+function draymuleModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // The blocks it sits on.
+  v.push(...mbox(3, 4, 0, 3, 3, 4, MATERIALS.concreteDeep));
+  v.push(...mbox(11, 4, 0, 3, 3, 4, MATERIALS.concreteDeep));
+  v.push(...mbox(3, 10, 0, 3, 3, 4, MATERIALS.concreteDeep));
+  v.push(...mbox(11, 10, 0, 3, 3, 4, MATERIALS.concreteDeep));
+  // The body: a rust barrel-chest with an open gunmetal panel.
+  for (const vox of mbox(2, 4, 4, 13, 9, 7, MATERIALS.rust)) {
+    const openPanel = vox.x > 7 && vox.x < 12 && vox.y === 4 && vox.z > 5;
+    if (openPanel) continue; // panel removed — you see the dark innards
+    v.push(vox);
+  }
+  v.push(...box(8, 5, 6, 4, 0, 4, mixPalette('ink', 'structureMid', 0.25))); // innards
+  v.push(...mbox(8, 5, 7, 1, 1, 1, MATERIALS.gunmetalDeep)); // a loose coil
+  // The head: drooped, dead eyes (ink — rose stays reserved for mobs).
+  v.push(...mbox(0, 6, 6, 3, 5, 4, MATERIALS.rustDeep));
+  v.push(...mbox(-1, 7, 5, 2, 3, 2, MATERIALS.rustDeep)); // the muzzle, drooped
+  v.push({ x: 0, y: 6, z: 8, c: mixPalette('ink', 'structureMid', 0.4) });
+  v.push({ x: 0, y: 10, z: 8, c: mixPalette('ink', 'structureMid', 0.4) });
+  // Ears/antennae flopped.
+  v.push({ x: 1, y: 6, z: 10, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  v.push({ x: 1, y: 10, z: 10, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  // One leg still bolted on, three stubs; the removed leg leans on a block.
+  v.push(...mbox(4, 5, 2, 2, 2, 2, MATERIALS.gunmetalDeep));
+  v.push(...mbox(13, 11, 1, 2, 2, 3, MATERIALS.gunmetalDeep)); // leaning leg
+  // The cargo saddle rails still mounted.
+  v.push(...mbox(4, 6, 11, 9, 1, 1, MATERIALS.woodDeep));
+  v.push(...mbox(4, 10, 11, 9, 1, 1, MATERIALS.woodDeep));
+  // Work light on a pole + tool tray (amber lamp voxel; glow at placement).
+  v.push(...mbox(15, 13, 0, 1, 1, 9, MATERIALS.gunmetal));
+  v.push({ x: 15, y: 13, z: 9, c: PALETTE_INT.neonAmber });
+  v.push(...mbox(0, 13, 0, 4, 2, 1, MATERIALS.wood));
+  v.push({ x: 1, y: 13, z: 1, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  v.push({ x: 3, y: 14, z: 1, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+  return v;
+}
+
+/**
+ * The container spill (3×2 tiles, Tangle): a wall gave way — one box
+ * nose-down against another, cargo thrown across the lane.
+ */
+function spillModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // The upright survivor.
+  for (const vox of mbox(0, 2, 0, 6, 4, 5, MATERIALS.gunmetalDeep)) {
+    const ridged = vox.x % 2 === 1 && (vox.y === 2 || vox.y === 5);
+    v.push(ridged ? { ...vox, c: shade(MATERIALS.gunmetalDeep.base, -0.16) } : vox);
+  }
+  // The faller: nose-down at a diagonal — stepped voxel courses.
+  for (let i = 0; i < 7; i++) {
+    const z = Math.max(0, 6 - i);
+    v.push(...mbox(6 + i * 2, 3, z, 2, 4, 3, i % 3 === 0 ? MATERIALS.rustDeep : MATERIALS.rust));
+  }
+  // Burst door + thrown cargo.
+  v.push(...mbox(19, 2, 0, 1, 3, 2, MATERIALS.rustDeep)); // the door, flat
+  v.push(...mbox(20, 6, 0, 3, 3, 3, MATERIALS.wood)); // crate thrown clear
+  v.push(...mbox(17, 9, 0, 2, 2, 2, MATERIALS.rust));
+  v.push(...mbox(21, 10, 0, 2, 2, 1, MATERIALS.gunmetalDeep)); // spilled plate
+  v.push({ x: 20, y: 6, z: 3, c: PALETTE_INT.neonAmber }); // cargo tag
+  // Hazard chevrons on the survivor's top rail (the warning came late).
+  for (let x = 0; x < 6; x += 2) v.push({ x, y: 2, z: 5, c: PALETTE_INT.emberOrange });
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -1397,6 +1600,12 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `stovepipe-${i}`, voxels: stovepipeModel(i) });
   }
   bakeVoxelModel(scene, { name: 'watertank', voxels: watertankModel() });
+  // V4 unique set pieces (one bake each — they're one-offs by design).
+  bakeVoxelModel(scene, { name: 'griddle', voxels: griddleModel() });
+  bakeVoxelModel(scene, { name: 'tramcar', voxels: tramcarModel() });
+  bakeVoxelModel(scene, { name: 'fountain', voxels: fountainModel() });
+  bakeVoxelModel(scene, { name: 'draymule', voxels: draymuleModel() });
+  bakeVoxelModel(scene, { name: 'spill', voxels: spillModel() });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

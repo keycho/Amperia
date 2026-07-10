@@ -1903,6 +1903,84 @@ export class WorldScene extends Phaser.Scene {
           addFlicker(this, ember, 0.4, 0.22);
           break;
         }
+        // V4 unique set pieces — each dressed with its own light and life.
+        case 'griddle': {
+          const img = addVoxelSprite(this, 'griddle', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // The pot steams; the lantern bar spills warmth over the stools.
+          addSteamVent(this, x + 22, y - 34, depthForWorldY(y) + 2, { periodMs: 1100, drift: 12 });
+          const lantern = addLayeredGlow(this, x - 4, y - 46, PALETTE_INT.warmGlow, 0.5, depthForWorldY(y) + 1, 0.4);
+          addFlicker(this, lantern.core, 0.6, 0.1);
+          this.addGroundPool(x, y - 4, PALETTE_INT.warmGlow, 0.55);
+          const ember = this.add.image(x + 18, y - 12, 'fx-glow');
+          ember.setTint(PALETTE_INT.emberOrange);
+          ember.setBlendMode(Phaser.BlendModes.ADD);
+          ember.setScale(0.14);
+          ember.setAlpha(bloom(0.4));
+          ember.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, ember, 0.4, 0.2);
+          break;
+        }
+        case 'tramcar': {
+          const img = addVoxelSprite(this, 'tramcar', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // One squatter-lit window + the route chip's last cyan breath.
+          const win = this.add.image(x + 4, y - 34, 'fx-glow');
+          win.setTint(PALETTE_INT.warmGlow);
+          win.setBlendMode(Phaser.BlendModes.ADD);
+          win.setScale(0.09);
+          win.setAlpha(bloom(0.42));
+          win.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, win, bloom(0.42), 0.06);
+          const chip = this.add.image(x - 52, y - 40, 'fx-glow');
+          chip.setTint(PALETTE_INT.neonCyan);
+          chip.setBlendMode(Phaser.BlendModes.ADD);
+          chip.setScale(0.05);
+          chip.setAlpha(bloom(0.4));
+          chip.setDepth(depthForWorldY(y) + 1);
+          addBadFlicker(this, chip, bloom(0.4)); // dying, honestly
+          break;
+        }
+        case 'fountain': {
+          const img = addVoxelSprite(this, 'fountain', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // Coolant sheen: a soft teal breath over the pool.
+          const sheen = addLayeredGlow(this, x, y - 20, PALETTE_INT.neonTeal, 0.42, depthForWorldY(y) + 1, 0.3);
+          this.tweens.add({
+            targets: [sheen.mid, sheen.outer],
+            alpha: { from: bloom(0.2), to: bloom(0.36) },
+            duration: 1900,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          this.addGroundPool(x, y - 2, PALETTE_INT.neonTeal, 0.3);
+          break;
+        }
+        case 'draymule': {
+          const img = addVoxelSprite(this, 'draymule', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // The rigged work light burns amber over the open panel.
+          const work = addLayeredGlow(this, x + 30, y - 40, PALETTE_INT.neonAmber, 0.4, depthForWorldY(y) + 1, 0.4);
+          addFlicker(this, work.core, 0.6, 0.14);
+          this.addGroundPool(x + 22, y - 2, PALETTE_INT.neonAmber, 0.4);
+          break;
+        }
+        case 'spill': {
+          const img = addVoxelSprite(this, 'spill', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
         // V2 round-ish — the water tank's level-marker lamp.
         case 'watertank': {
           const img = addVoxelSprite(this, 'watertank', x, y);

@@ -55,7 +55,15 @@ export type PropKind =
   | 'signpost'
   | 'stovepipe'
   /** V2 — ROUND-ISH: the neighbourhood water tank on legs (2×2). */
-  | 'watertank';
+  | 'watertank'
+  /** V4 unique set pieces — Filament: the Griddle noodle corner (3×2),
+   *  a retired tram car on its siding (4×2), the scrap fountain (2×2). */
+  | 'griddle'
+  | 'tramcar'
+  | 'fountain'
+  /** V4 — Tangle: a Draymule up on blocks (2×2), a container spill (3×2). */
+  | 'draymule'
+  | 'spill';
 
 export interface Prop {
   kind: PropKind;
@@ -749,6 +757,12 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { kind: 'wildbush', x: 18, y: 34, w: 1, h: 1, variant: 0 },
     // ROUND-ISH — the neighbourhood water tank over the NE alleys.
     { kind: 'watertank', x: 33, y: 11, w: 2, h: 2, variant: 0 },
+    // V4 unique set pieces: the Griddle corner greets the tram arrivals,
+    // the retired car rusts on its old siding, the scrap fountain marks
+    // the west approach. One of each, ever — that's what unique means.
+    { kind: 'griddle', x: 34, y: 26, w: 3, h: 2, variant: 0 },
+    { kind: 'tramcar', x: 28, y: 13, w: 4, h: 2, variant: 0 },
+    { kind: 'fountain', x: 9, y: 9, w: 2, h: 2, variant: 0 },
   ];
   for (const prop of decor) {
     if (!footprintWalkable(walkable, prop)) continue;
@@ -985,6 +999,10 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     { kind: 'wildbush', x: 35, y: 21, w: 1, h: 1, variant: 2 },
     { kind: 'wildbush', x: 15, y: 4, w: 1, h: 1, variant: 0 },
     { kind: 'watertank', x: 18, y: 33, w: 2, h: 2, variant: 0 },
+    // V4 unique set pieces: somebody's Draymule up on blocks beside the
+    // crane yard, and the spilled container run in the south corridor.
+    { kind: 'draymule', x: 23, y: 13, w: 2, h: 2, variant: 0 },
+    { kind: 'spill', x: 19, y: 24, w: 3, h: 2, variant: 0 },
   ];
   for (const prop of decor) {
     if (!footprintWalkable(walkable, prop)) continue;
