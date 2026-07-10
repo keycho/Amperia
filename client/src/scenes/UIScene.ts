@@ -12,6 +12,7 @@ import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
+import { ShopPanel } from '../ui/ShopPanel';
 import { SlotStrip } from '../ui/SlotStrip';
 import { TradePanel } from '../ui/TradePanel';
 
@@ -39,6 +40,7 @@ export class UIScene extends Phaser.Scene {
   private benchPanel!: BenchPanel;
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
+  private shopPanel!: ShopPanel;
   private questChip!: Phaser.GameObjects.Text;
   private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
@@ -137,6 +139,7 @@ export class UIScene extends Phaser.Scene {
     this.benchPanel = new BenchPanel(this);
     this.questPanel = new QuestPanel(this);
     this.tradePanel = new TradePanel(this);
+    this.shopPanel = new ShopPanel(this);
 
     this.questChip = this.add.text(12, 52, '', {
       fontFamily: 'monospace',
@@ -168,6 +171,7 @@ export class UIScene extends Phaser.Scene {
       if (this.merchantPanel.visible) this.merchantPanel.refresh();
       if (this.benchPanel.visible) this.benchPanel.refresh();
       if (this.tradePanel.visible) this.tradePanel.refresh();
+      if (this.shopPanel.visible) this.shopPanel.refresh();
     });
     gameState.events.on(GameEvents.boltsChanged, () => {
       if (this.benchPanel.visible) this.benchPanel.refresh();
@@ -193,9 +197,15 @@ export class UIScene extends Phaser.Scene {
     session.events.on(SessionEvents.chat, () => sound.chatPop());
     this.buildSoundPanel();
 
-    // Tram arrivals get a warm toast up top (the chat log keeps the line too).
+    // Tram arrivals and shop mail get a warm toast up top (the chat log
+    // keeps the line too).
     session.events.on(SessionEvents.notice, (text: string) => {
-      if (text.includes('stepped off the tram') || text.includes('rode the tram out')) {
+      if (
+        text.includes('stepped off the tram') ||
+        text.includes('rode the tram out') ||
+        text.includes('while you were away') ||
+        text.includes('rent ran out')
+      ) {
         this.showToast(text);
       }
     });
@@ -231,6 +241,8 @@ export class UIScene extends Phaser.Scene {
     this.questPanel.setPosition((w - qp.w) / 2, Math.max(30, (h - qp.h) / 2 - 10));
     const tp = this.tradePanel.pixelSize();
     this.tradePanel.setPosition((w - tp.w) / 2, Math.max(30, (h - tp.h) / 2 - 10));
+    const sp = this.shopPanel.pixelSize();
+    this.shopPanel.setPosition((w - sp.w) / 2, Math.max(30, (h - sp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
   }
@@ -365,7 +377,8 @@ export class UIScene extends Phaser.Scene {
       if (this.tradePanel.visible) {
         // Esc = walk away: the server closes both windows.
         this.tradePanel.requestCancel();
-      } else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
+      } else if (this.shopPanel.visible) this.shopPanel.setVisible(false);
+      else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
       else if (this.questPanel.visible) this.questPanel.setVisible(false);
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);

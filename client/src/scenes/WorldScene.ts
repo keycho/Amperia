@@ -25,6 +25,8 @@ import type {
   QuestsSync,
   NodeStateShape,
   PlayerStateShape,
+  ShopSyncEvent,
+  StallStateShape,
   TradeAskEvent,
   TradeEndEvent,
   TradeSyncEvent,
@@ -98,6 +100,8 @@ export class WorldScene extends Phaser.Scene {
   private district: DistrictId = 'filament';
   private dynamoWorld = { x: 0, y: 0 };
   private stallsWorld = { x: 0, y: 0 };
+  /** Shop-stall presence layers (shingle + counter goods), by stall id. */
+  private stallFronts = new Map<number, { destroy(): void }>();
   private spatialAt = 0;
   private connectingText: Phaser.GameObjects.Text | null = null;
 
@@ -246,6 +250,9 @@ export class WorldScene extends Phaser.Scene {
         onAdd(cb: (c: CacheStateShape, id: string) => void): void;
         onRemove(cb: (c: CacheStateShape, id: string) => void): void;
       };
+      stalls: {
+        onAdd(cb: (s: StallStateShape, id: string) => void): void;
+      };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
     const $state = proxy(room.state) as unknown as StateProxy;
@@ -337,6 +344,13 @@ export class WorldScene extends Phaser.Scene {
 
     $state.caches.onAdd((c: CacheStateShape, id: string) => this.addCache(id, c));
     $state.caches.onRemove((_c: CacheStateShape, id: string) => this.removeCache(id));
+
+    // Shop stall presence: an occupied pitch shows its owner's shingle and
+    // the top goods as counter props — the lane should LOOK stocked (E2d).
+    $state.stalls.onAdd((s: StallStateShape, id: string) => {
+      this.renderStallFront(Number(id), s);
+      proxy(s).onChange(() => this.renderStallFront(Number(id), s));
+    });
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
     room.onMessage(MSG.travelGo, (e: TravelGo) => {
@@ -442,6 +456,9 @@ export class WorldScene extends Phaser.Scene {
       session.events.emit(SessionEvents.tradeEnd, e);
       session.events.emit(SessionEvents.notice, e.text);
     });
+    room.onMessage(MSG.shopSync, (e: ShopSyncEvent) =>
+      session.events.emit(SessionEvents.shopSync, e),
+    );
 
     room.onLeave(() => {
       session.room = null;
@@ -1080,7 +1097,44 @@ export class WorldScene extends Phaser.Scene {
     return { x: (nw.x + se.x) / 2, y: se.y + TILE_H / 2 };
   }
 
+  /**
+   * An occupied stall's public face: the owner's name shingle over the
+   * awning and up to three stocked goods as tiny props on the counter.
+   * Rebuilt whenever the synced StallState changes.
+   */
+  private renderStallFront(stallId: number, s: StallStateShape): void {
+    this.stallFronts.get(stallId)?.destroy();
+    this.stallFronts.delete(stallId);
+    const spot = this.map.shopStalls.find((sp) => sp.id === stallId);
+    if (spot === undefined || s.ownerName === '') return;
+    const { x, y } = this.propAnchor({ kind: 'stall', ...spot, variant: 0 });
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const shingle = this.add.text(x, y - 96, s.ownerName, {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: PALETTE.warmGlow,
+      backgroundColor: PALETTE.ink,
+      padding: { x: 5, y: 2 },
+    });
+    shingle.setOrigin(0.5, 1);
+    shingle.setAlpha(0.92);
+    shingle.setDepth(depthForWorldY(y) + 2);
+    parts.push(shingle);
+    const goods = s.goods === '' ? [] : s.goods.split(',');
+    goods.slice(0, 3).forEach((itemId, i) => {
+      const def = ITEMS[itemId as keyof typeof ITEMS];
+      if (def === undefined) return;
+      const icon = this.add.image(x - 16 + i * 16, y - 40, def.icon);
+      icon.setDisplaySize(14, 14);
+      if (def.iconTint !== undefined) icon.setTint(PALETTE_INT[def.iconTint as keyof typeof PALETTE_INT]);
+      icon.setDepth(depthForWorldY(y) + 2);
+      parts.push(icon);
+    });
+    this.stallFronts.set(stallId, { destroy: () => parts.forEach((p) => p.destroy()) });
+  }
+
   private placeProps(): void {
+    let stallSeq = 0;
     for (const p of this.map.props) {
       const { x, y } = this.propAnchor(p);
       switch (p.kind) {
@@ -1200,6 +1254,35 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
+          // Every lane stall is a rentable player pitch: click to browse
+          // (the server answers with the stall's detail panel).
+          const stallId = stallSeq++;
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > CONFIG.economy.shops.reachTiles) {
+                floatText(this, img.x, img.y - 70, 'step up to the stall', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              send.shop(this.room, { action: 'browse', stallId });
+            },
+          );
           // Lantern glow on the baked lantern voxel (right post, mid-height).
           const lantern = this.add.image(x + 34, y - 58, 'fx-glow');
           lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);

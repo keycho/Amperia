@@ -35,4 +35,6 @@ export const SessionEvents = {
   tradeAsk: 'tradeAsk',
   tradeSync: 'tradeSync',
   tradeEnd: 'tradeEnd',
+  /** Shop stall detail answered by the server: payload ShopSyncEvent. */
+  shopSync: 'shopSync',
 } as const;
