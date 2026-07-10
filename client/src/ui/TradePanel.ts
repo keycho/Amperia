@@ -210,7 +210,7 @@ export class TradePanel {
         this.sendStage();
       });
     }
-    add(360, ctrlY, '[clear items]', PALETTE.neonTeal, () => {
+    add(420, ctrlY, '[clear items]', PALETTE.neonTeal, () => {
       this.staged.clear();
       this.sendStage();
     });

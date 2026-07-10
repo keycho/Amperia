@@ -6,6 +6,7 @@ import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { voxelSprite } from './render/voxel';
+import { session } from './net/session';
 import { gameState } from './state/GameState';
 import { sound } from './audio/sound';
 
@@ -16,6 +17,7 @@ declare global {
       game: Phaser.Game;
       gameState: typeof gameState;
       voxelSprite: typeof voxelSprite;
+      session: typeof session;
     };
   }
 }
@@ -52,7 +54,7 @@ if (STYLE.pixelHeight !== null) {
   game.canvas.style.imageRendering = 'pixelated';
 }
 
-window.__amperia = { game, gameState, voxelSprite };
+window.__amperia = { game, gameState, voxelSprite, session };
 
 // Sound stays silent until the first real gesture (autoplay policy), then
 // comes up at the persisted volume.

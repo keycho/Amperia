@@ -1,5 +1,92 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 PLAYER ECONOMY block (E1–E4)
+
+The city's economy went multiplayer: Sparks now trade with each other,
+keep shops that sell while they sleep, and feed a communal weekly meter —
+all server-authoritative, ledger-logged, and instrumented. This block also
+planted the anti-RMT machinery the token layer (M4) will lean on. Shots:
+`docs/screenshots/economy-stall-lane.png` · `economy-trade-window.png` ·
+`economy-charge-meter.png`.
+
+- **E1 · Direct trade** — request → accept → both stage items/Bolts →
+  both confirm → server-escrowed atomic swap (`shared/trade.ts`, pure +
+  15 tests: settleTrade computes on clones and commits only a full
+  success — abort/timeout/disconnect/stale-offer can never dupe or lose).
+  Offers snapshot server-side from pack slots; any change un-confirms
+  both. Ledger rows for BOTH sides carry an estimated value (NPC-band
+  midpoint × qty) — the reading anomaly detection consumes. Guardrails
+  from day one (config, generous on purpose — the MECHANISM is the
+  point): accounts < 24 h can't trade, < 7 d trade under a daily
+  estimated-value cap, everyone under a daily trade-count cap; lopsided
+  trades (> 8× config factor) write an `anomaly` ledger row, never
+  block. `/trade <name>` + a full trade window UI.
+- **E2 · Player shops** — the lane grew to 8 rentable stall pitches
+  (stable ids on the map). Rent is 150 B/week, DESTROYED (recurring
+  sink), 2-week prepay cap, first-come — with the allocation point
+  isolated in `ShopService.rent` and a NOTE that premium deed auctions
+  replace it at M4. Stock escrows in the DB (version-guarded updates —
+  scaled room instances can't double-sell), so stalls sell while the
+  owner is OFFLINE: buyer pays gross, 2% fee destroyed, net waits in the
+  stall cashbox; "sold while you were away" toast on login; lapsed rent
+  vacates the stall into a mailbox that delivers the goods back on next
+  login. Occupied stalls show the owner's shingle + top goods on the
+  counter — the lane LOOKS stocked. Browse/owner shop panels.
+- **E3 · The Citywide Charge v2** — the Warden's Amperite donations feed
+  a server-persisted weekly meter (`shared/charge.ts`, pure + tested:
+  the Monday-UTC reset IS the week key rolling; thresholds index to the
+  active-player count). String-light density scales with the tier (dim
+  45% → festival blaze). Weekend city buff: +5%/tier gather XP, cozy
+  banner, gathering skills only. Top-10 weekly contributors get the
+  untradeable name-glow trim + a Manifest entry, delivered on login.
+  **REGALIA ONLY — never Bolts, never tradeable** (commented as
+  load-bearing at the math AND the service). `/charge` prints meter,
+  tier, and the brightest Sparks.
+- **E4 · Instrumentation** — internal `/metrics` page (dev-only;
+  production 404s without METRICS_KEY): today's faucets vs sinks per
+  source, net supply growth %, median/P90 Bolts, direct-trade volume +
+  anomaly count, shop volume, Charge donations, NPC band positions, and
+  the last 14 nightly rollups. A nightly job writes one EconomySummary
+  row per UTC day — the data spine of the future City Ledger
+  (`scripts/rollup-now.ts` for manual runs).
+
+### First economy report (measured 2026-07-10, dev world)
+
+The container rebuild reset the dev DB, so today's ledger holds only this
+block's integration probes — treat as a smoke reading of the pipeline,
+not player behavior:
+
+```
+faucets 0 B · sinks 452 B (stallRent 450 · shopFee 2) · net -452 B
+  (-2.91% of the 15548 B supply; faucet Bolts were DB-seeded test money)
+23 Sparks · median 200 B · P90 861 B
+trade: 2 direct trades / 112 B est · shop 24 B gross · 1 lopsided anomaly
+charge: 1660 Amperite donated (festival blaze at the 2-Spark threshold floor)
+bands: all at ceiling (salvage 3 · brass 7 · amperite 9 · glowkoi 8 · signal 12)
+```
+
+Watch items for the first real week: stall rent (450 B/day from 3 stalls
+in probes alone) is now the biggest recurring sink — good; the young-
+account value cap (2000 B/day) should be re-checked against honest new
+players once quests push past tutorial income; anomaly rows need eyes
+weekly (the `/metrics` count is the tell).
+
+### Integration probes (all PASSED against the live server)
+
+`probe-ptrade` (age gate → young value cap → decline → abort → stale-
+offer no-dupe → completed swap with Bolts → timeout → disconnect),
+`probe-shops` (rent → stock → OFFLINE purchase → away-sales toast +
+collect → forced rent expiry → first-come re-rent → goods mailed home),
+`probe-charge` (donate → meter + leaderboard → /charge → Monday-key
+reset → sweep finalizes → trim delivered on relog). Run the server with
+`TRADE_TIMEOUT_SECONDS=5` for the trade probe's timeout leg.
+
+### Tests
+
+127 green (client+shared 122 — trade/charge suites new, map suite
+extended for the rentable stalls — server 5). Both workspaces compile
+strict.
+
 ## Status after the 2026-07-10 FLOOR-FIX → ART FREEZE → CORE LOOP run (P1 + C1–C5)
 
 The city got its final art fix and then its ECONOMY. Part 1 rebuilt the
@@ -256,6 +343,15 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
 - `DEPLOY.md` + `fly.toml` + `server/Dockerfile` are ready; needs
   Fly/Railway, Neon, and Vercel accounts + secrets (~15 min). CORS must be
   tightened to the Vercel domain and JWT_SECRET set to a real secret.
+- NEW (economy block): set `METRICS_KEY` in production so `/metrics` is
+  reachable at `…/metrics?key=<value>` (without it the page 404s in
+  prod — safe default). The nightly EconomySummary rollup runs inside
+  the game server process; nothing extra to schedule.
+- The dev DB was recreated after a container rebuild (same
+  `db/dev-postgres.md` steps + `npm run migrate:dev -w db`); production
+  Neon will need `prisma migrate deploy` on first ship — 4 new
+  migrations landed this block (trade guardrails, shop stalls, the
+  Citywide Charge, economy summaries).
 - Git tags (`m0-complete`, `run-20260709-autonomous`) exist locally only —
   the remote refuses tag pushes from this session.
 - A second district doubles room count per instance — no action needed
@@ -264,12 +360,16 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
 
 ## Next up
 
-1. Balance watch: re-run `server/scripts/measure-economy.ts` after real
-   playtests; pull the pre-committed levers (band ceiling / slide / repair
-   rate) only if steady-state surplus runs hot. Add M3's recurring sinks
-   (stall rents, Bolts-paid Fortune Coil spins, structure upkeep).
+1. Balance watch: `/metrics` daily + the nightly rollups after real
+   playtests; pull the pre-committed levers (band ceiling / slide /
+   repair rate / stall rent) only if steady-state surplus runs hot.
+   Stall rent landed this block; still queued from M3's sink list:
+   Bolts-paid Fortune Coil spins and structure upkeep.
 2. M3 retention layer per the bible: Manifest panel, weekly goals, Rested
    Charge, Griddling — still NO token code before M4's gate (D7/D30
    targets must be hit with the token off).
-3. Post-freeze art batch (walk frames, node silhouette pops, UI reskin
+3. Anomaly review habit: eyeball the `/metrics` anomaly count weekly and
+   sample the `anomaly` ledger rows — the lopsided-trade flag is
+   instrumentation-only until there's data to justify enforcement.
+4. Post-freeze art batch (walk frames, node silhouette pops, UI reskin
    remainder) once the owner lifts the ART FREEZE.
