@@ -641,13 +641,19 @@ export class WorldScene extends Phaser.Scene {
    * Warm pool of lamplight on the ground (style B/C: the dark street reads
    * through what the lamps claim back).
    */
-  private addGroundPool(x: number, y: number, tint: number, scale: number): void {
+  private addGroundPool(
+    x: number,
+    y: number,
+    tint: number,
+    scale: number,
+  ): Phaser.GameObjects.Image {
     const pool = this.add.image(x, y, 'fx-glow');
     pool.setTint(tint);
     pool.setBlendMode(Phaser.BlendModes.ADD);
     pool.setScale(scale, scale * 0.42);
     pool.setAlpha(0.24);
     pool.setDepth(DEPTH_FLOOR + 4);
+    return pool;
   }
 
   /** Anchor world position for a prop: bottom corner of its footprint. */
@@ -707,13 +713,66 @@ export class WorldScene extends Phaser.Scene {
           beacon.setScale(0.12);
           beacon.setAlpha(bloom(0.6));
           beacon.setDepth(depthForWorldY(y) + 2);
-          this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
+          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
           addEmberMotes(this, x, y - 70, depthForWorldY(y) + 3, {
             count: 8,
             radius: 56,
             rise: 110,
+          });
+          // A slow charge-mote orbiting the coil stack: dimmer and smaller on
+          // the far side so the circuit reads in iso.
+          const orbiter = this.add.image(x, y - 92, 'fx-glow');
+          orbiter.setTint(PALETTE_INT.neonAmber);
+          orbiter.setBlendMode(Phaser.BlendModes.ADD);
+          orbiter.setDepth(depthForWorldY(y) + 2);
+          const orbit = { theta: 0 };
+          this.tweens.add({
+            targets: orbit,
+            theta: Math.PI * 2,
+            duration: 6400,
+            repeat: -1,
+            ease: 'linear',
+            onUpdate: () => {
+              const front = Math.sin(orbit.theta) > 0 ? 1 : 0;
+              orbiter.setPosition(
+                x + Math.cos(orbit.theta) * 52,
+                y - 92 + Math.sin(orbit.theta) * 24,
+              );
+              orbiter.setAlpha(bloom(front === 1 ? 0.5 : 0.16));
+              orbiter.setScale(front === 1 ? 0.11 : 0.08);
+            },
+          });
+          // Heartbeat: every few seconds a deep pulse brightens the pool and
+          // rolls a soft ring of light out across the decking.
+          this.time.addEvent({
+            delay: 7200,
+            loop: true,
+            callback: () => {
+              this.tweens.add({
+                targets: pool,
+                alpha: 0.42,
+                duration: 520,
+                yoyo: true,
+                ease: 'sine.inout',
+              });
+              const wave = this.add.image(x, y - 6, 'fx-glow');
+              wave.setTint(PALETTE_INT.warmGlow);
+              wave.setBlendMode(Phaser.BlendModes.ADD);
+              wave.setScale(0.5, 0.5 * 0.42);
+              wave.setAlpha(0.3);
+              wave.setDepth(DEPTH_FLOOR + 5);
+              this.tweens.add({
+                targets: wave,
+                scaleX: 3.1,
+                scaleY: 3.1 * 0.42,
+                alpha: 0,
+                duration: 1350,
+                ease: 'quad.out',
+                onComplete: () => wave.destroy(),
+              });
+            },
           });
           break;
         }
