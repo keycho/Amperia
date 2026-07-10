@@ -400,6 +400,20 @@ export const CONFIG = {
     tollBolts: 5,
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },
+    /** Stacks gate + arrival tile (districts block D1). */
+    stacksSpawn: { x: 4, y: 20 },
+  },
+
+  /** THE STACKS — the vertical quarter (districts block D1, §12B brief). */
+  stacks: {
+    /** Dense alley junk (scattered only in the canyon alleys). */
+    junkCount: 14,
+    /** Ground-level antenna shrines (ordinary Signal). */
+    antennaGround: 2,
+    /** Roofline shrines — the city's best Signal (Tuning endgame, D1c). */
+    antennaRoofline: 2,
+    /** The Roofline: the +3 walkable rooftop terrace. */
+    roofline: { x0: 17, y0: 6, x1: 25, y1: 11, level: 3 },
   },
   tangle: {
     /** Node-count multipliers over the Filament config counts. */

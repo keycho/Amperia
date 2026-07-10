@@ -1,6 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type NodeKind } from './config';
-import { buildTangleMap, buildWorldMap, reachableTiles } from './map';
+import { buildStacksMap, buildTangleMap, buildWorldMap, reachableTiles } from './map';
+
+describe('buildStacksMap', () => {
+  const stacks = buildStacksMap();
+
+  it('is deterministic and marked as the stacks', () => {
+    expect(buildStacksMap().props).toEqual(stacks.props);
+    expect(stacks.district).toBe('stacks');
+  });
+
+  it('every walkable tile is reachable from the gate — including the Roofline', () => {
+    const spawn = CONFIG.travel.stacksSpawn;
+    expect(stacks.walkable[spawn.y]?.[spawn.x]).toBe(true);
+    const reached = reachableTiles(stacks, spawn.x, spawn.y);
+    let walkableCount = 0;
+    for (const row of stacks.walkable) for (const w of row) if (w) walkableCount++;
+    expect(reached.size).toBe(walkableCount);
+    // The vista catwalk sits ON the +3 terrace and must be reachable.
+    const R = CONFIG.stacks.roofline;
+    const vista = stacks.catwalks.find(
+      (c) => c.x >= R.x0 && c.x <= R.x1 && c.y >= R.y0 && c.y <= R.y1,
+    );
+    expect(vista).toBeDefined();
+    expect(stacks.elevation[(vista as { y: number }).y]?.[(vista as { x: number }).x]).toBe(R.level);
+    expect(reached.has((vista as { y: number }).y * stacks.size + (vista as { x: number }).x)).toBe(true);
+  });
+
+  it('the Roofline holds its shrines, market, and rim rails', () => {
+    const R = CONFIG.stacks.roofline;
+    const onRoof = (x: number, y: number) => x >= R.x0 && x <= R.x1 && y >= R.y0 && y <= R.y1;
+    const shrines = stacks.nodes.filter((n) => n.kind === 'antenna' && onRoof(n.x, n.y));
+    expect(shrines.length).toBe(CONFIG.stacks.antennaRoofline);
+    for (const n of shrines) expect(stacks.elevation[n.y]?.[n.x]).toBe(R.level);
+    expect(stacks.props.filter((p) => p.kind === 'stall' && onRoof(p.x, p.y)).length).toBe(2);
+    expect(stacks.props.some((p) => p.kind === 'guardrail' && onRoof(p.x, p.y))).toBe(true);
+  });
+
+  it('places the config node counts, all blocked and gatherable', () => {
+    const junk = stacks.nodes.filter((n) => n.kind === 'junkHeap');
+    const ants = stacks.nodes.filter((n) => n.kind === 'antenna');
+    expect(junk.length).toBe(CONFIG.stacks.junkCount);
+    expect(ants.length).toBe(CONFIG.stacks.antennaGround + CONFIG.stacks.antennaRoofline);
+    for (const n of stacks.nodes) {
+      expect(stacks.walkable[n.y]?.[n.x]).toBe(false);
+      const adjacent = [
+        [n.x + 1, n.y],
+        [n.x - 1, n.y],
+        [n.x, n.y + 1],
+        [n.x, n.y - 1],
+      ].some(([x, y]) => stacks.walkable[y as number]?.[x as number] === true);
+      expect(adjacent).toBe(true);
+    }
+  });
+
+  it('the Spire, the registry, and the junction furniture stand', () => {
+    expect(stacks.props.filter((p) => p.kind === 'spire').length).toBe(1);
+    expect(stacks.props.filter((p) => p.kind === 'registry').length).toBe(1);
+    expect(stacks.props.filter((p) => p.kind === 'noodlecart').length).toBe(1);
+    expect(stacks.props.filter((p) => p.kind === 'treeplanter').length).toBe(1);
+    expect(stacks.props.filter((p) => p.kind === 'tower').length).toBeGreaterThanOrEqual(24);
+  });
+
+  it('blocks every prop footprint', () => {
+    for (const p of stacks.props) {
+      for (let dy = 0; dy < p.h; dy++) {
+        for (let dx = 0; dx < p.w; dx++) {
+          expect(stacks.walkable[p.y + dy]?.[p.x + dx]).toBe(false);
+        }
+      }
+    }
+  });
+});
 
 describe('buildTangleMap', () => {
   const tangle = buildTangleMap();

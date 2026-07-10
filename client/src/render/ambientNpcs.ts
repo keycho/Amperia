@@ -44,6 +44,13 @@ const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
     // A scavver picking over the container spill.
     { code: '1:2:0:0:3:0', tile: [20, 26], dir: 'ne', pose: 'magclaw' },
   ],
+  stacks: [
+    // The noodle-cart cook at the junction (D1b brings the full crowd —
+    // the Stacks carries the highest NPC life density in the city).
+    { code: '1:1:4:1:3:0', tile: [12, 14], dir: 'se', turns: ['se', 'sw'] },
+    // A balcony watcher by the registry, seeing who signs.
+    { code: '1:3:2:4:2:1', tile: [23, 19], dir: 'ne', turns: ['ne', 'nw'] },
+  ],
 };
 
 /** Bake + place the district's citizens. Call once from world setup. */
