@@ -5,6 +5,7 @@ import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { sound } from '../audio/sound';
 import { addVoxelSprite, applyVoxelTexture } from '../render/voxel';
 
 /** Common surface the WorldScene talks to. */
@@ -430,9 +431,11 @@ export class TunerPanel {
     this.needle = 0.5;
     this.g.setVisible(true);
     this.label.setVisible(true);
+    sound.tunerStart();
   }
 
   stop(): void {
+    if (this.active !== null) sound.tunerStop();
     this.active = null;
     this.g.setVisible(false);
     this.label.setVisible(false);
@@ -463,6 +466,8 @@ export class TunerPanel {
     });
     const locked = Math.abs(this.needle - target) <= a.tolerance;
     const remaining = Math.max(0, a.seconds - elapsed);
+    // Static fades and the carrier rises as the needle closes in.
+    sound.tunerUpdate(Math.max(0, 1 - Math.abs(this.needle - target) / (a.tolerance * 4)));
 
     const g = this.g;
     g.clear();

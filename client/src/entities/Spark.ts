@@ -24,6 +24,8 @@ export class Spark {
   private labelRise = { value: 0 };
   private bubble: Phaser.GameObjects.Container | null = null;
   private bubbleHeight = 0;
+  /** Fired when a walk step lands on its tile (own Spark: footsteps). */
+  onStep: (() => void) | null = null;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -294,6 +296,7 @@ export class Spark {
         this.tile = next;
         this.stepTarget = null;
         this.stepTween = null;
+        if (this.onStep !== null) this.onStep();
         this.stepNext();
       },
     });

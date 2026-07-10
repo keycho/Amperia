@@ -6,6 +6,7 @@ import { addWarmAmbience } from '../render/ambience';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
+import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { SlotStrip } from '../ui/SlotStrip';
@@ -140,6 +141,8 @@ export class UIScene extends Phaser.Scene {
       this.hp = v;
       this.drawHpBar();
     });
+    session.events.on(SessionEvents.chat, () => sound.chatPop());
+    this.buildSoundPanel();
 
     // Tram arrivals get a warm toast up top (the chat log keeps the line too).
     session.events.on(SessionEvents.notice, (text: string) => {
@@ -173,6 +176,74 @@ export class UIScene extends Phaser.Scene {
     this.skillsPanel.setPosition((w - sk.w) / 2, (h - sk.h) / 2 - 10);
     this.drawHpBar();
     this.refreshAll();
+  }
+
+  /** Gear button + a small panel with the master volume slider. */
+  private buildSoundPanel(): void {
+    const gear = this.add.image(0, 0, 'icon-gear');
+    gear.setDisplaySize(20, 20);
+    gear.setTint(PALETTE_INT.warmGlow);
+    gear.setAlpha(0.85);
+    gear.setDepth(902);
+    gear.setInteractive({ useHandCursor: true });
+    const placeGear = () => gear.setPosition(this.scale.width - 22, 44);
+    placeGear();
+    this.scale.on('resize', placeGear);
+
+    const panel = this.add.container(0, 0);
+    panel.setDepth(950);
+    panel.setVisible(false);
+    const W = 200;
+    const H = 56;
+    const bg = this.add.graphics();
+    bg.fillStyle(PALETTE_INT.ink, 0.88);
+    bg.fillRoundedRect(0, 0, W, H, 9);
+    bg.lineStyle(1.5, PALETTE_INT.warmGlow, 0.5);
+    bg.strokeRoundedRect(0, 0, W, H, 9);
+    const label = this.add.text(12, 8, 'sound', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: UI_TEXT_WARM,
+    });
+    const track = this.add.graphics();
+    const drawTrack = (v: number) => {
+      track.clear();
+      track.fillStyle(PALETTE_INT.structureMid, 1);
+      track.fillRoundedRect(12, 34, W - 24, 6, 3);
+      track.fillStyle(PALETTE_INT.neonAmber, 1);
+      track.fillRoundedRect(12, 34, Math.max(6, (W - 24) * v), 6, 3);
+      track.fillStyle(PALETTE_INT.warmGlow, 1);
+      track.fillCircle(12 + (W - 24) * v, 37, 7);
+    };
+    drawTrack(sound.volume);
+    // A generous invisible hit strip over the slider.
+    const hit = this.add.rectangle(W / 2, 37, W - 12, 26, 0, 0);
+    hit.setInteractive({ useHandCursor: true });
+    const setFromPointer = (pointer: Phaser.Input.Pointer) => {
+      const local = pointer.x - panel.x - 12;
+      const v = Math.max(0, Math.min(1, local / (W - 24)));
+      sound.unlock();
+      sound.setVolume(v);
+      drawTrack(v);
+    };
+    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      setFromPointer(pointer);
+      const onMove = (p2: Phaser.Input.Pointer) => {
+        if (p2.isDown) setFromPointer(p2);
+      };
+      this.input.on('pointermove', onMove);
+      this.input.once('pointerup', () => this.input.off('pointermove', onMove));
+    });
+    panel.add([bg, label, track, hit]);
+    const placePanel = () => panel.setPosition(this.scale.width - W - 12, 58);
+    placePanel();
+    this.scale.on('resize', placePanel);
+
+    gear.on('pointerdown', () => {
+      sound.unlock();
+      sound.uiClick();
+      panel.setVisible(!panel.visible);
+    });
   }
 
   /** The Spark's charge (HP) — a warm bar over the hotbar's left corner. */
@@ -218,10 +289,12 @@ export class UIScene extends Phaser.Scene {
       this.chat.typing || document.activeElement instanceof HTMLInputElement;
     kb.on('keydown-H', () => {
       if (typing()) return;
+      sound.uiClick();
       if (session.room !== null) send.placeHeatlamp(session.room);
     });
     kb.on('keydown-I', () => {
       if (typing()) return;
+      sound.uiClick();
       this.skillsPanel.setVisible(false);
       this.inventoryPanel.setVisible(!this.inventoryPanel.visible);
     });
@@ -244,6 +317,7 @@ export class UIScene extends Phaser.Scene {
       kb.on(`keydown-${name}`, () => {
         if (typing()) return;
         gameState.setActiveHotbarSlot(i);
+        sound.uiClick();
         if (session.room !== null) send.selectSlot(session.room, { slot: i });
       });
     });

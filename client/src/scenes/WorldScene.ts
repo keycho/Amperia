@@ -53,6 +53,7 @@ import {
   type FilamentRoom,
 } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
@@ -84,6 +85,9 @@ export class WorldScene extends Phaser.Scene {
   private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
+  private dynamoWorld = { x: 0, y: 0 };
+  private stallsWorld = { x: 0, y: 0 };
+  private spatialAt = 0;
   private connectingText: Phaser.GameObjects.Text | null = null;
 
   constructor() {
@@ -142,6 +146,25 @@ export class WorldScene extends Phaser.Scene {
       const sparkTiles = [...this.sparks.values()].map((s) => s.settledTile);
       for (const bot of this.ambientBots) bot.update(time, sparkTiles);
     }
+    if (sound.ready && time > this.spatialAt && this.room !== null) {
+      this.spatialAt = time + 250;
+      const own = this.sparks.get(this.room.sessionId);
+      if (own !== undefined) {
+        const dDyn = Phaser.Math.Distance.Between(
+          own.image.x,
+          own.image.y,
+          this.dynamoWorld.x,
+          this.dynamoWorld.y,
+        );
+        const dStalls = Phaser.Math.Distance.Between(
+          own.image.x,
+          own.image.y,
+          this.stallsWorld.x,
+          this.stallsWorld.y,
+        );
+        sound.updateSpatial(dDyn, dStalls);
+      }
+    }
   }
 
   // ── networking ─────────────────────────────────────────────────────────
@@ -194,6 +217,7 @@ export class WorldScene extends Phaser.Scene {
       session.events.emit(SessionEvents.presence, this.sparks.size);
       if (sessionId === room.sessionId) {
         this.cameraCtl.followTarget(spark.image);
+        spark.onStep = () => sound.footstep();
         session.events.emit(SessionEvents.hp, { hp: p.hp, maxHp: p.maxHp });
         proxy(p).listen('hp', (v: number) =>
           session.events.emit(SessionEvents.hp, { hp: v, maxHp: p.maxHp }),
@@ -252,6 +276,7 @@ export class WorldScene extends Phaser.Scene {
           if (dist <= CONFIG.combat.player.attackRangeTiles) {
             send.attack(this.room, { mobId: mob.id });
             me.lungeToward(mob.image.x, mob.image.y);
+            sound.swingWhiff();
           } else {
             const step = this.nearestAdjacentWalkable(t, me.settledTile);
             if (step !== null) send.move(this.room, step);
@@ -298,6 +323,7 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.glintShow, (e: GlintShowEvent) => {
       const view = this.nodes.get(e.nodeId);
       if (view instanceof JunkHeapNode) view.showGlint(e.offset);
+      sound.glintDing();
     });
     room.onMessage(MSG.glintHide, (e: GlintHideEvent) => {
       const view = this.nodes.get(e.nodeId);
@@ -311,11 +337,13 @@ export class WorldScene extends Phaser.Scene {
       const ny = (node?.image.y ?? 0) - 70;
       if (e.qty > 0) {
         floatText(this, nx, ny, `+${e.qty} ${ITEMS[e.itemId].name}`);
+        sound.gatherChirp();
       } else {
         floatText(this, nx, ny, 'Pack is full!', PALETTE.neonRose);
       }
       if (e.rare !== null) {
         floatText(this, nx, ny - 20, `+1 ${ITEMS[e.rare].name} ✦`, PALETTE.neonAmber);
+        sound.rareChime();
       }
     });
 
@@ -336,6 +364,16 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(e.sessionId)?.playWave();
       session.events.emit(SessionEvents.notice, `${e.from} waves.`);
     });
+    room.onMessage(MSG.notice, (n: NoticeEvent) =>
+      session.events.emit(SessionEvents.notice, n.text),
+    );
+
+    room.onLeave(() => {
+      session.room = null;
+      this.room = null;
+    });
+
+    this.scene.launch('ui');
   }
 
   /** A placed Heatlamp: voxel post + flickering glow + its own pool. */
@@ -430,6 +468,7 @@ export class WorldScene extends Phaser.Scene {
       }
       if (e.sessionId === room.sessionId) {
         this.cameras.main.shake(110, 0.0035);
+        sound.hurtThud();
       }
       return;
     }
@@ -461,16 +500,6 @@ export class WorldScene extends Phaser.Scene {
         this.cameras.main.flash(260, 30, 22, 48);
       }
     }
-    room.onMessage(MSG.notice, (n: NoticeEvent) =>
-      session.events.emit(SessionEvents.notice, n.text),
-    );
-
-    room.onLeave(() => {
-      session.room = null;
-      this.room = null;
-    });
-
-    this.scene.launch('ui');
   }
 
   // ── input ──────────────────────────────────────────────────────────────
@@ -872,6 +901,7 @@ export class WorldScene extends Phaser.Scene {
       const { x, y } = this.propAnchor(p);
       switch (p.kind) {
         case 'dynamo': {
+          this.dynamoWorld = { x, y: y - 90 };
           const img = addVoxelSprite(this, 'dynamo', x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
@@ -981,6 +1011,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'stall': {
+          if (this.stallsWorld.x === 0) this.stallsWorld = { x, y };
           const img = addVoxelSprite(this, `stall-${p.variant % 4}`, x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);

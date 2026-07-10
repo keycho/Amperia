@@ -13,6 +13,7 @@ import iconHammer from '@assets/kenney_voxel-pack/hammer_iron.png';
 import iconPick from '@assets/kenney_voxel-pack/pick_iron.png';
 import iconWrench from '@assets/kenney_game-icons/wrench.png';
 import iconStar from '@assets/kenney_game-icons/star.png';
+import iconGear from '@assets/kenney_game-icons/gear.png';
 import iconSignal from '@assets/kenney_game-icons/signal2.png';
 
 /** key → URL, loaded verbatim by BootScene. */
@@ -29,6 +30,7 @@ export const IMAGE_MANIFEST: Readonly<Record<string, string>> = {
   'icon-magclaw': iconPick,
   'icon-riveter': iconWrench,
   'icon-heatlamp': iconStar,
+  'icon-gear': iconGear,
   'icon-signal': iconSignal,
   'icon-ghost-frequency': iconSignal,
   'icon-tuner': iconSignal,
