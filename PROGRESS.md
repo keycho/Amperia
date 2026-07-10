@@ -1,5 +1,54 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 "bring the city to life" block
+
+On top of the 07-09 slice, the city is now **alive and defended**: the voxel
+mass-convert is finished under the locked night-market grade (every world
+object built by the in-code pipeline — Kenney world sprites are gone), the
+plaza breathes (steam, flicker, embers, canal koi, idle motion, the Dynamo's
+heartbeat, harmless plaza Scuttlebots), social presence landed (chat bubbles,
+tram toasts, /wave), the first server-authoritative combat slice is in
+(feral Scuttlebots in the SE scrap fringe, Brawling click-melee + XP, the
+Dented Crest Manifest trophy, cozy death, Dynamo heal zone, placeable
+Heatlamp sink), and the whole thing has a synthesized WebAudio soundscape
+with a persisted volume setting.
+
+Fresh postcard: `docs/screenshots/devlog-02-alive.png` · scrap corner:
+`scrap-corner-mobs.png` · two-client social proof: `social-bubble-toast.png`
+· voxel city: `voxel-city-postcard.png`.
+
+### The 07-10 block in commits
+
+- ART-3/ART-4: voxel mass-convert complete (Dynamo hero, nodes with
+  depleted bakes, containers/drums, shacks with lit windows + neon signs,
+  scuttlebots, heatlamp) + composition pass (shack landmarks, vignette
+  clusters, open lanes, planter rows). Kenney keeps UI/icons/particles only.
+- L1a–g: stall steam · pooled lantern/sign flicker (never strobing) ·
+  ember motes · ambient canal koi + cyan glints · Spark breathing idle +
+  label ease-in · Dynamo orbiter + heartbeat pool pulse · three harmless
+  plaza Scuttlebots that skitter from players.
+- L2a–c: chat bubbles above heads (ChatBroadcast carries sessionId) ·
+  tram-arrival toast · /wave emote.
+- L3a–d: shared pure mob AI (tested) — idle/wander/chase/windup/return with
+  home-leash; server owns spawns/movement/damage/cooldowns; player HP in
+  state; bites broadcast combat events; death = full-heal respawn at the
+  Dynamo with NO item loss; Brawling click-melee (range+cooldown validated)
+  with XP; the Dented Crest trophy (config chance, ledger 'trophy' row) is
+  the only mob drop ever; Dynamo heal radius + Heatlamp consumable (Salvage
+  sink, ledger 'spend', synced lamp entity with its own light pool).
+- L4: WebAudio synth soundscape — Dynamo hum + market murmur by distance,
+  gather chirp/glint ding/rare chime/footsteps/UI clicks/chat pop/hurt
+  thud/swing whiff, and the Tuner's static→lock sweep tracking accuracy;
+  gear panel volume slider, persisted, silent until first gesture.
+- e2e probes (node-side, real-time): `server/scripts/probe-combat.ts`
+  (aggro → bite → kill+XP → knocked flat → plaza respawn full-hp → lamp
+  cost gate) and `probe-heal.ts` (bite → Dynamo regen → gather → lamp
+  placed → exactly 6 Salvage sunk) — both PASSED against the live room.
+
+### Tests
+
+76 green (client+shared 71 including the new mob-AI suite, server 5).
+
 ## Status after the 2026-07-09 autonomous run (`run-20260709-autonomous`)
 
 The prototype is now a **playable multiplayer vertical slice**: email/guest
@@ -88,18 +137,23 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   (defineTypes + useDefineForClassFields:false).
 - Old dev accounts created before the starter-hotbar fix have empty hotbars.
 
-## NEEDS RUSTY (deploy)
+## NEEDS RUSTY (deploy + accounts)
 
-`DEPLOY.md` + `fly.toml` + `server/Dockerfile` are ready; needs Fly/Railway,
-Neon, and Vercel accounts + secrets (~15 min). CORS must be tightened to the
-Vercel domain and JWT_SECRET set to a real secret at deploy time.
+- `DEPLOY.md` + `fly.toml` + `server/Dockerfile` are ready; needs
+  Fly/Railway, Neon, and Vercel accounts + secrets (~15 min). CORS must be
+  tightened to the Vercel domain and JWT_SECRET set to a real secret.
+- Git tags (`m0-complete`, `run-20260709-autonomous`) exist locally only —
+  the remote refuses tag pushes from this session.
+- Nothing else is blocked on accounts; no token/chain code exists (M4 gate).
 
 ## Next up
 
-1. P3 remainders: Spark walk frames + scale, node silhouette pass, juice
-   (footstep dust, success flourishes), UI reskin, vending machines/graffiti.
-2. M1-in-M2 continuation: mobs + Brawling, healing (Dynamo zone + Heatlamp),
-   crafting/durability at the Tinkerbench, Bolts + merchant price bands +
-   quests (server-side, ledger-logged), Griddling at the Canals stall.
-3. M3 retention layer per the bible (Manifest, weekly goals, Rested Charge)
-   — still NO token code before M4's gate.
+1. Owner-queued MATERIALS + COMPOSITION pass: material system in the voxel
+   pipeline (rusted steel / gunmetal / wood / painted panel / concrete;
+   purple only in shadows), per-block wear/noise, then the market-district
+   rebuild (void edges, tramgate→lane→plaza structure, density gradient,
+   vignettes, light discipline, ground patchwork, themed node spots).
+2. M1-in-M2 continuation: crafting/durability at the Tinkerbench, Bolts +
+   merchant price bands + quests (server-side, ledger-logged), Griddling.
+3. M3 retention layer per the bible (Manifest panel, weekly goals, Rested
+   Charge) — still NO token code before M4's gate.
