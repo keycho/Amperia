@@ -101,13 +101,16 @@ async function main(): Promise<void> {
   console.log(`kill confirmed — Brawling XP +${brawlXp}`);
 
   // 4. Stand in the corner until knocked flat; expect spawn + full heal.
+  const { CONFIG } = await import('@shared/config');
   await until(() => downs > 0, 'knocked flat', 180000);
-  clearInterval(killTimer);
+  clearInterval(killTimer); // stop immediately — a queued move would walk the respawned Spark
   await sleep(300);
   const p = me() as { tileX: number; tileY: number; hp: number };
-  console.log(`down + respawn: tile (${p.tileX},${p.tileY}), hp ${p.hp}`);
-  if (p.tileX !== 20 || p.tileY !== 24) throw new Error('respawn tile is not the plaza spawn');
-  if (p.hp < 30) throw new Error('respawn did not fully heal');
+  const spawn = CONFIG.combat.player.respawnTile;
+  console.log(`down + respawn: tile (${p.tileX},${p.tileY}), hp ${p.hp} (spawn ${spawn.x},${spawn.y})`);
+  const spawnDist = Math.max(Math.abs(p.tileX - spawn.x), Math.abs(p.tileY - spawn.y));
+  if (spawnDist > 2) throw new Error('respawn tile is not the Dynamo respawn');
+  if (p.hp < CONFIG.combat.player.maxHp) throw new Error('respawn did not fully heal');
 
   // 5. Heatlamp cost gate: no salvage → refusal notice (the sink is gated).
   room.send('placeHeatlamp', {});

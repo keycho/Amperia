@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { mixPalette, PALETTE_INT } from '@shared/palette';
+import { hexToInt, mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { MATERIALS } from './materials';
 import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
@@ -93,10 +93,23 @@ function stallModel(variant: number): Voxel[] {
     v.push({ x, y: 7, z: 19, c: x % 2 === 0 ? stripeHot : stripePale });
     v.push({ x, y: 7, z: 18, c: x % 2 === 0 ? stripeHot : stripePale });
   }
-  // Hanging sign (ink board, neon glyph) — the earned accent.
+  // Hanging sign (ink board, neon glyph) — §B9 signage variety: each stall
+  // runs its own color and glyph shape along the lane.
+  const signC = [
+    PALETTE_INT.neonAmber,
+    PALETTE_INT.neonRose,
+    PALETTE_INT.neonCyan,
+    hexToInt(UI_TEXT_WARM),
+  ][variant % 4] as number;
   v.push(...box(4, 6, 13, 3, 1, 4, mixPalette('ink', 'structureMid', 0.25)));
-  v.push({ x: 5, y: 6, z: 15, c: PALETTE_INT.neonAmber });
-  v.push({ x: 5, y: 6, z: 14, c: PALETTE_INT.neonAmber });
+  if (variant % 2 === 0) {
+    v.push({ x: 5, y: 6, z: 15, c: signC });
+    v.push({ x: 5, y: 6, z: 14, c: signC });
+  } else {
+    v.push({ x: 4, y: 6, z: 14, c: signC });
+    v.push({ x: 5, y: 6, z: 15, c: signC });
+    v.push({ x: 6, y: 6, z: 14, c: signC });
+  }
   // Lantern voxel by the right post (glow sprite added at placement).
   v.push({ x: 10, y: 6, z: 14, c: PALETTE_INT.warmGlow });
   // Crates under the counter for life.

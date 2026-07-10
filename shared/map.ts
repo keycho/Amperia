@@ -60,6 +60,58 @@ function blockFootprint(walkable: boolean[][], p: { x: number; y: number; w: num
   }
 }
 
+/**
+ * True if blocking `tile` would seal off any walkable pocket. Used by the
+ * vignette placements, which hug props on purpose and so can't rely on the
+ * free-ring rule. One flood fill per candidate — map build is one-time.
+ */
+function wouldSealPocket(walkable: boolean[][], x: number, y: number, size: number): boolean {
+  const total = () => {
+    let n = 0;
+    for (const row of walkable) for (const w2 of row) if (w2) n++;
+    return n;
+  };
+  const flood = (): number => {
+    let sx = -1;
+    let sy = -1;
+    outer: for (let yy = 0; yy < size; yy++) {
+      for (let xx = 0; xx < size; xx++) {
+        if (walkable[yy]?.[xx] === true) {
+          sx = xx;
+          sy = yy;
+          break outer;
+        }
+      }
+    }
+    if (sx < 0) return 0;
+    const seen = new Set<number>([sy * size + sx]);
+    const stack: Array<[number, number]> = [[sx, sy]];
+    while (stack.length > 0) {
+      const [cx2, cy2] = stack.pop() as [number, number];
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = cx2 + dx;
+        const ny = cy2 + dy;
+        if (walkable[ny]?.[nx] === true && !seen.has(ny * size + nx)) {
+          seen.add(ny * size + nx);
+          stack.push([nx, ny]);
+        }
+      }
+    }
+    return seen.size;
+  };
+  const row = walkable[y];
+  if (!row) return true;
+  row[x] = false;
+  const sealed = flood() !== total();
+  row[x] = true;
+  return sealed;
+}
+
 function isAreaFree(walkable: boolean[][], x: number, y: number, w: number, h: number): boolean {
   for (let dy = -1; dy <= h; dy++) {
     for (let dx = -1; dx <= w; dx++) {
@@ -203,6 +255,40 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     props.push(shack);
     blockFootprint(walkable, shack);
   });
+
+  // Stall vignettes (§B8): goods crates flanking each stall's counter and
+  // a planter at its shoulder — no stall stands alone.
+  for (const stall of props.filter((p) => p.kind === 'stall')) {
+    const sideSpots: Array<[number, number, PropKind]> = [
+      [stall.x - 1, stall.y + 1, 'crate'],
+      [stall.x + stall.w, stall.y + 1, 'block'],
+      [stall.x + stall.w, stall.y - 1, 'planter'],
+    ];
+    for (const [sx, sy, kind] of sideSpots) {
+      if (walkable[sy]?.[sx] !== true) continue;
+      // Never pinch the lane rows or the plaza-axis sightlines shut.
+      if (sy >= 19 && sy <= 21 && sx >= 27) continue;
+      if (Math.abs(sx - c) <= 1 || Math.abs(sy - c) <= 1) continue;
+      if (wouldSealPocket(walkable, sx, sy, size)) continue;
+      const p: Prop = { kind, x: sx, y: sy, w: 1, h: 1, variant: randInt(rng, 0, 2) };
+      props.push(p);
+      blockFootprint(walkable, p);
+    }
+  }
+
+  // Planter rows along the north wall's faces (§B8).
+  for (const [px, py] of [
+    [10, 3],
+    [16, 3],
+    [22, 3],
+    [29, 4],
+  ] as const) {
+    if (walkable[py]?.[px] !== true) continue;
+    if (wouldSealPocket(walkable, px, py, size)) continue;
+    const p: Prop = { kind: 'planter', x: px, y: py, w: 1, h: 1, variant: randInt(rng, 0, 1) };
+    props.push(p);
+    blockFootprint(walkable, p);
+  }
 
   // Dark-corner alley clutter (§B7): packed crates + one dim lantern each.
   const cornerClutter: Array<{ lamp: [number, number]; crates: Array<[number, number]> }> = [

@@ -104,6 +104,7 @@ export class WorldScene extends Phaser.Scene {
     this.drawFloor();
     this.placeProps();
     this.placeRopes();
+    this.placeAntennaCables();
     this.placeStringLights();
     this.placeCanalLife();
     this.spawnAmbientBots();
@@ -1141,9 +1142,16 @@ export class WorldScene extends Phaser.Scene {
             rise: 34,
             tint: p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose,
           });
-          // Sign glyph glow (left of center, under the awning).
+          // Sign glyph glow (left of center, under the awning) — color per
+          // stall so the lit lane reads as a run of different shops (§B9).
+          const signTints = [
+            PALETTE_INT.neonAmber,
+            PALETTE_INT.neonRose,
+            PALETTE_INT.neonCyan,
+            PALETTE_INT.warmGlow,
+          ];
           const sign = this.add.image(x - 6, y - 62, 'fx-glow');
-          sign.setTint(PALETTE_INT.neonAmber);
+          sign.setTint(signTints[p.variant % 4] as number);
           sign.setAlpha(bloom(0.55));
           sign.setScale(0.07);
           sign.setBlendMode(Phaser.BlendModes.ADD);
@@ -1252,6 +1260,40 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
       }
+    }
+  }
+
+  /** Cables from each antenna shrine to the nearest shack roof (§B8). */
+  private placeAntennaCables(): void {
+    const shacks = this.map.props.filter((p) => p.kind === 'shack');
+    if (shacks.length === 0) return;
+    const g = this.add.graphics();
+    g.setDepth(1e5 - 1);
+    for (const n of this.map.nodes) {
+      if (n.kind !== 'antenna') continue;
+      let best: Prop | null = null;
+      let bestD = Infinity;
+      for (const sh of shacks) {
+        const d = Math.max(Math.abs(sh.x - n.x), Math.abs(sh.y - n.y));
+        if (d < bestD) {
+          bestD = d;
+          best = sh;
+        }
+      }
+      if (best === null || bestD > 12) continue;
+      const a = tileToWorld(n.x, n.y);
+      const mastTop = { x: a.x, y: a.y + TILE_H / 2 - 96 };
+      const roofAnchor = this.propAnchor(best);
+      const roof = { x: roofAnchor.x, y: roofAnchor.y - 54 };
+      const sag = Math.min(40, Phaser.Math.Distance.Between(mastTop.x, mastTop.y, roof.x, roof.y) * 0.14);
+      const mid = { x: (mastTop.x + roof.x) / 2, y: Math.max(mastTop.y, roof.y) + sag };
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(mastTop.x, mastTop.y),
+        new Phaser.Math.Vector2(mid.x, mid.y),
+        new Phaser.Math.Vector2(roof.x, roof.y),
+      );
+      g.lineStyle(1.5, this.lerpColor(MATERIAL_INT.gunmetalDeep, PALETTE_INT.ink, 0.35), 0.9);
+      curve.draw(g, 16);
     }
   }
 

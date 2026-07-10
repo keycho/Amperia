@@ -204,6 +204,8 @@ export const CONFIG = {
       /** Regen inside the Great Dynamo's warmth (tiles from plaza center). */
       dynamoHealRadiusTiles: 5,
       dynamoHealPerSecond: 2.5,
+      /** Downed Sparks come to in the Dynamo's warmth, not at the tram. */
+      respawnTile: { x: 20, y: 26 },
     },
     scuttlebot: {
       count: 4,

@@ -887,7 +887,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client !== undefined) this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
-    const spawn = CONFIG.player.spawn;
+    const spawn = CONFIG.combat.player.respawnTile;
     rt.move = makeMoveState(spawn);
     rt.hp = CONFIG.combat.player.maxHp;
     ps.tileX = spawn.x;
