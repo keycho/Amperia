@@ -103,6 +103,7 @@ export class WorldScene extends Phaser.Scene {
     makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
+    this.placeRopes();
     this.placeStringLights();
     this.placeCanalLife();
     this.spawnAmbientBots();
@@ -1084,6 +1085,52 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+        case 'tramgate': {
+          const img = addVoxelSprite(this, 'tramgate', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // Sign glow over the lane + beacon + arrival pool of light.
+          const sign = this.add.image(x - 26, y - 84, 'fx-glow');
+          sign.setTint(PALETTE_INT.neonAmber);
+          sign.setBlendMode(Phaser.BlendModes.ADD);
+          sign.setAlpha(bloom(0.7));
+          sign.setScale(0.13);
+          sign.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, sign, bloom(0.7), 0.08);
+          const beacon = this.add.image(x - 2, y - 122, 'fx-glow');
+          beacon.setTint(PALETTE_INT.neonTeal);
+          beacon.setBlendMode(Phaser.BlendModes.ADD);
+          beacon.setScale(0.09);
+          beacon.setAlpha(bloom(0.6));
+          beacon.setDepth(depthForWorldY(y) + 1);
+          this.addGroundPool(x - 40, y - 10, PALETTE_INT.neonAmber, 0.7);
+          break;
+        }
+        case 'alleylamp': {
+          const img = addVoxelSprite(this, 'heatlamp', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // A single dim lantern for the dark corners — barely holding on.
+          const glow = this.add.image(x, y - 32, 'fx-glow');
+          glow.setTint(PALETTE_INT.warmGlow);
+          glow.setBlendMode(Phaser.BlendModes.ADD);
+          glow.setScale(0.09);
+          glow.setAlpha(bloom(0.42));
+          glow.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, glow, bloom(0.42), 0.16);
+          const pool = this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.34);
+          pool.setAlpha(0.15);
+          break;
+        }
+        case 'ropepost': {
+          const img = addVoxelSprite(this, 'ropepost', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
         case 'shack': {
           const img = addVoxelSprite(this, `shack-${p.variant % 3}`, x, y);
           const wt = worldSpriteTint();
@@ -1111,6 +1158,36 @@ export class WorldScene extends Phaser.Scene {
           this.addGroundPool(x + 16, y - 2, PALETTE_INT.warmGlow, 0.34);
           break;
         }
+      }
+    }
+  }
+
+  /** Sagging rope strung between neighbouring scrap-yard posts (§B11). */
+  private placeRopes(): void {
+    const posts = this.map.props.filter((p) => p.kind === 'ropepost');
+    const g = this.add.graphics();
+    g.setDepth(depthForWorldY(tileToWorld(32, 32).y) + 1);
+    for (let i = 0; i < posts.length; i++) {
+      for (let j = i + 1; j < posts.length; j++) {
+        const a = posts[i] as Prop;
+        const b = posts[j] as Prop;
+        const dist = Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+        if (dist === 0 || dist > 2) continue; // the entrance gap stays open
+        const wa = this.propAnchor(a);
+        const wb = this.propAnchor(b);
+        const topA = { x: wa.x, y: wa.y - 24 };
+        const topB = { x: wb.x, y: wb.y - 24 };
+        const mid = { x: (topA.x + topB.x) / 2, y: Math.max(topA.y, topB.y) + 9 };
+        const curve = new Phaser.Curves.QuadraticBezier(
+          new Phaser.Math.Vector2(topA.x, topA.y),
+          new Phaser.Math.Vector2(mid.x, mid.y),
+          new Phaser.Math.Vector2(topB.x, topB.y),
+        );
+        g.lineStyle(2, MATERIAL_INT.rustDeep, 0.95);
+        curve.draw(g, 12);
+        // A little warning flag mid-rope.
+        g.fillStyle(PALETTE_INT.neonAmber, 0.85);
+        g.fillTriangle(mid.x, mid.y - 1, mid.x + 5, mid.y + 2, mid.x, mid.y + 5);
       }
     }
   }

@@ -222,6 +222,42 @@ function heatlampModel(): Voxel[] {
   return v;
 }
 
+// ── Tramgate (arrival arch at the market lane's east end) ─────────────────
+
+function tramgateModel(): Voxel[] {
+  const gm = MATERIALS.gunmetal;
+  const gmd = MATERIALS.gunmetalDeep;
+  const v: Voxel[] = [];
+  // Two pillars at the lane's shoulders (footprint 2×5 tiles = 16×40 vox).
+  for (const py of [0, 34] as const) {
+    v.push(...mbox(4, py, 0, 8, 6, 2, MATERIALS.concrete)); // plinth
+    v.push(...mbox(5, py + 1, 2, 6, 4, 20, gm));
+    v.push(...mbox(5, py + 1, 22, 6, 4, 2, MATERIALS.rust)); // rust cap
+  }
+  // Arch beam spanning the lane.
+  v.push(...mbox(5, 0, 24, 6, 40, 3, gmd));
+  v.push(...mbox(5, 0, 27, 6, 40, 1, MATERIALS.rust));
+  // Hanging sign board under the beam, over the lane: amber glyph row.
+  v.push(...box(7, 14, 19, 2, 12, 3, mixPalette('ink', 'structureMid', 0.2)));
+  for (let gy = 15; gy <= 24; gy += 3) {
+    v.push({ x: 7, y: gy, z: 20, c: PALETTE_INT.neonAmber });
+  }
+  // Teal beacon on the beam's center.
+  v.push(...box(7, 19, 28, 2, 2, 2, PALETTE_INT.neonTeal));
+  return v;
+}
+
+// ── Rope post (the scrap-yard boundary) ───────────────────────────────────
+
+function ropepostModel(): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(2, 2, 0, 2, 2, 1, MATERIALS.concrete));
+  v.push(...mbox(2, 2, 1, 2, 2, 5, MATERIALS.wood));
+  v.push(...mbox(2, 2, 6, 2, 2, 1, MATERIALS.rust));
+  v.push({ x: 2, y: 2, z: 7, c: PALETTE_INT.neonAmber }); // marker chip
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -315,4 +351,6 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     voxels: scuttlebotModel(PALETTE_INT.neonRose),
   });
   bakeVoxelModel(scene, { name: 'heatlamp', voxels: heatlampModel() });
+  bakeVoxelModel(scene, { name: 'tramgate', voxels: tramgateModel() });
+  bakeVoxelModel(scene, { name: 'ropepost', voxels: ropepostModel() });
 }

@@ -8,7 +8,16 @@ import { makeRng, randInt, type Rng } from './rng';
  * the edges. Deterministic from CONFIG.map.seed so client and server agree.
  */
 
-export type PropKind = 'dynamo' | 'stall' | 'crate' | 'block' | 'planter' | 'shack';
+export type PropKind =
+  | 'dynamo'
+  | 'stall'
+  | 'crate'
+  | 'block'
+  | 'planter'
+  | 'shack'
+  | 'tramgate'
+  | 'alleylamp'
+  | 'ropepost';
 
 export interface Prop {
   kind: PropKind;
@@ -120,10 +129,28 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   props.push(dynamo);
   blockFootprint(walkable, dynamo);
 
-  // Stall row along the plaza's north edge (Nightstalls flavor).
-  const stallY = c - plaza.radius - 2;
-  for (let i = 0; i < 4; i++) {
-    const stall: Prop = { kind: 'stall', x: c - 7 + i * 4, y: stallY, w: 2, h: 2, variant: i };
+  // ── The market spine (composition §B6): Tramgate → lane → plaza ─────────
+  // Arrivals step off the tram at the east edge and walk a stall-lined lane
+  // (rows y 19–21, kept clear) straight into the Dynamo plaza.
+  const gate: Prop = { kind: 'tramgate', x: 36, y: 18, w: 2, h: 5, variant: 0 };
+  props.push(gate);
+  blockFootprint(walkable, gate);
+
+  // North lane row: three stalls whose counters (+y face) FACE the lane.
+  for (let i = 0; i < 3; i++) {
+    const stall: Prop = { kind: 'stall', x: 28 + i * 3, y: 17, w: 2, h: 2, variant: i };
+    props.push(stall);
+    blockFootprint(walkable, stall);
+  }
+  // South lane row: two stalls tucked awning-to-awning opposite.
+  for (let i = 0; i < 2; i++) {
+    const stall: Prop = { kind: 'stall', x: 30 + i * 3, y: 22, w: 2, h: 2, variant: (i + 3) % 4 };
+    props.push(stall);
+    blockFootprint(walkable, stall);
+  }
+  // One more on the plaza's north-east edge, facing the plaza.
+  {
+    const stall: Prop = { kind: 'stall', x: 22, y: c - plaza.radius - 2, w: 2, h: 2, variant: 3 };
     props.push(stall);
     blockFootprint(walkable, stall);
   }
@@ -148,11 +175,26 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     blockFootprint(walkable, planter);
   }
 
-  // Salvage shacks — landmark anchors for the fringe vignettes: one by the
-  // NE brass workings, one on the SW towpath, one toward the amperite field.
+  // Buildings wall the outer edges with alley gaps (§B6) — the city has a
+  // silhouette, nothing free-floats. Two inner landmarks stay.
   const shackSpots: Array<[number, number]> = [
+    // North wall.
+    [7, 1],
+    [13, 1],
+    [19, 1],
+    [26, 1],
+    [32, 2],
+    // West wall (the canal runs x4–5; these sit behind the towpath).
+    [1, 8],
+    [1, 14],
+    [1, 25],
+    [1, 31],
+    // South wall.
+    [9, 36],
+    [15, 36],
+    [24, 36],
+    // Inner landmarks: NE alley anchor + the scrap-corner gatehouse.
     [29, 8],
-    [10, 29],
     [30, 27],
   ];
   shackSpots.forEach(([sx, sy], i) => {
@@ -161,6 +203,39 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     props.push(shack);
     blockFootprint(walkable, shack);
   });
+
+  // Dark-corner alley clutter (§B7): packed crates + one dim lantern each.
+  const cornerClutter: Array<{ lamp: [number, number]; crates: Array<[number, number]> }> = [
+    { lamp: [4, 34], crates: [[3, 33], [5, 35], [3, 35]] },
+    { lamp: [34, 5], crates: [[35, 4], [33, 4], [35, 6]] },
+    { lamp: [8, 5], crates: [[7, 4], [9, 4]] },
+  ];
+  for (const cluster of cornerClutter) {
+    for (const [cx2, cy2] of cluster.crates) {
+      if (!isAreaFree(walkable, cx2, cy2, 1, 1)) continue;
+      const p: Prop = { kind: 'crate', x: cx2, y: cy2, w: 1, h: 1, variant: randInt(rng, 0, 1) };
+      props.push(p);
+      blockFootprint(walkable, p);
+    }
+    const [lx, ly] = cluster.lamp;
+    if (isAreaFree(walkable, lx, ly, 1, 1)) {
+      const lamp: Prop = { kind: 'alleylamp', x: lx, y: ly, w: 1, h: 1, variant: 0 };
+      props.push(lamp);
+      blockFootprint(walkable, lamp);
+    }
+  }
+
+  // The roped scrap corner (§B11): posts along the SE yard's boundary with
+  // a two-tile gap entrance; the rope itself is visual only.
+  const ropeSpots: Array<[number, number]> = [];
+  for (let x = 28; x <= 37; x += 2) if (x !== 34) ropeSpots.push([x, 28]);
+  for (let y = 30; y <= 36; y += 2) ropeSpots.push([27, y]);
+  for (const [px, py] of ropeSpots) {
+    if (!isAreaFree(walkable, px, py, 1, 1)) continue;
+    const post: Prop = { kind: 'ropepost', x: px, y: py, w: 1, h: 1, variant: 0 };
+    props.push(post);
+    blockFootprint(walkable, post);
+  }
 
   // Scrappy fringe: crates and salvage blocks scattered outside the plaza,
   // pulled into vignette clusters around the shacks and stall row, with the
@@ -185,6 +260,10 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     if (x >= cv.xMin - 1 && x <= cv.xMax + 1 && y >= cv.yMin - 1 && y <= cv.yMax + 1) continue;
     // Lanes stay open along both plaza axes.
     if (Math.abs(x - c) <= 1 || Math.abs(y - c) <= 1) continue;
+    // The market lane (tramgate → plaza) stays completely clear.
+    if (y >= 18 && y <= 22 && x >= 27) continue;
+    // The roped scrap yard keeps its floor for seams, spoil and mobs.
+    if (x >= 27 && y >= 28) continue;
     // Cluster near a magnet; thin out in the open mid-ground.
     const nearMagnet = magnets.some(
       ([mx, my]) => Math.max(Math.abs(x - mx), Math.abs(y - my)) <= 3,
@@ -205,7 +284,8 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   // ── Gather nodes ────────────────────────────────────────────────────────
   const g = CONFIG.gathering;
 
-  // Junk heaps: all over the fringe (Scavving is the starter loop).
+  // Junk heaps live in the alleys (§B11): the shadowed bands between the
+  // edge buildings and the lit middle, never in the plaza or on the lane.
   scatterNodes(
     rng,
     walkable,
@@ -213,25 +293,39 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     'junkHeap',
     g.junkHeap.nodeCount,
     g.junkHeap.minNodeSpacing,
-    { x0: 8, y0: 2, x1: size - 3, y1: size - 3 },
-    (x, y) => Math.max(Math.abs(x - c), Math.abs(y - c)) > plaza.radius + 1,
+    { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
+    (x, y) => {
+      const distToEdge = Math.min(x, y, size - 1 - x, size - 1 - y);
+      if (distToEdge < 3 || distToEdge > 8) return false;
+      if (Math.max(Math.abs(x - c), Math.abs(y - c)) <= plaza.radius + 1) return false;
+      // Off the lane, out of the roped scrap corner, off the canal banks.
+      if (y >= 18 && y <= 22 && x >= 27) return false;
+      if (x >= 27 && y >= 28) return false;
+      return !(x >= cv.xMin - 1 && x <= cv.xMax + 2);
+    },
   );
 
-  // Brass seams: the north-east workings.
-  scatterNodes(rng, walkable, nodes, 'brassSeam', g.brassSeam.nodeCount, g.brassSeam.minNodeSpacing, {
-    x0: 26,
-    y0: 3,
-    x1: size - 3,
-    y1: 14,
-  });
-
-  // Amperite crystals: the south-east deep fringe.
-  scatterNodes(rng, walkable, nodes, 'amperite', g.amperite.nodeCount, g.amperite.minNodeSpacing, {
-    x0: 26,
-    y0: 26,
-    x1: size - 3,
-    y1: size - 3,
-  });
+  // Brass seams + amperite: the roped scrap corner in the SE, where the
+  // feral Scuttlebots prowl (combat homeBox overlaps on purpose).
+  const yard = { x0: 28, y0: 29, x1: size - 3, y1: size - 3 };
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'brassSeam',
+    g.brassSeam.nodeCount,
+    g.brassSeam.minNodeSpacing,
+    yard,
+  );
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'amperite',
+    g.amperite.nodeCount,
+    g.amperite.minNodeSpacing,
+    yard,
+  );
 
   // Glowkoi spots: ON canal tiles (skimmed from the bank).
   const koiRows: number[] = [];
@@ -251,7 +345,8 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     }
   }
 
-  // Antenna-shrines: a wide ring at mid distance.
+  // Antenna-shrines: the dark outskirts (§B11) — far from the plaza, still
+  // inside the void fade so the beacons read as distant lights.
   scatterNodes(
     rng,
     walkable,
@@ -259,11 +354,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     'antenna',
     g.antenna.shrineCount,
     g.antenna.minNodeSpacing,
-    { x0: 8, y0: 3, x1: size - 3, y1: size - 3 },
+    { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
     (x, y) => {
       const d = Math.max(Math.abs(x - c), Math.abs(y - c));
-      if (d < plaza.radius + 3 || d > plaza.radius + 9) return false;
-      // Keep shrines off the canal banks.
+      if (d < plaza.radius + 5) return false;
+      // Not in the scrap corner, off the lane, off the canal banks.
+      if (x >= 27 && y >= 28) return false;
+      if (y >= 18 && y <= 22 && x >= 27) return false;
       return !(x >= cv.xMin - 1 && x <= cv.xMax + 1);
     },
   );

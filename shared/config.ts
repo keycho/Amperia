@@ -37,8 +37,8 @@ export const CONFIG = {
   player: {
     /** Seconds to walk one tile (A* path steps tween at this rate). */
     secondsPerTile: 0.21,
-    /** Spawn tile (plaza, south of the Great Dynamo). */
-    spawn: { x: 20, y: 24 },
+    /** Spawn tile: stepping off the tram at the gate, facing the lane. */
+    spawn: { x: 35, y: 20 },
   },
 
   gathering: {
@@ -86,7 +86,8 @@ export const CONFIG = {
       rareFindChance: 0.07,
       rareFindItem: 'blueHotBrass',
       respawnSeconds: 30,
-      minNodeSpacing: 3,
+      /** Seams pack tight inside the roped scrap yard (composition §B11). */
+      minNodeSpacing: 2,
     },
 
     /** Amperite crystals → Amperite (Delving) — pulse-timing active layer. */

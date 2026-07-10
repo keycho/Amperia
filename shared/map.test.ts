@@ -33,10 +33,19 @@ describe('buildWorldMap', () => {
     expect(map.walkable[y]?.[x]).toBe(true);
   });
 
-  it('places the three salvage-shack landmarks', () => {
+  it('walls the edges with buildings and keeps the market spine', () => {
     const shacks = map.props.filter((p) => p.kind === 'shack');
-    expect(shacks.length).toBe(3);
+    expect(shacks.length).toBeGreaterThanOrEqual(10);
     expect(shacks.every((s) => s.w === 2 && s.h === 2)).toBe(true);
+    expect(map.props.filter((p) => p.kind === 'tramgate').length).toBe(1);
+    expect(map.props.filter((p) => p.kind === 'stall').length).toBe(6);
+    expect(map.props.filter((p) => p.kind === 'ropepost').length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('keeps the market lane clear between the Tramgate and the plaza', () => {
+    for (let x = 28; x <= 35; x++) {
+      expect(map.walkable[20]?.[x]).toBe(true);
+    }
   });
 
   it('keeps the plaza-axis lanes clear of scatter clutter', () => {
