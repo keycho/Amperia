@@ -134,6 +134,138 @@ function containerModel(variant: number): Voxel[] {
   return v;
 }
 
+/** Weathered-steel container (the Tangle's rust/gunmetal family). */
+function containerRustModel(variant: number): Voxel[] {
+  const mat = [MATERIALS.rust, MATERIALS.gunmetalDeep, MATERIALS.rustDeep][
+    variant % 3
+  ] as (typeof MATERIALS)['rust'];
+  const v: Voxel[] = [];
+  for (const vox of mbox(0, 0, 0, 6, 4, 5, mat)) {
+    const ridged = vox.x % 2 === 1 && (vox.y === 0 || vox.y === 3);
+    v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
+  }
+  for (const vox of mbox(0, 0, 4, 6, 1, 1, MATERIALS.gunmetalDeep)) v.push(vox);
+  return v;
+}
+
+/**
+ * Canyon wall segment (Tangle brief): containers stacked `levels` high
+ * with per-level jitter and material drift; one level in three carries
+ * ember-orange hazard stripes — the sanctioned accent, never a fill.
+ */
+function stackModel(levels: number, striped: boolean): Voxel[] {
+  const mats = [MATERIALS.rust, MATERIALS.gunmetalDeep, MATERIALS.rustDeep, MATERIALS.gunmetal];
+  const v: Voxel[] = [];
+  for (let level = 0; level < levels; level++) {
+    const mat = mats[(level * 2 + levels) % mats.length] as (typeof MATERIALS)['rust'];
+    const ox = (level * 3 + levels) % 2; // slight overhang jitter
+    const oy = (level * 5 + levels * 3) % 2;
+    const z0 = level * 5;
+    for (const vox of mbox(ox, oy, z0, 6, 4, 5, mat)) {
+      const ridged = vox.x % 2 === 1 && (vox.y === oy || vox.y === oy + 3);
+      v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
+    }
+    // Hazard stripe band on ONE level of the OCCASIONAL container only
+    // (§12B accent discipline) — a diagonal warning band, not windows.
+    if (striped && level === Math.min(1, levels - 1)) {
+      for (let x = ox; x < ox + 6; x++) {
+        v.push({ x, y: oy + 3, z: z0 + 1 + (x % 2), c: PALETTE_INT.emberOrange });
+      }
+    }
+    // Rusted top rail on the crown level.
+    if (level === levels - 1) {
+      for (const vox of mbox(ox, oy, z0 + 4, 6, 1, 1, MATERIALS.rustDeep)) v.push(vox);
+    }
+  }
+  return v;
+}
+
+/**
+ * The dead Craneking (the Tangle's XL landmark): tracked base, gunmetal
+ * cab on legs, a long boom rising over the container walls with a claw
+ * dangling on chain — and its old beacon at the boom tip (rose glow added
+ * at placement, blinking slow).
+ */
+function craneHulkModel(): Voxel[] {
+  const gm = MATERIALS.gunmetal;
+  const gmd = MATERIALS.gunmetalDeep;
+  const v: Voxel[] = [];
+  // Two rusted track bases (footprint 48×32 voxels = 6×4 tiles).
+  v.push(...mbox(2, 2, 0, 40, 8, 4, MATERIALS.rustDeep));
+  v.push(...mbox(2, 22, 0, 40, 8, 4, MATERIALS.rustDeep));
+  // Axle deck bridging the tracks.
+  v.push(...mbox(8, 8, 4, 26, 16, 3, gmd));
+  // The cab: a battered gunmetal head with one dead window.
+  v.push(...mbox(10, 11, 7, 12, 10, 8, gm));
+  v.push(...box(20, 13, 10, 2, 4, 3, mixPalette('ink', 'structureMid', 0.35))); // dead glass
+  for (const vox of mbox(10, 11, 15, 12, 10, 1, MATERIALS.rust)) v.push(vox); // rusted roof
+  // The TOWER: a hollow lattice column climbing over the walls — the
+  // Craneking's spine, readable from anywhere in the maze.
+  for (let z = 7; z < 42; z++) {
+    for (const [lx, ly] of [
+      [24, 13],
+      [28, 13],
+      [24, 18],
+      [28, 18],
+    ] as const) {
+      const mat = z % 9 < 2 ? MATERIALS.rust : z % 2 === 0 ? gm : gmd;
+      v.push({ x: lx, y: ly, z, c: mat.base, mat });
+    }
+    // Cross-braces every few courses.
+    if (z % 6 === 3) {
+      v.push(...mbox(25, 13, z, 3, 1, 1, gmd));
+      v.push(...mbox(25, 18, z, 3, 1, 1, gmd));
+      v.push(...mbox(24, 14, z, 1, 4, 1, gmd));
+      v.push(...mbox(28, 14, z, 1, 4, 1, gmd));
+    }
+  }
+  // The JIB: a long horizontal lattice arm at the top (+x), with the
+  // shorter counter-jib and its dead counterweight behind (−x).
+  v.push(...mbox(12, 14, 42, 34, 4, 2, gm));
+  for (let x = 14; x < 44; x += 5) {
+    v.push(...mbox(x, 15, 40, 1, 2, 2, gmd)); // lattice struts under
+  }
+  v.push(...mbox(8, 13, 40, 6, 6, 4, MATERIALS.rustDeep)); // counterweight
+  // Apex pylon + tie bars sketched as raised courses.
+  v.push(...mbox(25, 15, 44, 3, 2, 3, gm));
+  // Hook chain from the jib + the dead claw dangling mid-air.
+  for (let z = 24; z < 42; z += 2) v.push({ x: 41, y: 16, z, c: gmd.base, mat: gmd });
+  v.push(...mbox(39, 14, 20, 5, 4, 3, MATERIALS.rustDeep));
+  v.push(...mbox(39, 13, 17, 2, 2, 3, MATERIALS.rustDeep));
+  v.push(...mbox(42, 17, 17, 2, 2, 3, MATERIALS.rustDeep));
+  // The old beacon housing on the apex (rose glow at placement).
+  v.push({ x: 26, y: 15, z: 47, c: PALETTE_INT.neonRose });
+  v.push({ x: 26, y: 16, z: 47, c: PALETTE_INT.neonRose });
+  return v;
+}
+
+/** A machine carcass (2×2 tiles): gunmetal hulk gone half to rust. */
+function deadMachineModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(0, 0, 0, 14, 12, 6, MATERIALS.gunmetalDeep));
+  for (const vox of mbox(1, 1, 6, 12, 10, 4, MATERIALS.gunmetal)) {
+    // Rust eats one corner differently per variant.
+    const eaten =
+      variant % 2 === 0 ? vox.x < 5 && vox.y < 5 : vox.x > 8 && vox.y > 6;
+    v.push(eaten ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox);
+  }
+  // Burst pipe + spilled plate + one dead indicator (ink, not neon: dead).
+  v.push(...mbox(3 + (variant % 3), 4, 10, 2, 2, 3 + (variant % 2), MATERIALS.rustDeep));
+  v.push(...mbox(10, 2, 6, 4, 3, 1, MATERIALS.rust));
+  v.push({ x: 6, y: 10, z: 8, c: mixPalette('ink', 'structureMid', 0.5) });
+  return v;
+}
+
+/** Cable pylon: tall thin gunmetal post with an amber marker cap. */
+function pylonModel(): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(2, 2, 0, 4, 4, 2, MATERIALS.concreteDeep));
+  v.push(...mbox(3, 3, 2, 2, 2, 18, MATERIALS.gunmetal));
+  v.push(...mbox(2, 3, 20, 4, 2, 1, MATERIALS.gunmetalDeep)); // crossarm
+  v.push({ x: 3, y: 3, z: 21, c: PALETTE_INT.neonAmber });
+  return v;
+}
+
 function drumsModel(): Voxel[] {
   // Rusted fuel drums with gunmetal bands; one repainted ochre.
   const v: Voxel[] = [];
@@ -453,8 +585,16 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'antenna', voxels: antennaModel() });
   for (let i = 0; i < 3; i++) {
     bakeVoxelModel(scene, { name: `container-${i}`, voxels: containerModel(i) });
+    bakeVoxelModel(scene, { name: `container-r${i}`, voxels: containerRustModel(i) });
     bakeVoxelModel(scene, { name: `shack-${i}`, voxels: shackModel(i) });
+    bakeVoxelModel(scene, { name: `deadmachine-${i}`, voxels: deadMachineModel(i) });
   }
+  for (const h of [2, 3, 4]) {
+    bakeVoxelModel(scene, { name: `stack-${h}`, voxels: stackModel(h, false) });
+    bakeVoxelModel(scene, { name: `stack-${h}s`, voxels: stackModel(h, true) });
+  }
+  bakeVoxelModel(scene, { name: 'cranehulk', voxels: craneHulkModel() });
+  bakeVoxelModel(scene, { name: 'pylon', voxels: pylonModel() });
   bakeVoxelModel(scene, { name: 'drums', voxels: drumsModel() });
   bakeVoxelModel(scene, { name: 'dynamo', voxels: dynamoModel() });
   bakeVoxelModel(scene, { name: 'scuttlebot', voxels: scuttlebotModel(PALETTE_INT.neonTeal) });

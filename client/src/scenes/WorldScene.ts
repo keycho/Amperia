@@ -158,6 +158,7 @@ export class WorldScene extends Phaser.Scene {
     this.placeProps();
     this.placeRopes();
     this.placeAntennaCables();
+    this.placeTangleCables();
     this.placeStringLights();
     this.placeCanalLife();
     this.spawnAmbientBots();
@@ -1207,6 +1208,10 @@ export class WorldScene extends Phaser.Scene {
     crate: 4,
     merchant: 10,
     alleylamp: 8,
+    stack: 16,
+    cranehulk: 44,
+    deadmachine: 10,
+    pylon: 12,
   };
 
   /**
@@ -1534,8 +1539,64 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'block': {
-          const name = p.variant % 4 === 3 ? 'drums' : `container-${p.variant % 3}`;
+          // Variants: 0-2 painted (Filament), 3 drums, 4-6 the Tangle's
+          // rust/gunmetal family (§12B accent discipline — no confetti).
+          const name =
+            p.variant === 3
+              ? 'drums'
+              : p.variant >= 4
+                ? `container-r${(p.variant - 4) % 3}`
+                : `container-${p.variant % 3}`;
           const img = addVoxelSprite(this, name, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'stack': {
+          // Variant: height 2-4, +10 = the occasional hazard-striped one.
+          const h = Math.min(4, Math.max(2, p.variant >= 10 ? p.variant - 10 : p.variant));
+          const img = addVoxelSprite(this, `stack-${h}${p.variant >= 10 ? 's' : ''}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'cranehulk': {
+          const img = addVoxelSprite(this, 'cranehulk', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // The dead Craneking's old beacon: slow rose blink at the apex —
+          // visible over the walls from most of the maze (§12B b).
+          const beacon = addLayeredGlow(this, x + 10, y - 189, PALETTE_INT.neonRose, 0.16, depthForWorldY(y) + 2, 0.9);
+          const blink = { t: 0 };
+          this.tweens.add({
+            targets: blink,
+            t: 1,
+            duration: 420,
+            hold: 180,
+            yoyo: true,
+            repeatDelay: 2600,
+            repeat: -1,
+            ease: 'sine.inout',
+            onUpdate: () => {
+              beacon.core.setAlpha(bloom(0.15 + blink.t * 0.8));
+              beacon.mid.setAlpha(bloom(0.06 + blink.t * 0.42));
+              beacon.outer.setAlpha(bloom(0.02 + blink.t * 0.14));
+            },
+          });
+          break;
+        }
+        case 'deadmachine': {
+          const img = addVoxelSprite(this, `deadmachine-${p.variant % 3}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'pylon': {
+          const img = addVoxelSprite(this, 'pylon', x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
@@ -1780,12 +1841,15 @@ export class WorldScene extends Phaser.Scene {
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
           // A single dim lantern for the dark corners — barely holding on,
-          // but still a proper core + bloom (addendum b).
-          const glow = addLayeredGlow(this, x, y - 32, PALETTE_INT.warmGlow, 0.09, depthForWorldY(y) + 1, 0.55);
+          // but still a proper core + bloom (addendum b). Tangle junctions
+          // run HAZARD AMBER per the district brief (§12B a/d).
+          const lampTint =
+            this.district === 'tangle' ? PALETTE_INT.neonAmber : PALETTE_INT.warmGlow;
+          const glow = addLayeredGlow(this, x, y - 32, lampTint, 0.09, depthForWorldY(y) + 1, 0.55);
           addFlicker(this, glow.mid, bloom(0.28), 0.16);
           addFlicker(this, glow.core, bloom(0.5), 0.12);
           // Faint light cone under the head (R5a).
-          addLampCone(this, x, y - 30, PALETTE_INT.warmGlow, depthForWorldY(y));
+          addLampCone(this, x, y - 30, lampTint, depthForWorldY(y));
           const pool = this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.34);
           pool.setAlpha(0.15);
           break;
@@ -1828,6 +1892,47 @@ export class WorldScene extends Phaser.Scene {
           this.addGroundPool(x - 12, y - 2, signTint, 0.5);
           this.addGroundPool(x + 16, y - 2, PALETTE_INT.warmGlow, 0.34);
           break;
+        }
+      }
+    }
+  }
+
+  /**
+   * The Tangle's overhead layer (§12B): sagging cable BUNDLES strung
+   * between consecutive pylon pairs, crossing the corridors.
+   */
+  private placeTangleCables(): void {
+    const pylons = this.map.props.filter((p) => p.kind === 'pylon');
+    if (pylons.length < 2) return;
+    const g = this.add.graphics();
+    g.setDepth(1e5 - 1);
+    for (let i = 0; i + 1 < pylons.length; i += 2) {
+      const a = this.propAnchor(pylons[i] as Prop);
+      const b = this.propAnchor(pylons[i + 1] as Prop);
+      const top = -78; // the crossarm height on the pylon bake
+      // Three strands with different sags — a BUNDLE, not a wire.
+      for (const [sagMult, alpha] of [
+        [1, 0.9],
+        [1.22, 0.7],
+        [1.45, 0.5],
+      ] as const) {
+        const sag = Math.min(52, Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y) * 0.13) * sagMult;
+        const mid = {
+          x: (a.x + b.x) / 2,
+          y: Math.max(a.y + top, b.y + top) + sag,
+        };
+        const curve = new Phaser.Curves.QuadraticBezier(
+          new Phaser.Math.Vector2(a.x, a.y + top),
+          new Phaser.Math.Vector2(mid.x, mid.y),
+          new Phaser.Math.Vector2(b.x, b.y + top),
+        );
+        g.lineStyle(2, mixPalette('ink', 'structureMid', 0.4), alpha);
+        curve.draw(g, 20);
+        // The odd hanging drip line off the lowest strand.
+        if (sagMult === 1.45 && (i / 2) % 2 === 0) {
+          const p = curve.getPoint(0.4);
+          g.lineStyle(2, mixPalette('ink', 'structureMid', 0.35), 0.6);
+          g.lineBetween(p.x, p.y, p.x, p.y + 16);
         }
       }
     }

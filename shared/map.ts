@@ -22,7 +22,15 @@ export type PropKind =
   | 'alleylamp'
   | 'ropepost'
   | 'dispatcher'
-  | 'warden';
+  | 'warden'
+  /** Tangle canyon walls: containers stacked 2-4 high (variant = height). */
+  | 'stack'
+  /** The dead Craneking hulk — the Tangle's XL landmark. */
+  | 'cranehulk'
+  /** Gunmetal machine carcasses rusting in the maze pockets. */
+  | 'deadmachine'
+  /** Cable pylons — the client strings sagging bundles between pairs. */
+  | 'pylon';
 
 export interface Prop {
   kind: PropKind;
@@ -556,10 +564,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
 }
 
 /**
- * THE TANGLE — wire-maze outskirts (first dangerous district): container
- * walls form broken corridor rings around a scrap heart; darker and
- * sparser-lit than the Filament, with denser junk/brass/amperite and no
- * canal, plaza, or Dynamo warmth. PvE only.
+ * THE TANGLE v2 — wire-maze CANYON (district brief, ART-DIRECTION §12B):
+ * corridors thread between container-stack walls 2-4 high, under sagging
+ * cable trusses, past dead machines, with the ruined Craneking hulk
+ * looming over the center. Rust + gunmetal; hazard-amber junction lamps;
+ * teal ONLY as amperite/beacons; rose ONLY as Scrapcache/mob/crane-beacon.
+ * Darker than the Filament; danger lives in the dark stretches. PvE only.
+ * Gameplay placements (node counts, mob boxes, tram position) match v1.
  */
 export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap {
   const size = CONFIG.map.size;
@@ -577,68 +588,136 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     blockFootprint(walkable, p);
   };
 
+  // ── terraces first (R4): scatter guards read them ──────────────────────
+  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  // NE antenna terrace (+1) — the quiet clearing sits a step above the maze.
+  for (let ty = 4; ty <= 9; ty++) {
+    for (let tx = 31; tx <= 36; tx++) (elevation[ty] as number[])[tx] = 1;
+  }
+  (ramp[9] as boolean[])[32] = true;
+  (ramp[9] as boolean[])[35] = true;
+  // SW terrace pocket (+1) — a lookout over the south corridors.
+  for (let ty = 30; ty <= 35; ty++) {
+    for (let tx = 4; tx <= 9; tx++) (elevation[ty] as number[])[tx] = 1;
+  }
+  (ramp[30] as boolean[])[6] = true;
+  (ramp[32] as boolean[])[9] = true;
+  const onRamp = (x: number, y: number): boolean => ramp[y]?.[x] === true;
+  // Ramps have few approach tiles — nothing may squat on or beside one.
+  const nearRamp = (x: number, y: number): boolean =>
+    onRamp(x, y) || onRamp(x - 1, y) || onRamp(x + 1, y) || onRamp(x, y - 1) || onRamp(x, y + 1);
+
   // The return Tramgate on the west edge (arrivals from the Filament).
   place('tramgate', 1, 18, 2, 5);
 
-  // Corridor rings: container wall runs with gaps — a maze you can read.
-  const wallRun = (x0: number, y0: number, dx: number, dy: number, len: number, gapEvery: number) => {
+  // ── XL landmark FIRST (before the walls claim its ring): the dead
+  // Craneking hulk over the yard — visible from most of the maze. ────────
+  if (isAreaFree(walkable, 17, 13, 6, 4)) place('cranehulk', 17, 13, 6, 4);
+
+  // ── canyon walls: container stacks 2-4 high with readable gaps ─────────
+  // variant = stack height (2..4); the client bakes one model per height.
+  const wallRun = (
+    x0: number,
+    y0: number,
+    dx: number,
+    dy: number,
+    len: number,
+    gapEvery: number,
+  ) => {
     for (let i = 0; i < len; i++) {
       if (i % gapEvery === gapEvery - 1) continue; // the gap
       const x = x0 + dx * i;
       const y = y0 + dy * i;
       if (walkable[y]?.[x] !== true) continue;
-      // Straight runs of containers read as wire-maze walls.
-      place('block', x, y, 1, 1, randInt(rng, 0, 2));
+      if (nearRamp(x, y)) continue;
+      // Wall heights breathe 2-4 along the run — a canyon, not a fence.
+      // The OCCASIONAL container carries the hazard band (variant +10).
+      const h = 2 + ((i * 7 + x + y) % 3);
+      const striped = (x * 13 + y * 7) % 11 === 0;
+      place('stack', x, y, 1, 1, striped ? h + 10 : h);
     }
   };
-  // Outer ring (leaves the west gate approach open).
-  wallRun(8, 8, 1, 0, 24, 7);
-  wallRun(8, 31, 1, 0, 24, 6);
-  wallRun(8, 9, 0, 1, 10, 5);
-  wallRun(8, 24, 0, 1, 7, 5);
-  wallRun(31, 9, 0, 1, 22, 6);
-  // Inner ring around the scrap heart.
-  wallRun(14, 14, 1, 0, 12, 5);
-  wallRun(14, 25, 1, 0, 12, 4);
-  wallRun(14, 15, 0, 1, 10, 4);
-  wallRun(25, 15, 0, 1, 10, 5);
+  // Perimeter fragments: the maze walls itself off from the void.
+  wallRun(3, 2, 1, 0, 34, 9);
+  wallRun(4, 37, 1, 0, 33, 8);
+  wallRun(2, 4, 0, 1, 12, 6); // west upper (gate approach stays open below)
+  wallRun(2, 24, 0, 1, 5, 5);
+  wallRun(37, 11, 0, 1, 24, 7);
+  // Main street flanks (the spine runs y19-21 from the gate east).
+  wallRun(8, 17, 1, 0, 6, 7);
+  wallRun(27, 17, 1, 0, 4, 5);
+  wallRun(8, 23, 1, 0, 23, 7);
+  // North zone: two E-W corridor walls + one splitter column.
+  wallRun(10, 12, 1, 0, 19, 6);
+  wallRun(6, 7, 1, 0, 24, 8);
+  wallRun(20, 3, 0, 1, 4, 9);
+  wallRun(13, 13, 0, 1, 4, 6);
+  // South zone: corridor walls with dead-end pockets.
+  wallRun(8, 30, 1, 0, 24, 7);
+  wallRun(16, 24, 0, 1, 6, 4);
+  wallRun(26, 25, 0, 1, 5, 6);
+  wallRun(31, 9, 0, 1, 10, 6);
+  // East wall separating the maze from the antenna approach.
+  wallRun(31, 24, 0, 1, 6, 4);
 
-  // Sparse light: four alleylamps mark the corridor turns — that's all.
-  for (const [lx, ly] of [
-    [10, 19],
-    [20, 10],
-    [29, 20],
-    [20, 29],
+  // ── the scrap yard: roped boundary along the street (posts, gapped) ────
+  for (let x = 14; x <= 26; x += 3) {
+    if (walkable[18]?.[x] === true && !nearRamp(x, 18)) place('ropepost', x, 18);
+  }
+
+  // ── dead machines rust in the pockets (M mass) ─────────────────────────
+  for (const [mx, my, v] of [
+    [10, 9, 0],
+    [24, 27, 1],
+    [33, 20, 2],
+    [6, 26, 1],
+    [27, 4, 0],
   ] as const) {
-    if (walkable[ly]?.[lx] === true) place('alleylamp', lx, ly);
+    if (isAreaFree(walkable, mx, my, 2, 2)) place('deadmachine', mx, my, 2, 2, v);
   }
 
   // Two salvage shacks squat in the maze (landmarks, lit windows).
   for (const [sx, sy, v] of [
-    [5, 6, 1],
+    [5, 5, 1],
     [33, 32, 2],
   ] as const) {
     if (isAreaFree(walkable, sx, sy, 2, 2)) place('shack', sx, sy, 2, 2, v);
   }
 
-  // Wire clutter: denser than the Filament fringe, everywhere off the
-  // gate approach; the free-ring rule keeps every pocket reachable.
-  const clutterTarget = Math.floor(size * size * 0.03);
-  let placed = 0;
-  let attempts = 0;
-  while (placed < clutterTarget && attempts < clutterTarget * 80) {
-    attempts++;
-    const x = randInt(rng, 2, size - 3);
-    const y = randInt(rng, 2, size - 3);
-    if (Math.abs(y - 20) <= 1 && x <= 8) continue; // gate approach stays open
-    if (rng() > 0.5) continue;
-    if (!isAreaFree(walkable, x, y, 1, 1)) continue;
-    const kind: PropKind = rng() < 0.5 ? 'crate' : 'block';
-    place(kind, x, y, 1, 1, kind === 'block' && rng() < 0.8 ? randInt(rng, 0, 2) : 3);
-    placed++;
+  // ── light plan (§12B d): hazard-amber lamps at junctions, pools ≤5 apart
+  // on the main routes; corners and dead ends stay genuinely dark. ───────
+  for (const [lx, ly] of [
+    [9, 18],
+    [14, 22],
+    [20, 22],
+    [26, 18],
+    [30, 22],
+    [13, 10],
+    [21, 14],
+    [27, 8],
+    [12, 28],
+    [22, 31],
+    [30, 27],
+    [7, 33],
+  ] as const) {
+    if (walkable[ly]?.[lx] === true && !nearRamp(lx, ly)) place('alleylamp', lx, ly);
+  }
+
+  // ── cable pylons: consecutive PAIRS — the client sags bundles between
+  // them, crossing the corridors overhead. ───────────────────────────────
+  for (const [px, py] of [
+    [11, 16], [11, 24],   // over the west street
+    [18, 12], [18, 18],   // over the yard's west edge
+    [25, 16], [25, 24],   // over the east street
+    [15, 29], [24, 29],   // along the south corridor
+    [29, 6], [29, 13],    // north-east drop
+  ] as const) {
+    if (walkable[py]?.[px] === true && !nearRamp(px, py)) place('pylon', px, py);
   }
 
   // Nodes: denser junk/brass/amperite; a couple of antennas; no koi.
+  // Every scatter also keeps off the ramps' scarce approach tiles.
   const g = CONFIG.gathering;
   const mult = CONFIG.tangle.nodeMult;
   scatterNodes(
@@ -649,7 +728,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     Math.round(g.junkHeap.nodeCount * mult.junkHeap),
     g.junkHeap.minNodeSpacing,
     { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
-    (x, y) => !(Math.abs(y - 20) <= 1 && x <= 8),
+    (x, y) => !(Math.abs(y - 20) <= 1 && x <= 8) && !nearRamp(x, y),
   );
   scatterNodes(
     rng,
@@ -659,6 +738,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     Math.round(g.brassSeam.nodeCount * mult.brassSeam),
     g.brassSeam.minNodeSpacing,
     { x0: 9, y0: 9, x1: size - 8, y1: size - 8 },
+    (x, y) => !nearRamp(x, y),
   );
   scatterNodes(
     rng,
@@ -667,7 +747,10 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     'amperite',
     Math.round(g.amperite.nodeCount * mult.amperite),
     g.amperite.minNodeSpacing,
-    { x0: 13, y0: 13, x1: 27, y1: 27 },
+    // The whole scrap heart (the crane hulk + yard walls tightened the
+    // old 13..27 box below the count) — same area the mobs prowl.
+    { x0: 10, y0: 10, x1: 29, y1: 29 },
+    (x, y) => !nearRamp(x, y),
   );
   scatterNodes(
     rng,
@@ -677,12 +760,40 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     CONFIG.tangle.antennaCount,
     g.antenna.minNodeSpacing,
     { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
-    (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6,
+    (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6 && !nearRamp(x, y),
   );
 
-  // Flat for now — Part B's maze rebuild terraces it.
-  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
-  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  // ── rust-family clutter, clustered against the walls (no confetti) ─────
+  const clutterTarget = Math.floor(size * size * 0.022);
+  let placed = 0;
+  let attempts = 0;
+  while (placed < clutterTarget && attempts < clutterTarget * 80) {
+    attempts++;
+    const x = randInt(rng, 2, size - 3);
+    const y = randInt(rng, 2, size - 3);
+    if (Math.abs(y - 20) <= 1 && x <= 8) continue; // gate approach stays open
+    if (nearRamp(x, y)) continue;
+    // Hug the walls: only near an existing blocked tile.
+    const nearWall =
+      walkable[y - 1]?.[x] === false ||
+      walkable[y + 1]?.[x] === false ||
+      walkable[y]?.[x - 1] === false ||
+      walkable[y]?.[x + 1] === false;
+    if (!nearWall && rng() < 0.75) continue;
+    if (!isAreaFree(walkable, x, y, 1, 1)) continue;
+    // Clutter runs LAST (nodes got first pick of the space), so the ring
+    // rule alone can't prevent seals against existing single-gap walls —
+    // flood-check each candidate like the Filament vignettes do.
+    if (wouldSealPocket(walkable, x, y, size)) continue;
+    // Rust/gunmetal family only (variants 4-6 = weathered steel boxes;
+    // 3 = drums; crates are rusted already). NO painted confetti here.
+    const roll = rng();
+    if (roll < 0.35) place('crate', x, y, 1, 1, randInt(rng, 0, 1));
+    else if (roll < 0.55) place('block', x, y, 1, 1, 3);
+    else place('block', x, y, 1, 1, 4 + randInt(rng, 0, 2));
+    placed++;
+  }
+
 
   return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp };
 }
