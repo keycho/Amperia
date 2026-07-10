@@ -21,6 +21,7 @@ export class Spark {
   private stepTarget: TilePoint | null = null;
   private onArrive: (() => void) | null = null;
   private label: Phaser.GameObjects.Text | null = null;
+  private labelRise = { value: 0 };
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -34,6 +35,17 @@ export class Spark {
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     if (name !== undefined) this.setNameLabel(name);
+    // Breathing idle — feet-anchored, so the chest rises, not the boots.
+    // Desynced per Spark so a crowd never bobs in unison.
+    scene.tweens.add({
+      targets: this.image,
+      scaleY: baked.scale * 1.035,
+      duration: Phaser.Math.Between(1400, 1900),
+      delay: Phaser.Math.Between(0, 900),
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
   }
 
   /** Voxel-bake facing: SE/SW use the front bake, NE/NW the back bake. */
@@ -61,12 +73,33 @@ export class Spark {
       strokeThickness: 3,
     });
     this.label.setOrigin(0.5, 1);
+    // Ease in: fade up from a step below so arrivals feel like arrivals.
+    this.label.setAlpha(0);
+    this.labelRise = { value: 10 };
+    this.scene.tweens.add({
+      targets: this.label,
+      alpha: 1,
+      duration: 450,
+      delay: 120,
+      ease: 'quad.out',
+    });
+    this.scene.tweens.add({
+      targets: this.labelRise,
+      value: 0,
+      duration: 450,
+      delay: 120,
+      ease: 'quad.out',
+      onUpdate: () => this.syncLabel(),
+    });
     this.syncLabel();
   }
 
   private syncLabel(): void {
     if (this.label === null) return;
-    this.label.setPosition(this.image.x, this.image.y - this.image.displayHeight + 6);
+    this.label.setPosition(
+      this.image.x,
+      this.image.y - this.image.displayHeight + 6 + this.labelRise.value,
+    );
     this.label.setDepth(this.image.depth + 1);
   }
 
@@ -85,6 +118,8 @@ export class Spark {
 
   destroy(): void {
     this.stepTween?.stop();
+    this.scene.tweens.killTweensOf(this.image);
+    this.scene.tweens.killTweensOf(this.labelRise);
     this.label?.destroy();
     this.image.destroy();
   }
