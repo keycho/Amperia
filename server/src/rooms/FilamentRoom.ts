@@ -9,7 +9,7 @@ import {
   transfer,
   type Inventory,
 } from '@shared/inventory';
-import type { ItemId } from '@shared/items';
+import { ITEMS, type ItemId } from '@shared/items';
 import { buildWorldMap, type WorldMap } from '@shared/map';
 import {
   amperiteStrikeYield,
@@ -51,10 +51,13 @@ import {
   type NodeActionIntent,
   type NodeEventPayload,
   type SelectSlotIntent,
+  type CraftIntent,
+  type RepairIntent,
   type TradeIntent,
   type UseItemIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
+import { recipeById, repairQuote, toolSpeedMult, weaponDamageMult } from '@shared/crafting';
 import { dailySaleHeadroom } from '@shared/economy';
 import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
@@ -203,6 +206,8 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
+    this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     void merchant.load();
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
@@ -307,13 +312,19 @@ export class FilamentRoom extends Room<FilamentState> {
     if (nodeState.depleted) return;
     if (rt.session?.nodeId === msg.nodeId) return;
 
-    // The right tool must be in the ACTIVE hotbar slot (config-driven).
+    // The right tool KIND must be in the ACTIVE hotbar slot (tiers all
+    // qualify), and broken gear refuses to work (never lost, though).
     const required = CONFIG.tools.requiredByNode[node.kind] as ToolId;
     const held = rt.hotbar.slots[rt.activeSlot];
-    if (held === null || held === undefined || held.itemId !== required) {
+    const heldDef = held !== null && held !== undefined ? ITEMS[held.itemId] : undefined;
+    if (heldDef === undefined || heldDef.toolKind !== required) {
       client.send(MSG.notice, {
         text: `You need your ${required.charAt(0).toUpperCase()}${required.slice(1)} in hand for that.`,
       });
+      return;
+    }
+    if ((held?.durability ?? 1) <= 0) {
+      client.send(MSG.notice, { text: `Your ${heldDef.name} is broken — the Tinkerbench can mend it.` });
       return;
     }
 
@@ -560,14 +571,26 @@ export class FilamentRoom extends Room<FilamentState> {
     if (chebyshev(rt.move.tile, m.move.tile) > cfg.attackRangeTiles) return;
     rt.lastAttackAtMs = now;
 
-    m.hp = Math.max(0, m.hp - cfg.attackDamage);
+    // Sparkwrench tiers multiply the swing (bare hands still work).
+    const heldW = rt.hotbar.slots[rt.activeSlot];
+    const wieldingWrench =
+      heldW !== null &&
+      heldW !== undefined &&
+      ITEMS[heldW.itemId].toolKind === 'sparkwrench' &&
+      (heldW.durability ?? 1) > 0;
+    const dmg = Math.round(
+      cfg.attackDamage * (wieldingWrench ? weaponDamageMult(heldW.itemId) : 1),
+    );
+    if (wieldingWrench) this.wearActiveTool(client, rt);
+
+    m.hp = Math.max(0, m.hp - dmg);
     const ms = this.state.mobs.get(m.id);
     if (ms !== undefined) ms.hp = m.hp;
     this.broadcast(MSG.combat, {
       type: 'playerHit',
       mobId: m.id,
       bySessionId: client.sessionId,
-      damage: cfg.attackDamage,
+      damage: dmg,
       hp: m.hp,
     });
     if (m.hp <= 0) this.downMob(m, client, rt);
@@ -817,7 +840,151 @@ export class FilamentRoom extends Room<FilamentState> {
       });
       client.send(MSG.inventory, this.inventorySync(rt));
       client.send(MSG.notice, { text: 'The Warmcup does its work.' });
+      return;
     }
+    if (slot.itemId === 'cellwax') {
+      const held = rt.hotbar.slots[rt.activeSlot];
+      if (held === null || held === undefined || held.durability === undefined) {
+        client.send(MSG.notice, { text: 'Hold the gear you want waxed.' });
+        return;
+      }
+      const def = ITEMS[held.itemId];
+      const max = CONFIG.gear.maxDurability[def.tier ?? 1] ?? 100;
+      if (held.durability >= max) {
+        client.send(MSG.notice, { text: `${def.name} is good as built.` });
+        return;
+      }
+      const r = removeItem(rt.pack, 'cellwax', 1);
+      if (r.removed < 1) return;
+      rt.pack = r.inv;
+      held.durability = Math.min(max, held.durability + CONFIG.economy.cellwaxDurability);
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'cellwax', itemId: held.itemId, qty: 1 },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, { text: `Cellwax worked into the ${def.name}.` });
+    }
+  }
+
+  /** Decrement the active tool's durability; 0 = broken (kept, unusable). */
+  private wearActiveTool(client: Client, rt: PlayerRuntime): void {
+    const slot = rt.hotbar.slots[rt.activeSlot];
+    if (slot === null || slot === undefined || slot.durability === undefined) return;
+    if (slot.durability <= 0) return;
+    slot.durability = Math.max(0, slot.durability - CONFIG.gear.durabilityPerUse);
+    if (slot.durability === 0) {
+      client.send(MSG.notice, {
+        text: `${ITEMS[slot.itemId].name} gives out — the Tinkerbench can mend it.`,
+      });
+    }
+    client.send(MSG.inventory, this.inventorySync(rt));
+  }
+
+  private nearTinkerbench(rt: PlayerRuntime): boolean {
+    const bench = this.map.props.find((p) => p.kind === 'tinkerbench');
+    if (bench === undefined) return false;
+    return (
+      chebyshev(rt.move.tile, { x: bench.x, y: bench.y }) <= CONFIG.gear.benchRadiusTiles
+    );
+  }
+
+  /** Tinkerbench crafting: Bolts + resources → gear (ledger-logged sink). */
+  private handleCraft(client: Client, msg: CraftIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || typeof msg.recipeId !== 'string') return;
+    if (!this.nearTinkerbench(rt)) {
+      client.send(MSG.notice, { text: 'The Tinkerbench is over by the plaza.' });
+      return;
+    }
+    const recipe = recipeById(msg.recipeId);
+    if (recipe === undefined) return;
+    const missingBolts = recipe.bolts - rt.bolts;
+    if (missingBolts > 0) {
+      client.send(MSG.notice, { text: `That takes ${recipe.bolts} Bolts.` });
+      return;
+    }
+    for (const [mid, qty] of Object.entries(recipe.materials)) {
+      const have = rt.pack.slots.reduce(
+        (acc, sl) => (sl !== null && sl.itemId === mid ? acc + sl.qty : acc),
+        0,
+      );
+      if (have < qty) {
+        client.send(MSG.notice, { text: `Short on ${mid} (${have}/${qty}).` });
+        return;
+      }
+    }
+    // Consume, then grant.
+    for (const [mid, qty] of Object.entries(recipe.materials)) {
+      rt.pack = removeItem(rt.pack, mid as ItemId, qty).inv;
+    }
+    const add = addItem(rt.pack, recipe.output as ItemId, 1, CONFIG.inventory.stackMax);
+    if (add.added < 1) {
+      // Refund materials if the pack is full — crafts never eat inputs.
+      for (const [mid, qty] of Object.entries(recipe.materials)) {
+        rt.pack = addItem(rt.pack, mid as ItemId, qty, CONFIG.inventory.stackMax).inv;
+      }
+      client.send(MSG.notice, { text: 'Your Pack is full.' });
+      return;
+    }
+    rt.pack = add.inv;
+    rt.bolts -= recipe.bolts;
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'craft', recipeId: recipe.id, output: recipe.output, bolts: recipe.bolts, materials: recipe.materials },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, { text: `Crafted: ${ITEMS[recipe.output as ItemId].name}.` });
+  }
+
+  /** Tinkerbench repair: Bolts + a material fraction restore durability. */
+  private handleRepair(client: Client, msg: RepairIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || !Number.isInteger(msg.slot)) return;
+    if (msg.source !== 'pack' && msg.source !== 'hotbar') return;
+    if (!this.nearTinkerbench(rt)) {
+      client.send(MSG.notice, { text: 'The Tinkerbench is over by the plaza.' });
+      return;
+    }
+    const inv = msg.source === 'pack' ? rt.pack : rt.hotbar;
+    const slot = inv.slots[msg.slot];
+    if (slot === null || slot === undefined || slot.durability === undefined) return;
+    const def = ITEMS[slot.itemId];
+    const max = CONFIG.gear.maxDurability[def.tier ?? 1] ?? 100;
+    const missing = max - slot.durability;
+    if (missing <= 0) {
+      client.send(MSG.notice, { text: 'Good as built already.' });
+      return;
+    }
+    const quote = repairQuote(slot.itemId, missing);
+    if (rt.bolts < quote.bolts) {
+      client.send(MSG.notice, { text: `The mend costs ${quote.bolts} Bolts.` });
+      return;
+    }
+    for (const m of quote.materials) {
+      const have = rt.pack.slots.reduce(
+        (acc, sl) => (sl !== null && sl.itemId === m.itemId ? acc + sl.qty : acc),
+        0,
+      );
+      if (have < m.qty) {
+        client.send(MSG.notice, { text: `The mend needs ${m.qty} ${m.itemId}.` });
+        return;
+      }
+    }
+    for (const m of quote.materials) {
+      rt.pack = removeItem(rt.pack, m.itemId as ItemId, m.qty).inv;
+    }
+    rt.bolts -= quote.bolts;
+    slot.durability = max;
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'repair', itemId: slot.itemId, bolts: quote.bolts, materials: quote.materials },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, { text: `${def.name} mended.` });
   }
 
   // ── mobs ────────────────────────────────────────────────────────────────
@@ -1046,6 +1213,13 @@ export class FilamentRoom extends Room<FilamentState> {
     });
   }
 
+  /** Mastery speed curve × held-tool tier multiplier (config-driven). */
+  private gatherSecondsFor(rt: PlayerRuntime, base: number, skillXp: number): number {
+    const held = rt.hotbar.slots[rt.activeSlot];
+    const mult = toolSpeedMult(held?.itemId ?? null);
+    return effectiveSeconds(base, levelForXp(skillXp)) * mult;
+  }
+
   private beginGather(sessionId: string, rt: PlayerRuntime): void {
     const nodeId = rt.gatherTargetNode as number;
     const node = this.map.nodes.find((n) => n.id === nodeId);
@@ -1061,7 +1235,7 @@ export class FilamentRoom extends Room<FilamentState> {
     switch (node.kind) {
       case 'junkHeap': {
         const cfg = CONFIG.gathering.junkHeap;
-        const seconds = effectiveSeconds(cfg.gatherSeconds, levelForXp(rt.skills.scavving));
+        const seconds = this.gatherSecondsFor(rt, cfg.gatherSeconds, rt.skills.scavving);
         rt.session = {
           kind: 'junkHeap',
           nodeId,
@@ -1076,10 +1250,7 @@ export class FilamentRoom extends Room<FilamentState> {
         break;
       }
       case 'brassSeam': {
-        const seconds = effectiveSeconds(
-          CONFIG.gathering.brassSeam.segmentSeconds,
-          levelForXp(rt.skills.delving),
-        );
+        const seconds = this.gatherSecondsFor(rt, CONFIG.gathering.brassSeam.segmentSeconds, rt.skills.delving);
         rt.session = {
           kind: 'brassSeam',
           nodeId,
@@ -1383,6 +1554,7 @@ export class FilamentRoom extends Room<FilamentState> {
         rareGranted = rare;
       }
     }
+    this.wearActiveTool(client, rt);
     // Every faucet writes to the economy ledger (golden rule 9 habit).
     ledger.log({
       type: 'gather',

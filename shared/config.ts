@@ -227,6 +227,43 @@ export const CONFIG = {
   },
 
   /**
+   * Gear tiers + durability (Game Bible: Tinker → Brassbound → Coilworked
+   * for now). Tiers buy config multipliers only — never new drop tables.
+   * Broken gear is unusable, never lost.
+   */
+  gear: {
+    maxDurability: { 1: 120, 2: 200, 3: 320 } as Record<number, number>,
+    /** Durability lost per completed gather act / landed swing. */
+    durabilityPerUse: 1,
+    /** Gather-seconds multiplier by tool tier (composes with Mastery). */
+    gatherSpeedMult: { 1: 1, 2: 0.92, 3: 0.85 } as Record<number, number>,
+    /** Brawling damage multiplier by weapon tier (bare hands = 1). */
+    weaponDamageMult: { 1: 1.25, 2: 1.5, 3: 1.9 } as Record<number, number>,
+    repair: {
+      /** Bolts per 100 durability restored (rounded up, min 1). */
+      boltsPer100: 20,
+      /** Fraction of the craft materials charged for a full repair. */
+      materialFraction: 0.25,
+    },
+    /** Tinkerbench recipes: Bolts + resources → gear. */
+    recipes: [
+      { id: 'wrench1', output: 'sparkwrench', bolts: 30, materials: { salvage: 12, brass: 4 } },
+      { id: 'wrench2', output: 'brassSparkwrench', bolts: 90, materials: { salvage: 24, brass: 14 } },
+      { id: 'wrench3', output: 'coilSparkwrench', bolts: 240, materials: { salvage: 40, brass: 26, amperite: 14 } },
+      { id: 'magclaw2', output: 'brassMagclaw', bolts: 60, materials: { salvage: 20, brass: 12 } },
+      { id: 'magclaw3', output: 'coilMagclaw', bolts: 180, materials: { salvage: 36, brass: 24, amperite: 12 } },
+      { id: 'drill2', output: 'brassDrillhammer', bolts: 70, materials: { salvage: 22, brass: 14 } },
+      { id: 'drill3', output: 'coilDrillhammer', bolts: 200, materials: { salvage: 38, brass: 26, amperite: 14 } },
+      { id: 'skim2', output: 'brassSkimnet', bolts: 65, materials: { salvage: 18, brass: 10, glowkoi: 6 } },
+      { id: 'skim3', output: 'coilSkimnet', bolts: 190, materials: { salvage: 32, brass: 20, amperite: 10, glowkoi: 12 } },
+      { id: 'tuner2', output: 'brassTuner', bolts: 80, materials: { salvage: 20, brass: 12, signal: 6 } },
+      { id: 'tuner3', output: 'coilTuner', bolts: 220, materials: { salvage: 36, brass: 22, amperite: 12, signal: 12 } },
+    ],
+    /** Server-checked bench reach (chebyshev tiles). */
+    benchRadiusTiles: 3,
+  },
+
+  /**
    * First combat slice (Game Bible B6/B7): feral Scuttlebots in the SE
    * scrap fringe. Weak, mischievous, telegraphed. Mobs drop NO Bolts and
    * NO stack loot — only the rare Manifest trophy roll below.

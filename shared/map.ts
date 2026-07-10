@@ -11,6 +11,7 @@ import { makeRng, randInt, type Rng } from './rng';
 export type PropKind =
   | 'dynamo'
   | 'merchant'
+  | 'tinkerbench'
   | 'stall'
   | 'crate'
   | 'block'
@@ -201,6 +202,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     props.push(stall);
     blockFootprint(walkable, stall);
   }
+  // The Tinkerbench: crafting + repairs, on the plaza's north-west side.
+  {
+    const bench: Prop = { kind: 'tinkerbench', x: 15, y: 14, w: 1, h: 1, variant: 0 };
+    props.push(bench);
+    blockFootprint(walkable, bench);
+  }
+
   // The merchant's stand: the gap in the north row, facing the lane.
   {
     const merchant: Prop = { kind: 'merchant', x: 30, y: 17, w: 1, h: 1, variant: 0 };

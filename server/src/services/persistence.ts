@@ -1,6 +1,6 @@
 import { CONFIG } from '@shared/config';
 import type { Inventory, InventorySlot } from '@shared/inventory';
-import { makeInventory } from '@shared/inventory';
+import { fullDurability, makeInventory } from '@shared/inventory';
 import { makeSkillXp, SKILLS, type SkillXp } from '@shared/mastery';
 import type { TilePoint } from '@shared/pathfinding';
 import { prisma } from './db.js';
@@ -43,7 +43,14 @@ function parseInventory(raw: unknown, slotCount: number): Inventory | null {
       typeof (s as { qty?: unknown }).qty === 'number' &&
       (s as { qty: number }).qty > 0
     ) {
-      inv.slots[i] = { itemId: s.itemId, qty: Math.floor(s.qty) };
+      const durability =
+        typeof (s as { durability?: unknown }).durability === 'number'
+          ? Math.max(0, Math.floor((s as { durability: number }).durability))
+          : fullDurability(s.itemId);
+      inv.slots[i] =
+        durability === undefined
+          ? { itemId: s.itemId, qty: Math.floor(s.qty) }
+          : { itemId: s.itemId, qty: Math.floor(s.qty), durability };
     }
   }
   return inv;

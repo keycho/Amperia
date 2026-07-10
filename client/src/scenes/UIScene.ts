@@ -8,6 +8,7 @@ import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
+import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { SlotStrip } from '../ui/SlotStrip';
@@ -33,6 +34,7 @@ export class UIScene extends Phaser.Scene {
   private chat!: ChatUI;
   private skillsPanel!: SkillsPanel;
   private merchantPanel!: MerchantPanel;
+  private benchPanel!: BenchPanel;
   private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
   private hpBar!: Phaser.GameObjects.Graphics;
@@ -127,6 +129,7 @@ export class UIScene extends Phaser.Scene {
     this.chat = new ChatUI(this);
     this.skillsPanel = new SkillsPanel(this);
     this.merchantPanel = new MerchantPanel(this);
+    this.benchPanel = new BenchPanel(this);
 
     this.boltsChip = this.add.text(12, 32, '', {
       fontFamily: 'monospace',
@@ -144,6 +147,10 @@ export class UIScene extends Phaser.Scene {
     });
     gameState.events.on(GameEvents.inventoryChanged, () => {
       if (this.merchantPanel.visible) this.merchantPanel.refresh();
+      if (this.benchPanel.visible) this.benchPanel.refresh();
+    });
+    gameState.events.on(GameEvents.boltsChanged, () => {
+      if (this.benchPanel.visible) this.benchPanel.refresh();
     });
     gameState.events.on(GameEvents.skillsChanged, () => {
       if (this.skillsPanel.visible) this.skillsPanel.refresh();
@@ -198,6 +205,8 @@ export class UIScene extends Phaser.Scene {
     this.skillsPanel.setPosition((w - sk.w) / 2, (h - sk.h) / 2 - 10);
     const mp = this.merchantPanel.pixelSize();
     this.merchantPanel.setPosition((w - mp.w) / 2, Math.max(40, (h - mp.h) / 2 - 10));
+    const bp = this.benchPanel.pixelSize();
+    this.benchPanel.setPosition((w - bp.w) / 2, Math.max(30, (h - bp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
   }
@@ -330,6 +339,7 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-ESC', () => {
       if (typing()) return;
       if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
+      else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
     });

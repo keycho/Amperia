@@ -23,4 +23,6 @@ export const SessionEvents = {
   prices: 'prices',
   /** Open the merchant panel (world → UI scene). */
   openMerchant: 'openMerchant',
+  /** Open the Tinkerbench panel (world → UI scene). */
+  openBench: 'openBench',
 } as const;

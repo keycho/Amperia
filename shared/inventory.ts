@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import type { ItemId } from './items';
+import { ITEMS, type ItemId } from './items';
 
 /**
  * Pure inventory math (stacking, moving, counting). The client renders it;
@@ -10,6 +10,8 @@ import type { ItemId } from './items';
 export interface ItemStack {
   itemId: ItemId;
   qty: number;
+  /** Present on gear: remaining durability (0 = broken, never lost). */
+  durability?: number;
 }
 
 export type InventorySlot = ItemStack | null;
@@ -22,11 +24,24 @@ export function makeInventory(slotCount: number): Inventory {
   return { slots: Array(slotCount).fill(null) };
 }
 
+/** Full durability for a gear item (by its tier), else undefined. */
+export function fullDurability(itemId: ItemId): number | undefined {
+  const def = ITEMS[itemId];
+  if (def.tool !== true) return undefined;
+  return CONFIG.gear.maxDurability[def.tier ?? 1];
+}
+
 /** New Sparks start with the tool belt on the hotbar (Game Bible B3). */
 export function makeStarterHotbar(): Inventory {
   const inv = makeInventory(CONFIG.inventory.hotbarSlots);
   CONFIG.tools.starterHotbar.forEach((tool, i) => {
-    if (i < inv.slots.length) inv.slots[i] = { itemId: tool as ItemId, qty: 1 };
+    if (i < inv.slots.length) {
+      inv.slots[i] = {
+        itemId: tool as ItemId,
+        qty: 1,
+        durability: fullDurability(tool as ItemId),
+      };
+    }
   });
   return inv;
 }
@@ -47,6 +62,16 @@ export function addItem(
 ): { inv: Inventory; added: number; overflow: number } {
   const next = clone(inv);
   let remaining = qty;
+  // Gear never stacks: one per slot, born at full durability.
+  if (ITEMS[itemId].tool === true) {
+    for (let i = 0; i < next.slots.length && remaining > 0; i++) {
+      if (next.slots[i] === null) {
+        next.slots[i] = { itemId, qty: 1, durability: fullDurability(itemId) };
+        remaining -= 1;
+      }
+    }
+    return { inv: next, added: qty - remaining, overflow: remaining };
+  }
   for (const slot of next.slots) {
     if (remaining <= 0) break;
     if (slot !== null && slot.itemId === itemId && slot.qty < stackMax) {
@@ -109,7 +134,8 @@ export function transfer(
   if (a === null || a === undefined || (sameInv && srcIdx === dstIdx)) {
     return { src: nextSrc, dst: nextDst };
   }
-  if (b !== null && b !== undefined && b.itemId === a.itemId && b.qty < stackMax) {
+  const gearInvolved = a.durability !== undefined || (b !== null && b !== undefined && b.durability !== undefined);
+  if (!gearInvolved && b !== null && b !== undefined && b.itemId === a.itemId && b.qty < stackMax) {
     const take = Math.min(stackMax - b.qty, a.qty);
     b.qty += take;
     a.qty -= take;

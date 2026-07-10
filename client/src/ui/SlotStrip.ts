@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
 import type { Inventory } from '@shared/inventory';
@@ -189,6 +190,18 @@ export class SlotStrip {
         count.setPosition(cx + SLOT_SIZE - 4, cy + SLOT_SIZE - 2);
         count.setText(stack.qty > 1 ? String(stack.qty) : '');
         count.setVisible(true);
+        // Durability sliver under gear: warm when healthy, rose when low.
+        if (stack.durability !== undefined) {
+          const max = CONFIG.gear.maxDurability[def.tier ?? 1] ?? 100;
+          const frac = Math.max(0, Math.min(1, stack.durability / max));
+          g.fillStyle(PALETTE_INT.ink, 0.85);
+          g.fillRect(cx + 5, cy + SLOT_SIZE - 7, SLOT_SIZE - 10, 3);
+          g.fillStyle(
+            frac > 0.3 ? PALETTE_INT.warmGlow : PALETTE_INT.neonRose,
+            0.95,
+          );
+          g.fillRect(cx + 5, cy + SLOT_SIZE - 7, Math.max(2, (SLOT_SIZE - 10) * frac), 3);
+        }
       } else {
         icon.setVisible(false);
         count.setVisible(false);

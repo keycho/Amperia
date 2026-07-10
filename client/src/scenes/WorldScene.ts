@@ -766,6 +766,7 @@ export class WorldScene extends Phaser.Scene {
       if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
       if (p.kind === 'alleylamp') lightSpots.push({ x: p.x, y: p.y, cool: false });
       if (p.kind === 'merchant') lightSpots.push({ x: p.x, y: p.y, cool: false });
+      if (p.kind === 'tinkerbench') lightSpots.push({ x: p.x, y: p.y, cool: true });
       if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
     }
     for (const n of this.map.nodes) {
@@ -1187,6 +1188,49 @@ export class WorldScene extends Phaser.Scene {
           lamp.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, lamp, bloom(0.8), 0.09);
           this.addGroundPool(x + 10, y - 2, PALETTE_INT.neonAmber, 0.4);
+          break;
+        }
+        case 'tinkerbench': {
+          const img = addVoxelSprite(this, 'tinkerbench', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > CONFIG.gear.benchRadiusTiles) {
+                floatText(this, img.x, img.y - 50, 'step up to the bench', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              session.events.emit(SessionEvents.openBench);
+            },
+          );
+          // The screen is the light: teal glow + a small cool pool.
+          const screen = this.add.image(x - 4, y - 20, 'fx-glow');
+          screen.setTint(PALETTE_INT.neonTeal);
+          screen.setBlendMode(Phaser.BlendModes.ADD);
+          screen.setScale(0.09);
+          screen.setAlpha(bloom(0.7));
+          screen.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, screen, bloom(0.7), 0.07);
+          const pool2 = this.addGroundPool(x, y - 2, PALETTE_INT.neonTeal, 0.3);
+          pool2.setAlpha(0.16);
           break;
         }
         case 'alleylamp': {

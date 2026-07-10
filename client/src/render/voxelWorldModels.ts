@@ -258,6 +258,23 @@ function ropepostModel(): Voxel[] {
   return v;
 }
 
+// ── The Tinkerbench (crafting + repairs; teal interactable glow) ──────────
+
+function tinkerbenchModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Bench top on gunmetal legs.
+  v.push(...mbox(1, 1, 0, 1, 1, 4, MATERIALS.gunmetalDeep));
+  v.push(...mbox(6, 1, 0, 1, 1, 4, MATERIALS.gunmetalDeep));
+  v.push(...mbox(1, 6, 0, 1, 1, 4, MATERIALS.gunmetalDeep));
+  v.push(...mbox(6, 6, 0, 1, 1, 4, MATERIALS.gunmetalDeep));
+  v.push(...mbox(0, 0, 4, 8, 8, 2, MATERIALS.wood));
+  // Vice + parts tray + the teal work-screen (the earned accent).
+  v.push(...mbox(1, 2, 6, 2, 2, 2, MATERIALS.gunmetal));
+  v.push(...mbox(5, 4, 6, 2, 2, 1, MATERIALS.rust));
+  v.push(...box(3, 6, 6, 3, 1, 3, PALETTE_INT.neonTeal));
+  return v;
+}
+
 // ── The Nightstalls merchant's stand (1×1 tile, figure behind counter) ────
 
 function merchantModel(): Voxel[] {
@@ -379,4 +396,5 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'tramgate', voxels: tramgateModel() });
   bakeVoxelModel(scene, { name: 'ropepost', voxels: ropepostModel() });
   bakeVoxelModel(scene, { name: 'merchant', voxels: merchantModel() });
+  bakeVoxelModel(scene, { name: 'tinkerbench', voxels: tinkerbenchModel() });
 }

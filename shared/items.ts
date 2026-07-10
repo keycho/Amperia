@@ -19,12 +19,34 @@ export type ItemId =
   | 'heatlamp'
   | 'warmcup'
   | 'cellwax'
-  // tools (Game Bible B3)
+  // tools (Game Bible B3) — tiers: Tinker → Brassbound → Coilworked
   | 'magclaw'
   | 'drillhammer'
   | 'skimnet'
   | 'tuner'
-  | 'riveter';
+  | 'riveter'
+  | 'brassMagclaw'
+  | 'coilMagclaw'
+  | 'brassDrillhammer'
+  | 'coilDrillhammer'
+  | 'brassSkimnet'
+  | 'coilSkimnet'
+  | 'brassTuner'
+  | 'coilTuner'
+  // weapons (Brawling)
+  | 'sparkwrench'
+  | 'brassSparkwrench'
+  | 'coilSparkwrench'
+  // cosmetics (quest rewards; never drop, never trade for now)
+  | 'starterScarf';
+
+export type ToolKind =
+  | 'magclaw'
+  | 'drillhammer'
+  | 'skimnet'
+  | 'tuner'
+  | 'riveter'
+  | 'sparkwrench';
 
 export interface ItemDef {
   id: ItemId;
@@ -38,6 +60,12 @@ export interface ItemDef {
   rare?: boolean;
   /** Tools don't stack. */
   tool?: boolean;
+  /** What the tool IS (gather checks match on kind, not tier). */
+  toolKind?: ToolKind;
+  /** Gear tier: 1 Tinker · 2 Brassbound · 3 Coilworked. */
+  tier?: 1 | 2 | 3;
+  /** Cosmetic wearables (quest rewards; excluded from every loot table). */
+  cosmetic?: boolean;
 }
 
 export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
@@ -138,6 +166,28 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     flavor: 'Magnetic grabber. Junk heaps give it up easy.',
     icon: 'icon-magclaw',
     tool: true,
+    toolKind: 'magclaw',
+    tier: 1,
+  },
+  brassMagclaw: {
+    id: 'brassMagclaw',
+    name: 'Brassbound Magclaw',
+    flavor: 'Rebuilt around a brass core. Grips like it means it.',
+    icon: 'icon-magclaw',
+    iconTint: 'neonAmber',
+    tool: true,
+    toolKind: 'magclaw',
+    tier: 2,
+  },
+  coilMagclaw: {
+    id: 'coilMagclaw',
+    name: 'Coilworked Magclaw',
+    flavor: 'Amperite windings hum in the grip. Junk leaps to it.',
+    icon: 'icon-magclaw',
+    iconTint: 'neonTeal',
+    tool: true,
+    toolKind: 'magclaw',
+    tier: 3,
   },
   drillhammer: {
     id: 'drillhammer',
@@ -145,6 +195,28 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     flavor: 'For seams and crystal both. Mind the rhythm.',
     icon: 'icon-drillhammer',
     tool: true,
+    toolKind: 'drillhammer',
+    tier: 1,
+  },
+  brassDrillhammer: {
+    id: 'brassDrillhammer',
+    name: 'Brassbound Drillhammer',
+    flavor: 'Weighted brass head. The seams answer faster.',
+    icon: 'icon-drillhammer',
+    iconTint: 'neonAmber',
+    tool: true,
+    toolKind: 'drillhammer',
+    tier: 2,
+  },
+  coilDrillhammer: {
+    id: 'coilDrillhammer',
+    name: 'Coilworked Drillhammer',
+    flavor: 'Charge-assisted strikes. Crystal barely argues.',
+    icon: 'icon-drillhammer',
+    iconTint: 'neonTeal',
+    tool: true,
+    toolKind: 'drillhammer',
+    tier: 3,
   },
   skimnet: {
     id: 'skimnet',
@@ -152,6 +224,28 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     flavor: 'Cast light, land bright.',
     icon: 'icon-skimnet',
     tool: true,
+    toolKind: 'skimnet',
+    tier: 1,
+  },
+  brassSkimnet: {
+    id: 'brassSkimnet',
+    name: 'Brassbound Skimnet',
+    flavor: 'Brass-ringed mouth holds its shape mid-cast.',
+    icon: 'icon-skimnet',
+    iconTint: 'neonAmber',
+    tool: true,
+    toolKind: 'skimnet',
+    tier: 2,
+  },
+  coilSkimnet: {
+    id: 'coilSkimnet',
+    name: 'Coilworked Skimnet',
+    flavor: "The mesh glows faintly. Koi can't look away.",
+    icon: 'icon-skimnet',
+    iconTint: 'neonTeal',
+    tool: true,
+    toolKind: 'skimnet',
+    tier: 3,
   },
   tuner: {
     id: 'tuner',
@@ -160,6 +254,28 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     icon: 'icon-tuner',
     iconTint: 'neonAmber',
     tool: true,
+    toolKind: 'tuner',
+    tier: 1,
+  },
+  brassTuner: {
+    id: 'brassTuner',
+    name: 'Brassbound Tuner',
+    flavor: 'Brass horn, cleaner static, warmer lock.',
+    icon: 'icon-tuner',
+    iconTint: 'neonAmber',
+    tool: true,
+    toolKind: 'tuner',
+    tier: 2,
+  },
+  coilTuner: {
+    id: 'coilTuner',
+    name: 'Coilworked Tuner',
+    flavor: 'Hears the old grid like it never went quiet.',
+    icon: 'icon-tuner',
+    iconTint: 'neonTeal',
+    tool: true,
+    toolKind: 'tuner',
+    tier: 3,
   },
   riveter: {
     id: 'riveter',
@@ -168,5 +284,44 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     icon: 'icon-riveter',
     iconTint: 'warmGlow',
     tool: true,
+    toolKind: 'riveter',
+    tier: 1,
+  },
+  sparkwrench: {
+    id: 'sparkwrench',
+    name: 'Sparkwrench',
+    flavor: 'A heavy wrench with opinions. Scuttlebots respect it.',
+    icon: 'icon-riveter',
+    tool: true,
+    toolKind: 'sparkwrench',
+    tier: 1,
+  },
+  brassSparkwrench: {
+    id: 'brassSparkwrench',
+    name: 'Brassbound Sparkwrench',
+    flavor: 'Brass knuckle-guard. Swings with authority.',
+    icon: 'icon-riveter',
+    iconTint: 'neonAmber',
+    tool: true,
+    toolKind: 'sparkwrench',
+    tier: 2,
+  },
+  coilSparkwrench: {
+    id: 'coilSparkwrench',
+    name: 'Coilworked Sparkwrench',
+    flavor: 'Every hit lands with a little lightning in it.',
+    icon: 'icon-riveter',
+    iconTint: 'neonTeal',
+    tool: true,
+    toolKind: 'sparkwrench',
+    tier: 3,
+  },
+  starterScarf: {
+    id: 'starterScarf',
+    name: 'Dispatch Scarf',
+    flavor: "The Dispatcher's thank-you. Worn proud at the neck.",
+    icon: 'icon-gilded-scrap',
+    iconTint: 'neonRose',
+    cosmetic: true,
   },
 };

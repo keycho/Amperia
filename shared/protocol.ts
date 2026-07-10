@@ -18,6 +18,8 @@ export const MSG = {
   trade: 'trade',
   prices: 'prices',
   useItem: 'useItem',
+  craft: 'craft',
+  repair: 'repair',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -167,6 +169,17 @@ export interface PricesSync {
 
 /** Player → server: use a consumable from a pack slot. */
 export interface UseItemIntent {
+  slot: number;
+}
+
+/** Player → server: craft a recipe at the Tinkerbench. */
+export interface CraftIntent {
+  recipeId: string;
+}
+
+/** Player → server: repair gear at the Tinkerbench. */
+export interface RepairIntent {
+  source: 'pack' | 'hotbar';
   slot: number;
 }
 
