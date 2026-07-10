@@ -225,6 +225,33 @@ export class WorldScene extends Phaser.Scene {
       mp.listen('tileY', () => mob.moveTo({ x: m.tileX, y: m.tileY }));
       mp.listen('hp', (v: number) => mob.setHp(v));
       mp.listen('ai', (v: string) => mob.setAi(v));
+      // Click-melee: swing if in reach, otherwise walk up to it.
+      mob.image.on(
+        'pointerdown',
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          if (!pointer.leftButtonDown() || this.room === null) return;
+          event.stopPropagation();
+          const me = this.sparks.get(this.room.sessionId);
+          if (me === undefined) return;
+          const t = mob.currentTile;
+          const dist = Math.max(
+            Math.abs(me.settledTile.x - t.x),
+            Math.abs(me.settledTile.y - t.y),
+          );
+          if (dist <= CONFIG.combat.player.attackRangeTiles) {
+            send.attack(this.room, { mobId: mob.id });
+            me.lungeToward(mob.image.x, mob.image.y);
+          } else {
+            const step = this.nearestAdjacentWalkable(t, me.settledTile);
+            if (step !== null) send.move(this.room, step);
+          }
+        },
+      );
     });
     $state.mobs.onRemove((_m: MobStateShape, id: string) => {
       this.mobs.get(id)?.poof();
@@ -302,10 +329,53 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
+  /** Closest walkable tile adjacent to `target`, judged from `from`. */
+  private nearestAdjacentWalkable(
+    target: { x: number; y: number },
+    from: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD = Infinity;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const t = { x: target.x + dx, y: target.y + dy };
+      if (this.map.walkable[t.y]?.[t.x] !== true) continue;
+      const d = Math.abs(t.x - from.x) + Math.abs(t.y - from.y);
+      if (d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
   /** Combat feedback — the server decided everything; we act it out. */
   private handleCombatEvent(e: CombatEvent): void {
     const room = this.room;
     if (room === null) return;
+    if (e.type === 'playerHit') {
+      const mob = this.mobs.get(e.mobId);
+      if (mob !== undefined) {
+        mob.flashHit();
+        floatText(this, mob.image.x, mob.image.y - 34, `-${e.damage}`, PALETTE.neonAmber);
+        // Other Sparks' swings play too (own swing already played on click).
+        if (e.bySessionId !== room.sessionId) {
+          this.sparks.get(e.bySessionId)?.lungeToward(mob.image.x, mob.image.y);
+        }
+      }
+      return;
+    }
+    if (e.type === 'mobDown') {
+      const mob = this.mobs.get(e.mobId);
+      if (mob !== undefined && e.bySessionId === room.sessionId) {
+        floatText(this, mob.image.x, mob.image.y - 44, 'scrapped!', PALETTE.neonAmber);
+      }
+      return;
+    }
     if (e.type === 'mobBite') {
       const spark = this.sparks.get(e.sessionId);
       const mob = this.mobs.get(e.mobId);

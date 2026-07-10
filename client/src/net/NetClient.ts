@@ -1,6 +1,7 @@
 import { Client, getStateCallbacks, type Room } from 'colyseus.js';
 import { MSG } from '@shared/protocol';
 import type {
+  AttackIntent,
   ChatIntent,
   GatherIntent,
   GlintClickIntent,
@@ -57,6 +58,7 @@ export const send = {
   gather: (room: FilamentRoom, msg: GatherIntent) => room.send(MSG.gather, msg),
   glintClick: (room: FilamentRoom, msg: GlintClickIntent) => room.send(MSG.glintClick, msg),
   nodeAction: (room: FilamentRoom, msg: NodeActionIntent) => room.send(MSG.nodeAction, msg),
+  attack: (room: FilamentRoom, msg: AttackIntent) => room.send(MSG.attack, msg),
   selectSlot: (room: FilamentRoom, msg: SelectSlotIntent) => room.send(MSG.selectSlot, msg),
   moveStack: (room: FilamentRoom, msg: MoveStackIntent) => room.send(MSG.moveStack, msg),
   chat: (room: FilamentRoom, msg: ChatIntent) => room.send(MSG.chat, msg),

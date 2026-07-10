@@ -133,6 +133,22 @@ export class Mob {
     });
   }
 
+  /** Struck by a Spark: warm flash + a small flinch away. */
+  flashHit(): void {
+    this.image.setTintFill(PALETTE_INT.warmGlow);
+    this.scene.time.delayedCall(80, () => {
+      if (this.image.active) this.image.clearTint();
+    });
+    this.scene.tweens.add({
+      targets: this.image,
+      angle: { from: -4, to: 4 },
+      duration: 60,
+      yoyo: true,
+      repeat: 1,
+      onComplete: () => this.image.setAngle(0),
+    });
+  }
+
   /** Death poof — scale-down + a few sparks; the entity is then destroyed. */
   poof(): void {
     const burst = this.scene.add.image(this.image.x, this.image.y - 8, 'fx-spark');

@@ -13,6 +13,7 @@ export const MSG = {
   gather: 'gather',
   glintClick: 'glintClick',
   nodeAction: 'nodeAction',
+  attack: 'attack',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -165,10 +166,16 @@ export interface ChatBroadcast {
   ts: number;
 }
 
+export interface AttackIntent {
+  mobId: string;
+}
+
 /** Combat happenings that need timing/feedback beyond schema sync. */
 export type CombatEvent =
   | { type: 'mobBite'; mobId: string; sessionId: string; damage: number; hp: number }
-  | { type: 'playerDown'; sessionId: string };
+  | { type: 'playerDown'; sessionId: string }
+  | { type: 'playerHit'; mobId: string; bySessionId: string; damage: number; hp: number }
+  | { type: 'mobDown'; mobId: string; bySessionId: string };
 
 /** Mirror of the synced MobState schema (client-side typing only). */
 export interface MobStateShape {

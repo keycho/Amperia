@@ -33,6 +33,7 @@ import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shar
 import {
   CHAT_LIMITS,
   MSG,
+  type AttackIntent,
   type ChatBroadcast,
   type ChatIntent,
   type GatherIntent,
@@ -109,6 +110,7 @@ interface PlayerRuntime {
   activeSlot: number;
   skills: SkillXp;
   hp: number;
+  lastAttackAtMs: number;
   gatherTargetNode: number | null;
   session: Session | null;
   lastChatAtMs: number;
@@ -177,6 +179,7 @@ export class FilamentRoom extends Room<FilamentState> {
       this.handleMoveStack(client, msg),
     );
     this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
+    this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
   }
@@ -209,6 +212,7 @@ export class FilamentRoom extends Room<FilamentState> {
       activeSlot: 0,
       skills: character.skills,
       hp: CONFIG.combat.player.maxHp,
+      lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
       lastChatAtMs: 0,
@@ -505,6 +509,48 @@ export class FilamentRoom extends Room<FilamentState> {
       this.persistTicker = 0;
       for (const rt of this.runtimes.values()) void this.persist(rt);
     }
+  }
+
+  /**
+   * Brawling click-melee: one server-validated swing per intent. Range,
+   * cooldown, and damage all come from config; XP lands on the kill.
+   */
+  private handleAttack(client: Client, msg: AttackIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || typeof msg.mobId !== 'string') return;
+    const m = this.mobs.get(msg.mobId);
+    if (m === undefined || m.respawnAtMs !== null) return;
+    const cfg = CONFIG.combat.player;
+    const now = Date.now();
+    if (now - rt.lastAttackAtMs < cfg.attackCooldownSeconds * 1000) return;
+    if (chebyshev(rt.move.tile, m.move.tile) > cfg.attackRangeTiles) return;
+    rt.lastAttackAtMs = now;
+
+    m.hp = Math.max(0, m.hp - cfg.attackDamage);
+    const ms = this.state.mobs.get(m.id);
+    if (ms !== undefined) ms.hp = m.hp;
+    this.broadcast(MSG.combat, {
+      type: 'playerHit',
+      mobId: m.id,
+      bySessionId: client.sessionId,
+      damage: cfg.attackDamage,
+      hp: m.hp,
+    });
+    if (m.hp <= 0) this.downMob(m, client, rt);
+  }
+
+  /** Mob death: poof, respawn clock, Brawling XP. NO Bolts, NO stack loot. */
+  private downMob(m: MobRuntime, client: Client, rt: PlayerRuntime): void {
+    m.respawnAtMs = Date.now() + CONFIG.combat.scuttlebot.respawnSeconds * 1000;
+    m.ai = 'idle';
+    m.targetSessionId = null;
+    this.state.mobs.delete(m.id);
+    this.broadcast(MSG.combat, {
+      type: 'mobDown',
+      mobId: m.id,
+      bySessionId: client.sessionId,
+    });
+    this.grantXp(client, rt, 'brawling', CONFIG.combat.scuttlebot.xpBrawlingPerKill);
   }
 
   // ── mobs ────────────────────────────────────────────────────────────────

@@ -159,6 +159,21 @@ export class Spark {
     this.bubble.setDepth(this.image.depth + 2);
   }
 
+  /** A melee swing: short lunge toward the target and back. */
+  lungeToward(worldX: number, worldY: number): void {
+    const ox = this.image.x;
+    const oy = this.image.y;
+    this.scene.tweens.add({
+      targets: this.image,
+      x: ox + Math.sign(worldX - ox) * 9,
+      y: oy + Math.sign(worldY - oy) * 5,
+      duration: 85,
+      yoyo: true,
+      ease: 'quad.out',
+      onUpdate: () => this.syncLabel(),
+    });
+  }
+
   /** Brief hurt blink (rose fill, then back to the style tint). */
   flashHurt(): void {
     this.image.setTintFill(PALETTE_INT.neonRose);
