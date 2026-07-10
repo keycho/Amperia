@@ -41,10 +41,13 @@ const game = new Phaser.Game({
   parent: 'game',
   backgroundColor: MATERIAL_COLORS.voidBlack,
   scale: pixelScale,
+  // SHARPNESS (render-overhaul addendum a): the whole scene renders
+  // nearest-neighbor with rounded positions — voxel facets stay hard at
+  // every zoom step (the camera clamps zoom to texel-stable ratios).
   render: {
-    antialias: STYLE.pixelHeight === null,
-    pixelArt: STYLE.pixelHeight !== null,
-    roundPixels: STYLE.pixelHeight !== null,
+    antialias: false,
+    pixelArt: true,
+    roundPixels: true,
   },
   scene: [BootScene, LoginScene, WorldScene, UIScene],
 });

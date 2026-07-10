@@ -163,9 +163,9 @@ function specFor(kind: FloorKind, v: number): KindSpec {
           const seam = shade(night(MATERIAL_INT.woodDeep, 0.16), -0.2);
           g.fillStyle(seam, 0.8);
           for (const y of [15, 31, 47]) {
-            const yy = (y + (vv % 2) * 8) % 63;
+            const yy = (y + (vv % 2) * 8) % 62;
             const [xl, xr] = span(yy);
-            g.fillRect(xl, PAD + yy, xr - xl, 1);
+            g.fillRect(xl, PAD + yy, xr - xl, 2); // 2px: survives decimation
           }
         },
       };
@@ -207,7 +207,7 @@ function specFor(kind: FloorKind, v: number): KindSpec {
           for (const y of [14, 30, 46]) {
             const yy = (y + vv * 5) % 60 + 2;
             const [xl, xr] = span(yy);
-            g.fillRect(xl + 6, PAD + yy, Math.max(0, xr - xl - 12), 1);
+            g.fillRect(xl + 6, PAD + yy, Math.max(0, xr - xl - 12), 2);
           }
         },
       };

@@ -26,9 +26,14 @@ export class CameraController {
         _dx: number,
         deltaY: number,
       ) => {
-        const { zoomMin, zoomMax, zoomStepFactor } = CONFIG.camera;
-        const factor = deltaY > 0 ? 1 / zoomStepFactor : zoomStepFactor;
-        const next = Phaser.Math.Clamp(this.cam.zoom * factor, zoomMin, zoomMax);
+        // SHARPNESS (addendum a): zoom walks texel-crisp steps only —
+        // textures bake at 2× and draw at 0.5, so these ratios decimate
+        // uniformly (no shimmer, no half-texel smear).
+        const steps = CONFIG.camera.zoomSteps as readonly number[];
+        const idx = steps.findIndex((s) => Math.abs(s - this.cam.zoom) < 0.01);
+        const at = idx >= 0 ? idx : 1;
+        const nextIdx = Phaser.Math.Clamp(at + (deltaY > 0 ? -1 : 1), 0, steps.length - 1);
+        const next = steps[nextIdx] as number;
         if (next === this.cam.zoom) return;
         // Keep the world point under the cursor fixed while zooming.
         const before = this.cam.getWorldPoint(pointer.x, pointer.y);

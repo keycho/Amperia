@@ -22,7 +22,10 @@ export const CONFIG = {
   camera: {
     zoomMin: 0.5,
     zoomMax: 2,
-    /** Multiplicative zoom step per wheel notch. */
+    /** Texel-crisp zoom steps (textures bake 2×, draw 0.5 — these ratios
+     *  decimate uniformly under NEAREST filtering; no shimmer). */
+    zoomSteps: [0.5, 1, 2] as const,
+    /** Multiplicative zoom step per wheel notch (legacy; steps rule now). */
     zoomStepFactor: 1.12,
     /** Pixels from viewport edge that trigger edge-pan. */
     edgePanMarginPx: 24,

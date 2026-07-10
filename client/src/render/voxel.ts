@@ -306,8 +306,9 @@ function drawMatCube(
   // meets a visible side face or an open back edge — the "crisp" detail.
   if (exp.top) {
     const bevel = shade(top, 0.45);
+    // 2px at the 2× bake = 1px on screen at zoom 1 (survives decimation).
     const line = (x1: number, y1: number, x2: number, y2: number, a: number) => {
-      g.lineStyle(1, bevel, a);
+      g.lineStyle(2, bevel, a);
       g.beginPath();
       g.moveTo(x1, y1);
       g.lineTo(x2, y2);
@@ -334,7 +335,7 @@ function drawMatCube(
       color: number,
       a: number,
     ) => {
-      g.lineStyle(1, color, a);
+      g.lineStyle(2, color, a);
       g.beginPath();
       g.moveTo(x1, y1);
       g.lineTo(x2, y2);
@@ -365,7 +366,7 @@ function drawMatCube(
   // Edge wear: a light chipped line along an exposed top edge.
   if (exp.top && voxelHash(v.x, v.y, v.z, 13) < mat.wearChance) {
     const chipLeft = voxelHash(v.x, v.y, v.z, 17) < 0.5;
-    g.lineStyle(1.4, shade(baseColor, 0.5), 0.9);
+    g.lineStyle(2, shade(baseColor, 0.5), 0.9);
     g.beginPath();
     if (chipLeft) {
       g.moveTo(px - HALF_W, py);
