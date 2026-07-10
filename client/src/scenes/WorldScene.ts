@@ -48,6 +48,7 @@ import {
 } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
+import { addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
@@ -729,6 +730,10 @@ export class WorldScene extends Phaser.Scene {
           sign.setBlendMode(Phaser.BlendModes.ADD);
           sign.setDepth(depthForWorldY(y) + 1);
           this.addGroundPool(x + 10, y - 4, PALETTE_INT.neonAmber, 0.38);
+          // A kettle steaming on the counter — night-market food smell.
+          addSteamVent(this, x - 8, y - 34, depthForWorldY(y) + 2, {
+            periodMs: 1100 + p.variant * 240,
+          });
           break;
         }
         case 'crate': {
