@@ -23,6 +23,29 @@ model Account {
   ledgerEvents  LedgerEvent[]
   manifest      ManifestEntry[]
   loftpod       Loftpod?
+  mutes         Mute[]
+}
+
+/// H2 moderation: per-account mutes. The muted are never told — their
+/// chat and bubbles simply stop reaching this account.
+model Mute {
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId      String
+  mutedAccountId String
+  createdAt      DateTime @default(now())
+
+  @@id([accountId, mutedAccountId])
+}
+
+/// H2 moderation: /report rows for the weekly review habit (dev script
+/// reads them — no admin UI yet).
+model Report {
+  id           String   @id @default(cuid())
+  reporterId   String
+  reportedId   String
+  reportedName String
+  reason       String
+  createdAt    DateTime @default(now())
 }
 
 model Character {

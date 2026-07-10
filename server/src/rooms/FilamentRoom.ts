@@ -12,6 +12,7 @@ import {
 } from '@shared/inventory';
 import { ITEMS, type ItemId } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
+import { softFilter } from '@shared/profanity';
 import { tramHops, tramToll } from '@shared/travel';
 import {
   amperiteStrikeYield,
@@ -121,6 +122,7 @@ import {
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
+import { moderation } from '../services/moderation.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
 import { loadBank, nextExpansionCost, saveBank, type BankState } from '../services/bank.js';
@@ -240,6 +242,12 @@ interface PlayerRuntime {
   gatherTargetNode: number | null;
   session: Session | null;
   lastChatAtMs: number;
+  /** H2 rate limit: timestamps of recent messages in the rolling window. */
+  chatWindow: number[];
+  /** One cooldown notice per burst — never a notice flood. */
+  chatCooldownNoticed: boolean;
+  /** H2 mutes: account ids this Spark has silenced (persisted). */
+  mutes: Set<string>;
   /** Cue reaction deltas (ms) — behavioral-entropy logging habit (C7). */
   glintReactionsMs: number[];
 }
@@ -501,6 +509,9 @@ export class FilamentRoom extends Room<FilamentState> {
       gatherTargetNode: null,
       session: null,
       lastChatAtMs: 0,
+      chatWindow: [],
+      chatCooldownNoticed: false,
+      mutes: await moderation.loadMutes(auth.accountId),
       glintReactionsMs: [],
     };
     this.runtimes.set(client.sessionId, runtime);
@@ -1160,8 +1171,36 @@ export class FilamentRoom extends Room<FilamentState> {
       this.handleCommand(client, rt, text);
       return;
     }
-    const out: ChatBroadcast = { from: rt.sparkName, sessionId: client.sessionId, text, ts: now };
-    this.broadcast(MSG.chatMsg, out);
+    // H2 rate limit: a rolling window on top of the per-message interval.
+    const rate = CONFIG.chat.rate;
+    const windowStart = now - rate.windowSeconds * 1000;
+    rt.chatWindow = rt.chatWindow.filter((t) => t >= windowStart);
+    if (rt.chatWindow.length >= rate.maxPerWindow) {
+      if (!rt.chatCooldownNoticed) {
+        rt.chatCooldownNoticed = true;
+        const wait = Math.ceil(((rt.chatWindow[0] ?? now) + rate.windowSeconds * 1000 - now) / 1000);
+        client.send(MSG.notice, {
+          text: `Easy — the channel needs a breath. Try again in ~${Math.max(1, wait)}s.`,
+        });
+      }
+      return;
+    }
+    rt.chatWindow.push(now);
+    rt.chatCooldownNoticed = false;
+    // H2 soft filter: masked, never blocked.
+    const out: ChatBroadcast = {
+      from: rt.sparkName,
+      sessionId: client.sessionId,
+      text: softFilter(text),
+      ts: now,
+    };
+    // H2 mutes: delivery skips anyone who silenced this Spark — chat and
+    // bubbles both, since bubbles render from this same message.
+    for (const c of this.clients) {
+      const listener = this.runtimes.get(c.sessionId);
+      if (listener !== undefined && listener.mutes.has(rt.accountId)) continue;
+      c.send(MSG.chatMsg, out);
+    }
   }
 
   /** Slash commands (CLAUDE.md world nouns: /near /help for now). */
@@ -1284,6 +1323,58 @@ export class FilamentRoom extends Room<FilamentState> {
           console.error('[charge] /charge failed', err);
         }
       })();
+    } else if (cmd === '/mute' || cmd === '/unmute') {
+      const name = text.slice(cmd.length).trim();
+      if (name === '') {
+        client.send(MSG.notice, { text: `Usage: ${cmd} <Spark name>` });
+        return;
+      }
+      if (name.toLowerCase() === rt.sparkName.toLowerCase()) {
+        client.send(MSG.notice, { text: 'The one voice you cannot silence.' });
+        return;
+      }
+      void (async () => {
+        const target = await moderation.accountByName(name);
+        if (target === null) {
+          client.send(MSG.notice, { text: `The city doesn't know a Spark named ${name}.` });
+          return;
+        }
+        if (cmd === '/mute') {
+          await moderation.mute(rt.accountId, target.id);
+          rt.mutes.add(target.id);
+          client.send(MSG.notice, {
+            text: `You won't hear ${target.name} anymore. /unmute ${target.name} undoes it.`,
+          });
+        } else {
+          await moderation.unmute(rt.accountId, target.id);
+          rt.mutes.delete(target.id);
+          client.send(MSG.notice, { text: `${target.name} is back in your channel.` });
+        }
+      })();
+    } else if (cmd === '/report') {
+      const rest = text.slice(cmd.length).trim();
+      const sp = rest.indexOf(' ');
+      const name = sp === -1 ? rest : rest.slice(0, sp);
+      const reason = sp === -1 ? '' : rest.slice(sp + 1).trim();
+      if (name === '' || reason === '') {
+        client.send(MSG.notice, { text: 'Usage: /report <Spark name> <reason>' });
+        return;
+      }
+      void (async () => {
+        const target = await moderation.accountByName(name);
+        if (target === null) {
+          client.send(MSG.notice, { text: `The city doesn't know a Spark named ${name}.` });
+          return;
+        }
+        await moderation.report(rt.accountId, target.id, target.name, reason);
+        ledger.log({
+          type: 'report',
+          account: rt.accountId,
+          data: { reported: target.id, reportedName: target.name, reason: reason.slice(0, 200) },
+        });
+        // Quiet confirm — no drama, no broadcast.
+        client.send(MSG.notice, { text: 'Noted. The city keeps the record.' });
+      })();
     } else if (cmd === '/help') {
       // H1: /help speaks the four intro cards, compressed.
       client.send(MSG.notice, {
@@ -1291,7 +1382,7 @@ export class FilamentRoom extends Room<FilamentState> {
           'The city in four breaths — 1) Click to walk; click a glowing node to work it; watch for the glint. ' +
           '2) Right tool in hand (1–6); Mastery levels as you work; the Tinkerbench crafts and mends. ' +
           '3) Goals G · Manifest M · skills K · map TAB · bank at the Ledgerhouse · the Coil spins free daily. ' +
-          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /trade <name> /charge /pod /haul <berth> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
+          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /trade <name> /charge /pod /haul <berth> /mute <name> /unmute <name> /report <name> <reason> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });

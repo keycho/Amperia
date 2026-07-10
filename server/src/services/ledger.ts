@@ -10,6 +10,7 @@ export interface LedgerEntry {
     | 'quest'
     | 'anomaly'
     | 'cosmetic'
+    | 'report'
     | 'system';
   account: string;
   data: Record<string, unknown>;

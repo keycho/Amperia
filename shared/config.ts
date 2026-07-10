@@ -279,6 +279,12 @@ export const CONFIG = {
   chat: {
     /** Chebyshev tile radius reported by /near. */
     nearRadiusTiles: 8,
+    /** H2 rate limit: at most `maxPerWindow` messages per rolling window;
+     *  past it the channel asks for a breath (one notice per burst). */
+    rate: {
+      maxPerWindow: 6,
+      windowSeconds: 10,
+    },
   },
 
   /**
