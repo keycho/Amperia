@@ -21,8 +21,9 @@ import Phaser from 'phaser';
 /** The smooth bake's texel count per voxel edge (2× × 8 world px). */
 const BAKE_TEXELS = 16;
 
-/** Default when no ?grit= is present — flips to the owner's A/B pick. */
-const GRIT_DEFAULT: 'none' | '6' | '8' = 'none';
+/** The owner's A/B pick (2026-07-10): B — 6 texels per voxel edge.
+ *  ?grit=none|8 still override for comparisons. */
+const GRIT_DEFAULT: 'none' | '6' | '8' = '6';
 
 export interface GritConfig {
   /** Texels per voxel edge, or null for the smooth bake. */
