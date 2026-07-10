@@ -29,6 +29,8 @@ export type PropKind =
   | 'cranehulk'
   /** The Fortune Coil (S4): the daily-spin wheel at the Nightstalls. */
   | 'fortunecoil'
+  /** The Ledgerhouse (S5): the bank — walls block, the hall inside walks. */
+  | 'ledgerhouse'
   /** I6 vignette props (variant selects the sub-style). */
   | 'cablespool'
   | 'barrels'
@@ -87,6 +89,8 @@ export interface WorldMap {
   /** Catwalk light pools (I5): warm spots where Sparks show a look off —
    *  the tram platform arrivals step into one, the plaza rim holds court. */
   catwalks: TilePoint[];
+  /** The Ledgerhouse hall (S5): bank actions are valid ONLY on these tiles. */
+  bankInterior: TilePoint[];
   /**
    * Rentable player shop stalls (the Nightstalls come alive — E2), in a
    * FIXED deterministic order: the stall id is the index here, and the
@@ -239,6 +243,27 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   const gate: Prop = { kind: 'tramgate', x: 36, y: 18, w: 2, h: 5, variant: 0 };
   props.push(gate);
   blockFootprint(walkable, gate);
+
+  // The Ledgerhouse (S5): the bank hall north-west of the plaza. The prop
+  // blocks its wall ring; the 2×2 hall + the south door stay WALKABLE.
+  const bankInterior: TilePoint[] = [];
+  {
+    const bank: Prop = { kind: 'ledgerhouse', x: 8, y: 12, w: 4, h: 4, variant: 0 };
+    props.push(bank);
+    blockFootprint(walkable, bank);
+    // Carve the hall + doorway back open.
+    const hall: TilePoint[] = [
+      { x: 9, y: 13 },
+      { x: 10, y: 13 },
+      { x: 9, y: 14 },
+      { x: 10, y: 14 },
+      { x: 9, y: 15 }, // the door tile (south wall gap)
+    ];
+    for (const t of hall) {
+      (walkable[t.y] as boolean[])[t.x] = true;
+      bankInterior.push(t);
+    }
+  }
 
   // The Fortune Coil: the daily ritual wheel at the west end of the row.
   {
@@ -523,7 +548,19 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     }
     for (const y of koiRows) {
       const x = randInt(rng, cv.xMin, cv.xMax);
-      nodes.push({ id: nodes.length, kind: 'glowkoi', x, y });
+      // A koi spot must be SKIMMABLE: at least one adjacent walkable bank
+      // tile (props/buildings can crowd the bank — S5 taught us that).
+      const candidates = [x, x === cv.xMin ? cv.xMax : cv.xMin];
+      const pick = candidates.find((cx) =>
+        [
+          [cx + 1, y],
+          [cx - 1, y],
+          [cx, y + 1],
+          [cx, y - 1],
+        ].some(([ax, ay]) => walkable[ay as number]?.[ax as number] === true),
+      );
+      if (pick === undefined) continue;
+      nodes.push({ id: nodes.length, kind: 'glowkoi', x: pick, y });
       // Canal tiles are already unwalkable; no extra blocking needed.
     }
   }
@@ -595,21 +632,43 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { kind: 'tarp', x: 7, y: 14, w: 1, h: 1, variant: 0 },
     // South alley: bins and the humming vent.
     { kind: 'scrapbin', x: 26, y: 33, w: 1, h: 1, variant: 0 },
-    { kind: 'scrapbin', x: 28, y: 34, w: 1, h: 1, variant: 1 },
+    { kind: 'scrapbin', x: 23, y: 34, w: 1, h: 1, variant: 1 },
     { kind: 'ventbox', x: 25, y: 31, w: 1, h: 1, variant: 0 },
-    { kind: 'gascans', x: 29, y: 32, w: 1, h: 1, variant: 1 },
+    { kind: 'gascans', x: 22, y: 32, w: 1, h: 1, variant: 1 },
     // A second spool + tarp off the market lane's north side.
     { kind: 'cablespool', x: 27, y: 15, w: 1, h: 1, variant: 0 },
     { kind: 'tarp', x: 12, y: 27, w: 1, h: 1, variant: 1 },
     { kind: 'barrels', x: 30, y: 26, w: 1, h: 1, variant: 1 },
     { kind: 'pallets', x: 9, y: 22, w: 1, h: 1, variant: 0 },
   ];
+  const stealsNodeAccess = (prop: Prop): boolean => {
+    // Would blocking this footprint leave any node with NO adjacent
+    // walkable tile? (The koi banks taught us — S5.)
+    for (const n of nodes) {
+      const adj = [
+        [n.x + 1, n.y],
+        [n.x - 1, n.y],
+        [n.x, n.y + 1],
+        [n.x, n.y - 1],
+      ].filter(([ax, ay]) => {
+        const inProp =
+          (ax as number) >= prop.x &&
+          (ax as number) < prop.x + prop.w &&
+          (ay as number) >= prop.y &&
+          (ay as number) < prop.y + prop.h;
+        return !inProp && walkable[ay as number]?.[ax as number] === true;
+      });
+      if (adj.length === 0) return true;
+    }
+    return false;
+  };
   for (const prop of vignette) {
-    if (walkable[prop.y]?.[prop.x] === true) {
+    if (walkable[prop.y]?.[prop.x] === true && !stealsNodeAccess(prop)) {
       props.push(prop);
       blockFootprint(walkable, prop);
     }
   }
+
 
   // Catwalk light pools (I5): the tram-platform landing + the plaza rim.
   const catwalks: TilePoint[] = [
@@ -620,7 +679,7 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { x: 20, y: 27 },
     { x: 27, y: 20 },
   ];
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks };
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior };
 }
 
 /**
@@ -857,7 +916,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
 
   // One pool at the gate — arrivals get their entrance moment even here.
   const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks };
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [] };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {

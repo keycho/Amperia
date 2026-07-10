@@ -55,4 +55,6 @@ export const SessionEvents = {
   goals: 'goals',
   /** Rested Charge state (S3): payload RestedSync. */
   rested: 'rested',
+  /** Ledgerhouse vault state (S5): payload BankSync. */
+  bank: 'bank',
 } as const;

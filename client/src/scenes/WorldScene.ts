@@ -22,6 +22,7 @@ import type {
   GlintShowEvent,
   IdentityEvent,
   InspectInfoEvent,
+  BankSync,
   CoilResultEvent,
   CoilShowEvent,
   CoilStateEvent,
@@ -683,6 +684,7 @@ export class WorldScene extends Phaser.Scene {
     );
     room.onMessage(MSG.goals, (e: GoalsSync) => session.events.emit(SessionEvents.goals, e));
     room.onMessage(MSG.rested, (e: RestedSync) => session.events.emit(SessionEvents.rested, e));
+    room.onMessage(MSG.bankSync, (e: BankSync) => session.events.emit(SessionEvents.bank, e));
     room.onMessage(MSG.coilState, (e: CoilStateEvent) => {
       this.coilSpunToday = e.spunToday;
     });
@@ -1847,6 +1849,33 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'ledgerhouse': {
+          const img = addVoxelSprite(this, 'ledgerhouse', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          // Warm hall light + the door lamp — the bank glows like books.
+          const hall = tileToWorld(p.x + 2, p.y + 2);
+          addLayeredGlow(this, hall.x, hall.y - 24, PALETTE_INT.warmGlow, 0.6, img.depth + 1, 0.4);
+          const door = tileToWorld(p.x + 1, p.y + 3);
+          addLayeredGlow(this, door.x, door.y - 30, PALETTE_INT.neonAmber, 0.32, img.depth + 1, 0.5);
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              ptr: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              ev: Phaser.Types.Input.EventData,
+            ) => {
+              if (!ptr.leftButtonDown() || this.room === null) return;
+              ev.stopPropagation();
+              // The server refuses politely unless you stand in the hall.
+              send.bank(this.room, { action: 'open' });
+            },
+          );
           break;
         }
         case 'fortunecoil': {

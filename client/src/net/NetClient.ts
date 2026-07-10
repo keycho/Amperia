@@ -4,6 +4,7 @@ import { MSG } from '@shared/protocol';
 import type {
   AppearanceIntent,
   AttackIntent,
+  BankIntent,
   GoalClaimIntent,
   InspectIntent,
   WardrobeIntent,
@@ -104,4 +105,5 @@ export const send = {
   goalClaim: (room: FilamentRoom, msg: GoalClaimIntent) => room.send(MSG.goalClaim, msg),
   /** The Fortune Coil: the spin takes NOTHING — free: true is the whole payload. */
   coilSpin: (room: FilamentRoom) => room.send(MSG.coilSpin, { free: true }),
+  bank: (room: FilamentRoom, msg: BankIntent) => room.send(MSG.bank, msg),
 };

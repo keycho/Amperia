@@ -44,13 +44,33 @@ describe('buildWorldMap', () => {
     expect(map.walkable.every((row) => row.length === map.size)).toBe(true);
   });
 
-  it('blocks every prop footprint', () => {
+  it('blocks every prop footprint (the Ledgerhouse hall stays walkable)', () => {
     for (const p of map.props) {
       for (let dy = 0; dy < p.h; dy++) {
         for (let dx = 0; dx < p.w; dx++) {
-          expect(map.walkable[p.y + dy]?.[p.x + dx]).toBe(false);
+          const tx = p.x + dx;
+          const ty = p.y + dy;
+          // S5: the bank's interior hall + door are carved back open by
+          // design — the ONLY prop allowed walkable tiles, and each one
+          // must be a registered bankInterior tile.
+          if (p.kind === 'ledgerhouse' && map.walkable[ty]?.[tx] === true) {
+            expect(map.bankInterior.some((t) => t.x === tx && t.y === ty)).toBe(true);
+            continue;
+          }
+          expect(map.walkable[ty]?.[tx]).toBe(false);
         }
       }
+    }
+  });
+
+  it('the Ledgerhouse hall is inside the building and reachable', () => {
+    const bank = map.props.find((p) => p.kind === 'ledgerhouse');
+    expect(bank).toBeDefined();
+    expect(map.bankInterior.length).toBeGreaterThanOrEqual(4);
+    for (const t of map.bankInterior) {
+      expect(map.walkable[t.y]?.[t.x]).toBe(true);
+      expect(t.x).toBeGreaterThanOrEqual((bank as { x: number }).x);
+      expect(t.y).toBeGreaterThanOrEqual((bank as { y: number }).y);
     }
   });
 

@@ -1,5 +1,68 @@
 # AMPERIA — Progress
 
+## FEATURE-COMPLETE FOR PUBLIC PLAYTEST (2026-07-10, after the RETENTION SPINE)
+
+With the retention spine in, the game now has its full pre-token loop:
+gather → craft → trade/shops → identity → collection → weekly rhythm →
+daily rituals → safe storage. **We believe this is feature-complete for a
+public playtest** (M3 scope; the M4 token gate stays shut until D7/D30
+targets are hit with the token off).
+
+What we think still blocks opening the doors (see NEEDS RUSTY for the
+account-shaped items):
+
+1. **Deploy + accounts** — Fly/Neon/Vercel setup, prod JWT secret, CORS,
+   `prisma migrate deploy` (9 migrations now). ~15 min of Rusty's time.
+2. **A second room instance under load is untested** — one Colyseus
+   process holds both districts fine at playtest scale, but we've never
+   run 50+ concurrent Sparks; a quick load probe post-deploy is wise.
+3. **Moderation basics** — chat has rate limits + length caps but no
+   mute/report; acceptable for a small invite wave, not for open doors.
+4. **Onboarding polish** — the Dispatcher chain teaches the loop, but
+   there's no "how to play" screen; fine for playtest, worth a pass.
+5. **Balance watch** — the levers exist (`/metrics`, nightly rollups);
+   somebody has to look at them weekly once real players arrive.
+
+## Status after the 2026-07-10 RETENTION SPINE block (S0–S5)
+
+The systems that make people come back — all server-authoritative,
+config-driven, ledger-logged. Shots: `nameplate-fade.png` ·
+`manifest-{toast,panel,hints}.png` · `goal-board.png` (probe pending) ·
+`coil-{mid-spin,prize}.png` · `ledgerhouse-interior.png`.
+
+- **S0 · Nameplate fading** — full names ≤8 tiles, faded to 13, hidden
+  beyond; always-on in quiet rooms; the last-inspected Spark stays lit.
+- **S1 · The Manifest (M)** — account-wide collection log: the four rare
+  gather rolls, the Dented Crest trophy, every wardrobe cosmetic; pages
+  per skill/mobs/wardrobe; silhouettes + hints undiscovered, thumb +
+  count + first-date discovered; page completion = untradeable titles
+  (shown on the inspect card), the full book = the Archivist's Glow trim;
+  discovery toast + chime. Recorded ONLY off real grant paths.
+- **S2 · The goal board (G)** — 8 deterministic weekly goals from the
+  config pool (Charge week key), progress on all, REWARDS claimable on
+  any 5 (hard ceiling), zero streak state anywhere; 5th claim each week
+  = a regalia token; tokens → the Circuit Banner (BACK slot). Bumps ride
+  only server-verified actions.
+- **S3 · Rested Charge** — first 40 gathering-minutes daily: gather XP
+  ×1.25, XP ONLY (faucet untouched, combat excluded); warm HUD line;
+  burns only while gathering; refills daily, never punishes.
+- **S4 · The Fortune Coil** — the carnival wheel at the Nightstalls: ONE
+  free spin a day, 5.4s ratchet-ticking spin, confetti on good hits,
+  bystander-visible. Prize table in config (all untradeable): small
+  Bolts, consumables, Coil shards → the Glimmer Trail (pity-ramped,
+  duplicate-converting), a Manifest filler. THE HARD RULE stands three
+  ways: typed no-currency brand on the intent, assertFreeSpin at the
+  handler, ledger 'anomaly' on any smuggled currency key (verified live).
+  No paid-spin codepath exists.
+- **S5 · The Ledgerhouse** — the bank hall NW of the plaza (walk in
+  through the south door; every action re-checks the hall tiles): 48
+  base slots, deposit/withdraw by stack, +8-slot expansions on a steeply
+  rising Bolts curve (400 → 45,000 — the hoarder sink); death NEVER
+  touches the vault (integration-probed: deposit → die in the Tangle →
+  Scrapcache takes the pack, the vault keeps everything).
+
+Tests: 155 client+shared + 5 server green; 5 new migrations this block.
+
 ## Status after the 2026-07-10 CHARACTER IDENTITY block (I0–I6)
 
 Sparks became people. The canonical mascot is in the repo, the base body
@@ -496,9 +559,13 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   Neon will need `prisma migrate deploy` on first ship — 4 new
   migrations landed this block (trade guardrails, shop stalls, the
   Citywide Charge, economy summaries).
-- NEW (identity block): production Neon needs `prisma migrate deploy` for
-  2 more migrations (character_appearance, character_equipped) on first
-  ship after this block.
+- NEW (retention block): production Neon needs `prisma migrate deploy`
+  for 9 total unshipped migrations (appearance, equipped, manifest,
+  weekly_goals, rested_charge, fortune_coil, ledgerhouse_bank + the two
+  economy-era ones). One command, listed here so it isn't a surprise.
+- NEW (retention block): the Coil's daily gate and the goal week both key
+  off UTC — worth a line in any player-facing FAQ ("the city's day turns
+  at midnight UTC").
 - NEW (identity block I0): the mascot image attached to the kickoff brief
   could not be read from this environment, so `docs/brand/spark-mascot.png`
   is the bust REBUILT faithfully through the real voxel pipeline (rose mop,

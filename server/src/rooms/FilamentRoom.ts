@@ -74,6 +74,8 @@ import {
   type GatherIntent,
   type GlintClickIntent,
   type GoalClaimIntent,
+  type BankIntent,
+  type BankSync,
   type CoilResultEvent,
   type CoilShowEvent,
   type CoilStateEvent,
@@ -117,6 +119,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
+import { loadBank, nextExpansionCost, saveBank, type BankState } from '../services/bank.js';
 import { coilSpunToday, spinCoil } from '../services/coil.js';
 import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
@@ -220,6 +223,8 @@ interface PlayerRuntime {
   /** Rested Charge (S3): boosted-gathering ms burned + their UTC day. */
   restedMsUsed: number;
   restedDate: string;
+  /** The Ledgerhouse (S5): banked slots, loaded on first hall visit. */
+  bank: BankState | null;
   hp: number;
   /** Set when the player pays the tram toll; persisted as the district. */
   pendingDistrict: DistrictId | null;
@@ -358,6 +363,11 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
       void this.handleGoalClaim(client, msg);
     });
+    this.onMessage<BankIntent>(MSG.bank, (client, msg) => {
+      void this.handleBank(client, msg).catch((err) =>
+        console.error('[bank] action failed', err),
+      );
+    });
     this.onMessage<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
       void this.handleCoilSpin(client, msg).catch((err) => {
         // The no-currency assert tripping is an anomaly worth remembering.
@@ -466,6 +476,7 @@ export class FilamentRoom extends Room<FilamentState> {
       goalTokens: character.goalTokens,
       restedMsUsed: character.restedMsUsed,
       restedDate: character.restedDate,
+      bank: null,
       hp: CONFIG.combat.player.maxHp,
       pendingDistrict: null,
       healAcc: 0,
@@ -1038,6 +1049,86 @@ export class FilamentRoom extends Room<FilamentState> {
     );
     client.send(MSG.inventory, this.inventorySync(rt));
     void this.persist(rt);
+  }
+
+  /**
+   * The Ledgerhouse (S5). Every action re-checks the hall tiles — the
+   * bank exists ONLY inside the building. Death never touches banked
+   * items: the Scrapcache drop reads rt.pack and nothing in the death
+   * path references rt.bank (integration-probed: deposit → die → safe).
+   */
+  private async handleBank(client: Client, msg: BankIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    const t = rt.move.tile;
+    const inside = this.map.bankInterior.some((h) => h.x === t.x && h.y === t.y);
+    if (!inside) {
+      client.send(MSG.notice, { text: 'The Ledgerhouse keeps its books indoors.' });
+      return;
+    }
+    if (rt.bank === null) rt.bank = await loadBank(rt.characterId);
+    if (this.runtimes.get(client.sessionId) !== rt) return;
+    const bank = rt.bank;
+
+    if (msg.action === 'deposit' || msg.action === 'withdraw') {
+      const slot = Math.floor(Number(msg.slot));
+      const qty = Math.max(1, Math.floor(Number(msg.qty)));
+      const from = msg.action === 'deposit' ? rt.pack : bank.inv;
+      const to = msg.action === 'deposit' ? bank.inv : rt.pack;
+      const stack = from.slots[slot];
+      if (stack === null || stack === undefined) return;
+      const moving = Math.min(qty, stack.qty);
+      const add = addItem(to, stack.itemId as ItemId, moving, CONFIG.inventory.stackMax);
+      if (add.added <= 0) {
+        client.send(MSG.notice, {
+          text: msg.action === 'deposit' ? 'The vault shelf is full.' : 'Your Pack is full.',
+        });
+        return;
+      }
+      if (msg.action === 'deposit') {
+        bank.inv = to === bank.inv ? add.inv : bank.inv;
+        rt.pack = removeItem(rt.pack, stack.itemId as ItemId, add.added).inv;
+      } else {
+        rt.pack = add.inv;
+        bank.inv = removeItem(bank.inv, stack.itemId as ItemId, add.added).inv;
+      }
+      ledger.log({
+        type: 'system',
+        account: rt.accountId,
+        data: { source: 'ledgerhouse', action: msg.action, itemId: stack.itemId, qty: add.added },
+      });
+      await saveBank(rt.characterId, bank);
+    } else if (msg.action === 'expand') {
+      const cost = nextExpansionCost(bank.slots);
+      if (cost === null) {
+        client.send(MSG.notice, { text: 'The vault holds no more shelves.' });
+        return;
+      }
+      if (rt.bolts < cost) {
+        client.send(MSG.notice, { text: `The next shelf runs ${cost} Bolts.` });
+        return;
+      }
+      rt.bolts -= cost;
+      bank.slots += CONFIG.bank.slotsPerExpansion;
+      const grown = makeInventory(bank.slots);
+      bank.inv.slots.forEach((sl, i) => {
+        grown.slots[i] = sl;
+      });
+      bank.inv = grown;
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'bankSlots', bolts: cost, slots: bank.slots },
+      });
+      await saveBank(rt.characterId, bank);
+      client.send(MSG.inventory, this.inventorySync(rt));
+    }
+    client.send(MSG.bankSync, {
+      slots: bank.inv.slots,
+      slotCount: bank.slots,
+      nextCost: nextExpansionCost(bank.slots),
+    } satisfies BankSync);
+    if (msg.action !== 'open') client.send(MSG.inventory, this.inventorySync(rt));
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {

@@ -706,6 +706,46 @@ function scrapbinModel(variant: number): Voxel[] {
 }
 
 /**
+ * The Ledgerhouse (S5): the bank hall — gunmetal vault walls, a wood
+ * counter, shelf stacks, and an open south face so the hall reads (and
+ * walks) from the lane. Warm light lands at placement.
+ */
+function ledgerhouseModel(): Voxel[] {
+  const v: Voxel[] = [];
+  const W = 32; // 4×4 tiles
+  // Floor slab: concrete with a wood runner to the door.
+  v.push(...mbox(0, 0, 0, W, W, 1, MATERIALS.concrete));
+  for (let y = 8; y < W; y++) {
+    v.push({ x: 14, y, z: 1, c: MATERIALS.wood.base, mat: MATERIALS.wood });
+    v.push({ x: 15, y, z: 1, c: MATERIALS.wood.base, mat: MATERIALS.wood });
+  }
+  // North + west vault walls, tall.
+  v.push(...mbox(0, 0, 1, W, 3, 14, MATERIALS.gunmetal));
+  v.push(...mbox(0, 0, 1, 3, W, 14, MATERIALS.gunmetalDeep));
+  // East wall: mid-height.
+  v.push(...mbox(W - 3, 0, 1, 3, W - 8, 9, MATERIALS.gunmetal));
+  // South rail: knee-high, split by the door gap on the wood runner.
+  v.push(...mbox(3, W - 3, 1, 9, 3, 3, MATERIALS.rust));
+  v.push(...mbox(18, W - 3, 1, 11, 3, 3, MATERIALS.rust));
+  // The counter across the hall.
+  v.push(...mbox(6, 10, 1, 14, 3, 4, MATERIALS.wood));
+  for (const vox of mbox(6, 10, 5, 14, 3, 1, MATERIALS.wood)) {
+    v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  }
+  // Shelf stacks along the north wall (ledgers + lockboxes).
+  for (let i = 0; i < 4; i++) {
+    v.push(...mbox(5 + i * 6, 3, 1, 4, 3, 8, MATERIALS.wood));
+    v.push(...mbox(6 + i * 6, 4, 9, 2, 2, 2, MATERIALS.rustDeep));
+    v.push({ x: 6 + i * 6, y: 5, z: 6, c: PALETTE_INT.neonAmber }); // ledger lamp
+  }
+  // Sign over the door: the Ledgerhouse mark (amber book).
+  v.push(...mbox(12, W - 3, 10, 6, 1, 3, MATERIALS.gunmetalDeep));
+  v.push({ x: 14, y: W - 3, z: 11, c: PALETTE_INT.neonAmber });
+  v.push({ x: 15, y: W - 3, z: 11, c: PALETTE_INT.neonAmber });
+  return v;
+}
+
+/**
  * The Fortune Coil's housing (S4): a carnival-sized ring on a rusted
  * kiosk, lamps up the sides. The spinning face itself is a live layer the
  * scene lays over this frame (a machined disk reads cleaner than voxels).
@@ -796,6 +836,7 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   }
   bakeVoxelModel(scene, { name: 'ventbox', voxels: ventboxModel() });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
+  bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
 }

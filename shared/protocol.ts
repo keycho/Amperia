@@ -42,6 +42,7 @@ export const MSG = {
   inspect: 'inspect',
   goalClaim: 'goalClaim',
   coilSpin: 'coilSpin',
+  bank: 'bank',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -66,6 +67,7 @@ export const MSG = {
   coilResult: 'coilResult',
   coilShow: 'coilShow',
   coilState: 'coilState',
+  bankSync: 'bankSync',
 } as const;
 
 export interface MoveIntent {
@@ -435,6 +437,21 @@ export interface GoalsSync {
   rows: Array<{ goalId: string; progress: number; claimed: boolean }>;
   claimsUsed?: number;
   tokens?: number;
+}
+
+/** Client → server (S5): Ledgerhouse actions — valid only in the hall. */
+export type BankIntent =
+  | { action: 'open' }
+  | { action: 'deposit'; slot: number; qty: number }
+  | { action: 'withdraw'; slot: number; qty: number }
+  | { action: 'expand' };
+
+/** Server → client (S5): the banked slots + expansion state. */
+export interface BankSync {
+  slots: Array<{ itemId: string; qty: number; durability?: number } | null>;
+  slotCount: number;
+  /** Bolts price of the next +8 expansion, or null at the cap. */
+  nextCost: number | null;
 }
 
 /**

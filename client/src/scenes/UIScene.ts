@@ -18,6 +18,7 @@ import { ShopPanel } from '../ui/ShopPanel';
 import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
+import { BankPanel } from '../ui/BankPanel';
 import { GoalPanel } from '../ui/GoalPanel';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
@@ -49,6 +50,7 @@ export class UIScene extends Phaser.Scene {
   private inspectCard!: InspectCard;
   private manifestPanel!: ManifestPanel;
   private goalPanel!: GoalPanel;
+  private bankPanel!: BankPanel;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
@@ -154,6 +156,7 @@ export class UIScene extends Phaser.Scene {
     this.inspectCard = new InspectCard(this);
     this.manifestPanel = new ManifestPanel(this);
     this.goalPanel = new GoalPanel(this);
+    this.bankPanel = new BankPanel(this);
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
     this.restedText = this.add.text(12, 58, '', {
@@ -439,6 +442,9 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-G', () => {
       this.goalPanel.toggle();
+    });
+    kb.on('keydown-B', () => {
+      if (this.bankPanel.visible) this.bankPanel.setVisible(false);
     });
     kb.on('keydown-K', () => {
       if (typing()) return;
