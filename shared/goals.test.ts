@@ -41,4 +41,21 @@ describe('goalMatches', () => {
     expect(goalMatches(craft2, { kind: 'craft', tier: 1, qty: 1 })).toBe(false);
     expect(goalMatches(craft2, { kind: 'craft', qty: 1 })).toBe(false);
   });
+
+  it('district goals (D3) only count in their district', () => {
+    const stacks: GoalDef = {
+      id: 'z', label: 'z', kind: 'gather', itemId: 'salvage', district: 'stacks', target: 5, bolts: 1,
+    };
+    expect(goalMatches(stacks, { kind: 'gather', itemId: 'salvage', district: 'stacks', qty: 1 })).toBe(true);
+    expect(goalMatches(stacks, { kind: 'gather', itemId: 'salvage', district: 'filament', qty: 1 })).toBe(false);
+    expect(goalMatches(stacks, { kind: 'gather', itemId: 'salvage', qty: 1 })).toBe(false);
+    // District-less goals stay district-blind.
+    expect(goalMatches(gather, { kind: 'gather', itemId: 'brass', district: 'tangle', qty: 1 })).toBe(true);
+  });
+
+  it('travel goals count tram rides anywhere on the line', () => {
+    const tram: GoalDef = { id: 't', label: 't', kind: 'travel', target: 5, bolts: 1 };
+    expect(goalMatches(tram, { kind: 'travel', district: 'stacks', qty: 1 })).toBe(true);
+    expect(goalMatches(tram, { kind: 'gather', itemId: 'salvage', qty: 1 })).toBe(false);
+  });
 });

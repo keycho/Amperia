@@ -105,6 +105,14 @@ export interface GatherNode {
 
 export type DistrictId = 'filament' | 'tangle' | 'stacks' | 'terrarium';
 
+/** Display names — used by tram boards, notices, and the world map. */
+export const DISTRICT_NAMES: Record<DistrictId, string> = {
+  filament: 'The Filament',
+  tangle: 'The Tangle',
+  stacks: 'The Stacks',
+  terrarium: 'The Terrarium',
+};
+
 export interface WorldMap {
   district: DistrictId;
   size: number;

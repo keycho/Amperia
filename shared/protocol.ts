@@ -1,5 +1,6 @@
 import type { InventorySlot } from './inventory';
 import type { ItemId } from './items';
+import type { DistrictId } from './map';
 import type { TilePoint } from './pathfinding';
 
 /**
@@ -232,14 +233,14 @@ export interface QuestsSync {
   log: Record<string, { state: string; progress: number; day?: string }>;
 }
 
-/** Player → server: ride the tram to another district (Bolts toll). */
+/** Player → server: ride the tram to another district (Bolts toll per hop). */
 export interface TravelIntent {
-  to: 'filament' | 'tangle';
+  to: DistrictId;
 }
 
 /** Server → player: leave this room and join the named district. */
 export interface TravelGo {
-  to: 'filament' | 'tangle';
+  to: DistrictId;
 }
 
 /** Player → server: reclaim your Scrapcache (owner-only, small fee). */

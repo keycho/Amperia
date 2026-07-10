@@ -109,6 +109,11 @@ export const CONFIG = {
       { id: 'g-trade', label: 'Settle a trade with another Spark', kind: 'trade', target: 1, bolts: 40 },
       { id: 'g-discover', label: 'Log something new in the Manifest', kind: 'discover', target: 1, bolts: 55 },
       { id: 'g-brawl', label: 'Put down 8 feral junkbots', kind: 'brawl', target: 8, bolts: 45 },
+      // District goals (D3) — reasons to ride the line.
+      { id: 'g-tram', label: 'Ride the tram 5 times', kind: 'travel', target: 5, bolts: 35 },
+      { id: 'g-stacks', label: 'Scavenge 60 Salvage in the Stacks alleys', kind: 'gather', itemId: 'salvage', district: 'stacks', target: 60, bolts: 45 },
+      { id: 'g-roofline', label: 'Tune 8 Signal up on the Roofline', kind: 'gather', itemId: 'signal', district: 'stacks', target: 8, bolts: 50 },
+      { id: 'g-compost', label: 'Turn 40 Salvage of Terrarium compost', kind: 'gather', itemId: 'salvage', district: 'terrarium', target: 40, bolts: 45 },
     ],
   },
 
@@ -397,6 +402,9 @@ export const CONFIG = {
    * toll is a recurring Bolts sink (golden rule 9).
    */
   travel: {
+    /** The tram line, in stop order (D3) — tolls are charged PER HOP. */
+    line: ['filament', 'stacks', 'terrarium', 'tangle'],
+    /** Bolts per hop along the line (recurring sink). */
     tollBolts: 5,
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },

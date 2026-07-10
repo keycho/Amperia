@@ -12,6 +12,7 @@ import {
 } from '@shared/inventory';
 import { ITEMS, type ItemId } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
+import { tramHops, tramToll } from '@shared/travel';
 import {
   amperiteStrikeYield,
   inSweetZone,
@@ -442,13 +443,14 @@ export class FilamentRoom extends Room<FilamentState> {
     // district BEFORE travelGo, so arrivals never pay twice.
     let bolts = character.bolts;
     if (character.district !== this.districtId) {
-      const toll = CONFIG.travel.tollBolts;
+      const hops = Math.max(1, tramHops(character.district as DistrictId, this.districtId));
+      const toll = hops * CONFIG.travel.tollBolts;
       if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
       bolts -= toll;
       ledger.log({
         type: 'spend',
         account: auth.accountId,
-        data: { sink: 'tramToll', bolts: toll, to: this.districtId, via: 'join' },
+        data: { sink: 'tramToll', bolts: toll, hops, to: this.districtId, via: 'join' },
       });
     }
     const gate: TilePoint = this.gateSpawn(CONFIG.player.spawn);
@@ -2754,17 +2756,18 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
-  /** Tram travel between districts: a Bolts toll, then a room hop. */
+  /** Tram travel between districts: a Bolts toll per hop, then a room hop. */
   private async handleTravel(client: Client, msg: TravelIntent): Promise<void> {
     const rt = this.runtimes.get(client.sessionId);
     if (rt === undefined || rt.hp <= 0) return;
-    if (msg.to !== 'filament' && msg.to !== 'tangle') return;
-    if (msg.to === this.districtId) return;
+    // Hop count doubles as validation: 0 = same stop or not on the line.
+    const hops = tramHops(this.districtId, msg.to);
+    if (hops === 0) return;
     if (!this.nearProp(rt, 'tramgate', 4)) {
       client.send(MSG.notice, { text: 'The tram leaves from the gate.' });
       return;
     }
-    const toll = CONFIG.travel.tollBolts;
+    const toll = tramToll(this.districtId, msg.to);
     if (rt.bolts < toll) {
       client.send(MSG.notice, { text: `The tram toll is ${toll} Bolts.` });
       return;
@@ -2774,8 +2777,9 @@ export class FilamentRoom extends Room<FilamentState> {
     ledger.log({
       type: 'spend',
       account: rt.accountId,
-      data: { sink: 'tramToll', bolts: toll, to: msg.to },
+      data: { sink: 'tramToll', bolts: toll, hops, to: msg.to },
     });
+    this.goalEvent(client, rt.accountId, { kind: 'travel', qty: 1, district: msg.to });
     client.send(MSG.inventory, this.inventorySync(rt));
     // Commit the new district BEFORE the go-ahead: the arrival room's join
     // must see it (it charges the toll itself on any district mismatch).
@@ -2887,12 +2891,16 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   /** Deterministic spawn seats: spaced walkable tiles in the home box. */
-  /** The district's arrival tile (home districts fall back to `fallback`). */
-  protected gateSpawn(fallback: TilePoint): TilePoint {
-    if (this.districtId === 'tangle') return CONFIG.travel.tangleSpawn;
-    if (this.districtId === 'stacks') return CONFIG.travel.stacksSpawn;
-    if (this.districtId === 'terrarium') return CONFIG.travel.terrariumSpawn;
+  /** A district's arrival tile (home districts fall back to `fallback`). */
+  protected static districtGate(district: DistrictId, fallback: TilePoint): TilePoint {
+    if (district === 'tangle') return CONFIG.travel.tangleSpawn;
+    if (district === 'stacks') return CONFIG.travel.stacksSpawn;
+    if (district === 'terrarium') return CONFIG.travel.terrariumSpawn;
     return fallback;
+  }
+
+  protected gateSpawn(fallback: TilePoint): TilePoint {
+    return FilamentRoom.districtGate(this.districtId, fallback);
   }
 
 
@@ -3779,7 +3787,12 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     this.wearActiveTool(client, rt);
     if (added > 0) {
-      this.goalEvent(client, rt.accountId, { kind: 'gather', itemId, qty: added });
+      this.goalEvent(client, rt.accountId, {
+        kind: 'gather',
+        itemId,
+        qty: added,
+        district: this.districtId,
+      });
       this.questProgress(client, rt, {
         type: 'gather',
         itemId,
@@ -3836,9 +3849,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const tile =
       district === this.districtId
         ? rt.move.tile
-        : district === 'tangle'
-          ? CONFIG.travel.tangleSpawn
-          : CONFIG.player.spawn;
+        : FilamentRoom.districtGate(district, CONFIG.player.spawn);
     await persistCharacter(rt.characterId, {
       tile,
       pack: rt.pack,

@@ -19,7 +19,8 @@ export type GoalKind =
   | 'shopSale'
   | 'trade'
   | 'discover'
-  | 'brawl';
+  | 'brawl'
+  | 'travel';
 
 export interface GoalDef {
   id: string;
@@ -32,6 +33,8 @@ export interface GoalDef {
   /** Optional filter: itemId for gather, min tier for craft. */
   itemId?: string;
   minTier?: number;
+  /** Optional filter: only counts in this district (D3 district goals). */
+  district?: string;
 }
 
 /** Matchable fact emitted by the server when something goal-shaped happens. */
@@ -40,6 +43,8 @@ export interface GoalEvent {
   qty: number;
   itemId?: string;
   tier?: number;
+  /** District the event happened in (rooms stamp their own id). */
+  district?: string;
 }
 
 export function goalWeekKey(now: number): string {
@@ -51,6 +56,7 @@ export function goalMatches(goal: GoalDef, ev: GoalEvent): boolean {
   if (goal.kind !== ev.kind) return false;
   if (goal.itemId !== undefined && goal.itemId !== ev.itemId) return false;
   if (goal.minTier !== undefined && (ev.tier ?? 0) < goal.minTier) return false;
+  if (goal.district !== undefined && goal.district !== ev.district) return false;
   return true;
 }
 

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
-import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@shared/map';
+import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type WorldMap } from '@shared/map';
+import { tramToll } from '@shared/travel';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
@@ -150,7 +151,15 @@ export class WorldScene extends Phaser.Scene {
   private loftpodViews = new Map<string, Phaser.GameObjects.GameObject[]>();
   /** String-light bulb glows — the Citywide Charge scales their density. */
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
+  /** District structural lights (D3): the Stacks window blaze — the same
+   *  Charge meter thins or crowds them (festival = a quarter blazing). */
+  private chargeWindowGlows: Phaser.GameObjects.Image[] = [];
+  /** Terrarium garden lamps (glow-fruit, shed windows): a gentler band —
+   *  half lit at low Charge, every lamp on in a festival week. */
+  private chargeGardenGlows: Phaser.GameObjects.Image[] = [];
   private chargeLightingTier = 0;
+  /** The tramgate stop board (D3), open at most one at a time. */
+  private tramBoard: Phaser.GameObjects.Container | null = null;
   /** Puddle-decal budget per map (R5b). */
   private puddleCount = 0;
   private spatialAt = 0;
@@ -177,7 +186,10 @@ export class WorldScene extends Phaser.Scene {
     this.activeSessionNode = null;
     this.stallFronts = new Map();
     this.stringBulbGlows = [];
+    this.chargeWindowGlows = [];
+    this.chargeGardenGlows = [];
     this.chargeLightingTier = 0;
+    this.tramBoard = null;
     this.puddleCount = 0;
   }
 
@@ -704,12 +716,17 @@ export class WorldScene extends Phaser.Scene {
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
     room.onMessage(MSG.travelGo, (e: TravelGo) => {
-      const to: DistrictId = e.to === 'tangle' ? 'tangle' : 'filament';
+      const to: DistrictId = (CONFIG.travel.line as readonly DistrictId[]).includes(e.to)
+        ? e.to
+        : 'filament';
       localStorage.setItem(DISTRICT_KEY, to);
-      session.events.emit(
-        SessionEvents.notice,
-        to === 'tangle' ? 'The tram rattles out into the Tangle…' : 'Homeward — the Filament glow ahead.',
-      );
+      const lines: Record<DistrictId, string> = {
+        filament: 'Homeward — the Filament glow ahead.',
+        tangle: 'The tram rattles out into the Tangle…',
+        stacks: 'Up-line to the Stacks — windows all the way up.',
+        terrarium: 'The Terrarium stop — you can smell the green from here.',
+      };
+      session.events.emit(SessionEvents.notice, lines[to]);
       void room.leave().finally(() => {
         this.scene.restart({ token: this.token, district: to });
       });
@@ -2069,6 +2086,8 @@ export class WorldScene extends Phaser.Scene {
                 ease: 'sine.inout',
               });
               this.occlusion.attach(img, [glow]);
+              // The Citywide Charge crowds or thins the blaze (D3).
+              this.chargeWindowGlows.push(glow);
             });
           break;
         }
@@ -2175,6 +2194,8 @@ export class WorldScene extends Phaser.Scene {
               ease: 'sine.inout',
             });
             this.occlusion.attach(img, [fruit]);
+            // Garden lamps fill in with the Citywide Charge (D3).
+            this.chargeGardenGlows.push(fruit);
           }
           addEmberMotes(this, x, y - 70, img.depth + 2, {
             count: 5,
@@ -2198,6 +2219,7 @@ export class WorldScene extends Phaser.Scene {
           win.setAlpha(bloom(0.35));
           win.setDepth(img.depth + 1);
           addFlicker(this, win, bloom(0.35), 0.08);
+          this.chargeGardenGlows.push(win);
           break;
         }
         // V2 round-ish — the water tank's level-marker lamp.
@@ -2309,10 +2331,8 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'tramgate': {
           const img = this.propSprite('tramgate', x, y);
-          // Ride the tram: click sends the travel intent (server checks the
-          // gate distance and takes the Bolts toll before the hop).
-          const dest: DistrictId = this.district === 'filament' ? 'tangle' : 'filament';
-          const destName = dest === 'tangle' ? 'the Tangle' : 'the Filament';
+          // Ride the tram (D3): click opens the stop board — every other
+          // district on the line, tolls charged per hop server-side.
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2336,14 +2356,7 @@ export class WorldScene extends Phaser.Scene {
                 if (step !== null) send.move(this.room, step);
                 return;
               }
-              floatText(
-                this,
-                img.x,
-                img.y - 70,
-                `to ${destName} — ${CONFIG.travel.tollBolts} Bolts`,
-                PALETTE.neonAmber,
-              );
-              send.travel(this.room, { to: dest });
+              this.toggleTramBoard(img.x, img.y - 60);
             },
           );
           // Sign glow over the lane + beacon + arrival pool of light.
@@ -3009,7 +3022,6 @@ export class WorldScene extends Phaser.Scene {
    */
   private applyChargeLighting(tier: number): void {
     this.chargeLightingTier = tier;
-    if (this.stringBulbGlows.length === 0) return;
     const fraction = Math.min(1, 0.45 + 0.19 * tier);
     this.stringBulbGlows.forEach((glow, i) => {
       // Deterministic thinning: each bulb owns THREE glow layers (core/
@@ -3019,6 +3031,77 @@ export class WorldScene extends Phaser.Scene {
       const lit = (bulb % 100) / 100 < fraction;
       glow.setVisible(lit);
     });
+    // D3, everywhere the hook reaches. The Stacks window BLAZE climbs from
+    // an ember baseline to §12B's festival ceiling ("a quarter of windows
+    // blazing"); the i*37 stride scatters the lit ones across every tower.
+    const blaze = 0.08 + (0.25 - 0.08) * Math.min(1, tier / 3);
+    this.chargeWindowGlows.forEach((glow, i) => {
+      glow.setVisible(((i * 37) % 100) / 100 < blaze);
+    });
+    // The Terrarium's garden lamps ride a gentler band: the Mother Trellis
+    // never goes dark, it just fills in as the meter climbs.
+    const garden = 0.5 + 0.5 * Math.min(1, tier / 3);
+    this.chargeGardenGlows.forEach((glow, i) => {
+      glow.setVisible(((i * 37) % 100) / 100 < garden);
+    });
+  }
+
+  /**
+   * The tramgate stop board (D3): every other district on the line, the
+   * per-hop Bolts toll printed beside each. Click a stop to ride; click
+   * the gate again (or ride) to fold the board away.
+   */
+  private toggleTramBoard(x: number, y: number): void {
+    if (this.tramBoard !== null) {
+      this.tramBoard.destroy();
+      this.tramBoard = null;
+      return;
+    }
+    const stops = (CONFIG.travel.line as readonly DistrictId[]).filter((s) => s !== this.district);
+    const rowH = 24;
+    const w = 232;
+    const h = 26 + stops.length * rowH;
+    const board = this.add.container(x, y - h);
+    board.setDepth(1e5 + 60);
+    const bg = this.add.graphics();
+    bg.fillStyle(PALETTE_INT.ink, 0.92);
+    bg.fillRoundedRect(-w / 2, 0, w, h, 6);
+    bg.lineStyle(1.5, PALETTE_INT.neonAmber, 0.8);
+    bg.strokeRoundedRect(-w / 2, 0, w, h, 6);
+    board.add(bg);
+    const head = this.add.text(0, 8, 'TRAM — ALL STOPS', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: PALETTE.groundAccent,
+    });
+    head.setOrigin(0.5, 0);
+    board.add(head);
+    stops.forEach((stop, i) => {
+      const toll = tramToll(this.district, stop);
+      const row = this.add.text(0, 24 + i * rowH, `${DISTRICT_NAMES[stop]} — ${toll} Bolts`, {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: UI_TEXT_WARM,
+        padding: { x: 6, y: 3 },
+      });
+      row.setOrigin(0.5, 0);
+      row.setInteractive({ useHandCursor: true });
+      row.on('pointerover', () => row.setColor(PALETTE.neonAmber));
+      row.on('pointerout', () => row.setColor(UI_TEXT_WARM));
+      row.on(
+        'pointerdown',
+        (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+          ev.stopPropagation();
+          if (this.room === null) return;
+          floatText(this, x, y - 20, `to ${DISTRICT_NAMES[stop]} — ${toll} Bolts`, PALETTE.neonAmber);
+          send.travel(this.room, { to: stop });
+          this.tramBoard?.destroy();
+          this.tramBoard = null;
+        },
+      );
+      board.add(row);
+    });
+    this.tramBoard = board;
   }
 
   /**
