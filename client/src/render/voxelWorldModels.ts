@@ -218,6 +218,20 @@ export function scuttlebotModel(accent: number): Voxel[] {
   return v;
 }
 
+// ── Heatlamp (placeable consumable — its own little light pool) ───────────
+
+function heatlampModel(): Voxel[] {
+  const post = mixPalette('structureMid', 'ink', 0.25);
+  const base = mixPalette('structureMid', 'groundAccent', 0.3);
+  const v: Voxel[] = [];
+  v.push(...box(0, 0, 0, 3, 3, 1, base));
+  v.push(...box(1, 1, 1, 1, 1, 6, post));
+  // Lamp head: hot core with a hood.
+  v.push(...box(0, 0, 7, 3, 3, 2, PALETTE_INT.warmGlow));
+  v.push(...box(0, 0, 9, 3, 3, 1, post));
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -305,4 +319,5 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     name: 'scuttlebot-feral',
     voxels: scuttlebotModel(PALETTE_INT.neonRose),
   });
+  bakeVoxelModel(scene, { name: 'heatlamp', voxels: heatlampModel() });
 }

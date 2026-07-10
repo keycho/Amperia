@@ -7,6 +7,7 @@ import type {
   ChatBroadcast,
   CombatEvent,
   EmoteBroadcast,
+  LampStateShape,
   MobStateShape,
   NodeEventPayload,
   NoticeEvent,
@@ -79,6 +80,7 @@ export class WorldScene extends Phaser.Scene {
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
   private mobs = new Map<string, Mob>();
+  private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
@@ -178,6 +180,10 @@ export class WorldScene extends Phaser.Scene {
         onAdd(cb: (m: MobStateShape, id: string) => void): void;
         onRemove(cb: (m: MobStateShape, id: string) => void): void;
       };
+      lamps: {
+        onAdd(cb: (l: LampStateShape, id: string) => void): void;
+        onRemove(cb: (l: LampStateShape, id: string) => void): void;
+      };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
     const $state = proxy(room.state) as unknown as StateProxy;
@@ -260,6 +266,9 @@ export class WorldScene extends Phaser.Scene {
 
     room.onMessage(MSG.combat, (e: CombatEvent) => this.handleCombatEvent(e));
 
+    $state.lamps.onAdd((l: LampStateShape, id: string) => this.addLamp(id, l));
+    $state.lamps.onRemove((_l: LampStateShape, id: string) => this.removeLamp(id));
+
     room.onMessage(MSG.moveAccepted, (e: MoveAcceptedEvent) => {
       const spark = this.sparks.get(e.sessionId);
       spark?.walk(e.path);
@@ -327,6 +336,39 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(e.sessionId)?.playWave();
       session.events.emit(SessionEvents.notice, `${e.from} waves.`);
     });
+  }
+
+  /** A placed Heatlamp: voxel post + flickering glow + its own pool. */
+  private addLamp(id: string, l: LampStateShape): void {
+    const { x, y } = tileToWorld(l.tileX, l.tileY);
+    const anchorY = y + TILE_H / 2;
+    const img = addVoxelSprite(this, 'heatlamp', x, anchorY);
+    img.setDepth(depthForWorldY(anchorY));
+    const glow = this.add.image(x, anchorY - 32, 'fx-glow');
+    glow.setTint(PALETTE_INT.warmGlow);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    glow.setScale(0.12);
+    glow.setAlpha(bloom(0.8));
+    glow.setDepth(depthForWorldY(anchorY) + 1);
+    addFlicker(this, glow, bloom(0.8), 0.09);
+    const pool = this.addGroundPool(x, y, PALETTE_INT.warmGlow, 0.55);
+    img.setScale(img.scaleX, 0.01);
+    this.tweens.add({ targets: img, scaleY: 0.5, duration: 240, ease: 'back.out' });
+    this.lampViews.set(id, [img, glow, pool]);
+  }
+
+  private removeLamp(id: string): void {
+    const parts = this.lampViews.get(id);
+    this.lampViews.delete(id);
+    if (parts === undefined) return;
+    for (const part of parts) {
+      this.tweens.add({
+        targets: part,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => part.destroy(),
+      });
+    }
   }
 
   /** Closest walkable tile adjacent to `target`, judged from `from`. */

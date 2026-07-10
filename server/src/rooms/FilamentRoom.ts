@@ -1,7 +1,14 @@
 import { Client, Room } from 'colyseus';
 import { CONFIG, type ToolId } from '@shared/config';
 import { rollGather, rollGlintTime } from '@shared/gathering';
-import { addItem, makeInventory, makeStarterHotbar, transfer, type Inventory } from '@shared/inventory';
+import {
+  addItem,
+  makeInventory,
+  makeStarterHotbar,
+  removeItem,
+  transfer,
+  type Inventory,
+} from '@shared/inventory';
 import type { ItemId } from '@shared/items';
 import { buildWorldMap, type WorldMap } from '@shared/map';
 import {
@@ -49,7 +56,7 @@ import { makeRng, type Rng } from '@shared/rng';
 import { ledger } from '../services/ledger.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
-import { FilamentState, MobState, NodeState, PlayerState } from './state.js';
+import { FilamentState, LampState, MobState, NodeState, PlayerState } from './state.js';
 
 type Session =
   | {
@@ -110,6 +117,8 @@ interface PlayerRuntime {
   activeSlot: number;
   skills: SkillXp;
   hp: number;
+  /** Fractional regen accumulator (hp stays an int on the wire). */
+  healAcc: number;
   lastAttackAtMs: number;
   gatherTargetNode: number | null;
   session: Session | null;
@@ -149,6 +158,8 @@ export class FilamentRoom extends Room<FilamentState> {
   private rng: Rng = makeRng(Date.now() >>> 0);
   private runtimes = new Map<string, PlayerRuntime>();
   private mobs = new Map<string, MobRuntime>();
+  private lamps = new Map<string, { tile: TilePoint; owner: string; expiresAtMs: number }>();
+  private lampSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
 
@@ -180,6 +191,7 @@ export class FilamentRoom extends Room<FilamentState> {
     );
     this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
+    this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
   }
@@ -212,6 +224,7 @@ export class FilamentRoom extends Room<FilamentState> {
       activeSlot: 0,
       skills: character.skills,
       hp: CONFIG.combat.player.maxHp,
+      healAcc: 0,
       lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
@@ -473,7 +486,9 @@ export class FilamentRoom extends Room<FilamentState> {
         emote: 'wave',
       });
     } else if (cmd === '/help') {
-      client.send(MSG.notice, { text: 'Commands: /near /wave /help — more as the city grows.' });
+      client.send(MSG.notice, {
+        text: `Commands: /near /wave /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
+      });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
     }
@@ -502,6 +517,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
 
     this.tickMobs(dt);
+    this.tickHealing(dt);
 
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
@@ -571,6 +587,89 @@ export class FilamentRoom extends Room<FilamentState> {
           glintHit: false,
         });
         client.send(MSG.inventory, this.inventorySync(rt));
+      }
+    }
+  }
+
+  /**
+   * Rivet a Heatlamp together on the spot: consumes Salvage (a real sink,
+   * ledger-logged), places a timed warm pool that mends nearby Sparks.
+   */
+  private handlePlaceHeatlamp(client: Client): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    const cfg = CONFIG.combat.heatlamp;
+    const mine = [...this.lamps.values()].filter((l) => l.owner === client.sessionId);
+    if (mine.length >= cfg.maxActivePerSpark) {
+      client.send(MSG.notice, { text: 'Your Heatlamp is still burning somewhere.' });
+      return;
+    }
+    const tile = rt.move.tile;
+    for (const l of this.lamps.values()) {
+      if (chebyshev(l.tile, tile) <= cfg.radiusTiles) {
+        client.send(MSG.notice, { text: 'There is already warmth here.' });
+        return;
+      }
+    }
+    const r = removeItem(rt.pack, 'salvage', cfg.costSalvage);
+    if (r.removed < cfg.costSalvage) {
+      client.send(MSG.notice, {
+        text: `A Heatlamp takes ${cfg.costSalvage} Salvage to rivet together.`,
+      });
+      return;
+    }
+    rt.pack = r.inv;
+    const id = `lamp-${this.lampSeq++}`;
+    this.lamps.set(id, {
+      tile: { ...tile },
+      owner: client.sessionId,
+      expiresAtMs: Date.now() + cfg.durationSeconds * 1000,
+    });
+    const ls = new LampState();
+    ls.tileX = tile.x;
+    ls.tileY = tile.y;
+    this.state.lamps.set(id, ls);
+    // Sinks log to the economy ledger just like faucets (golden rule 9).
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'heatlamp', itemId: 'salvage', qty: cfg.costSalvage },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, { text: 'The Heatlamp hums to life.' });
+  }
+
+  /** Regen from the Dynamo's warmth and any burning Heatlamp. */
+  private tickHealing(dt: number): void {
+    const pc = CONFIG.combat.player;
+    const lampCfg = CONFIG.combat.heatlamp;
+    const now = Date.now();
+    for (const [id, lamp] of this.lamps) {
+      if (now >= lamp.expiresAtMs) {
+        this.lamps.delete(id);
+        this.state.lamps.delete(id);
+      }
+    }
+    const plazaCenter = { x: this.map.plaza.cx, y: this.map.plaza.cy };
+    for (const [sessionId, rt] of this.runtimes) {
+      if (rt.hp <= 0 || rt.hp >= pc.maxHp) continue;
+      let rate = 0;
+      if (chebyshev(rt.move.tile, plazaCenter) <= pc.dynamoHealRadiusTiles) {
+        rate = pc.dynamoHealPerSecond;
+      }
+      for (const lamp of this.lamps.values()) {
+        if (chebyshev(rt.move.tile, lamp.tile) <= lampCfg.radiusTiles) {
+          rate = Math.max(rate, lampCfg.healPerSecond);
+        }
+      }
+      if (rate <= 0) continue;
+      rt.healAcc += rate * dt;
+      const whole = Math.floor(rt.healAcc);
+      if (whole > 0) {
+        rt.healAcc -= whole;
+        rt.hp = Math.min(pc.maxHp, rt.hp + whole);
+        const ps = this.state.players.get(sessionId);
+        if (ps !== undefined) ps.hp = rt.hp;
       }
     }
   }

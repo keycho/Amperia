@@ -216,6 +216,10 @@ export class UIScene extends Phaser.Scene {
     // Never react to game keys while the player is typing in a DOM field.
     const typing = () =>
       this.chat.typing || document.activeElement instanceof HTMLInputElement;
+    kb.on('keydown-H', () => {
+      if (typing()) return;
+      if (session.room !== null) send.placeHeatlamp(session.room);
+    });
     kb.on('keydown-I', () => {
       if (typing()) return;
       this.skillsPanel.setVisible(false);

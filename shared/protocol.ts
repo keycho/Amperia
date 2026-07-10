@@ -14,6 +14,7 @@ export const MSG = {
   glintClick: 'glintClick',
   nodeAction: 'nodeAction',
   attack: 'attack',
+  placeHeatlamp: 'placeHeatlamp',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -176,6 +177,12 @@ export type CombatEvent =
   | { type: 'playerDown'; sessionId: string }
   | { type: 'playerHit'; mobId: string; bySessionId: string; damage: number; hp: number }
   | { type: 'mobDown'; mobId: string; bySessionId: string };
+
+/** Mirror of the synced LampState schema (client-side typing only). */
+export interface LampStateShape {
+  tileX: number;
+  tileY: number;
+}
 
 /** Mirror of the synced MobState schema (client-side typing only). */
 export interface MobStateShape {

@@ -48,15 +48,24 @@ export class NodeState extends Schema {
 }
 defineTypes(NodeState, { depleted: 'boolean' });
 
+export class LampState extends Schema {
+  tileX = 0;
+  tileY = 0;
+}
+defineTypes(LampState, { tileX: 'int16', tileY: 'int16' });
+
 export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
   /** Keyed by node id (stringified). */
   nodes = new MapSchema<NodeState>();
   /** Keyed by mob id. */
   mobs = new MapSchema<MobState>();
+  /** Keyed by lamp id. */
+  lamps = new MapSchema<LampState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
   nodes: { map: NodeState },
   mobs: { map: MobState },
+  lamps: { map: LampState },
 });

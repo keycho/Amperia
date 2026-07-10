@@ -16,6 +16,7 @@ export type ItemId =
   | 'prismaticGlowkoi'
   | 'ghostFrequency'
   | 'dentedCrest'
+  | 'heatlamp'
   // tools (Game Bible B3)
   | 'magclaw'
   | 'drillhammer'
@@ -107,6 +108,13 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     icon: 'icon-gilded-scrap',
     iconTint: 'neonRose',
     rare: true,
+  },
+  heatlamp: {
+    id: 'heatlamp',
+    name: 'Heatlamp',
+    flavor: 'A riveted-together warm spot. Sparks mend faster in its pool.',
+    icon: 'icon-heatlamp',
+    iconTint: 'warmGlow',
   },
   magclaw: {
     id: 'magclaw',

@@ -223,6 +223,15 @@ export const CONFIG = {
       /** Home range: the SE scrap fringe among the amperite spoil. */
       homeBox: { x0: 29, y0: 30, x1: 37, y1: 37 },
     },
+    /** Placeable Heatlamp: riveted on the spot from Salvage (a real sink). */
+    heatlamp: {
+      costSalvage: 6,
+      durationSeconds: 90,
+      healPerSecond: 1.5,
+      radiusTiles: 2,
+      /** One active lamp per Spark; placing another is refused. */
+      maxActivePerSpark: 1,
+    },
   },
 
   /** Skill Mastery 1-50 (Game Bible B3): fast early, long-horizon late. */
