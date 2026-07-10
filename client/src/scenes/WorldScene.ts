@@ -1855,6 +1855,64 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+        // V2 shape vocabulary — fabric / organic families (picker-pooled).
+        case 'canopy':
+        case 'banner':
+        case 'wildbush': {
+          const img = addVoxelSprite(this, `${p.kind}-${looks.pick(p.kind, p.x, p.y, 3)}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'laundry':
+        case 'vinewall': {
+          const img = addVoxelSprite(this, `${p.kind}-${p.variant % 2}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        // V2 tall/thin — the signpost's junction lamp gets its glow.
+        case 'signpost': {
+          const img = addVoxelSprite(this, `signpost-${p.variant % 2}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          const lamp = addLayeredGlow(this, x, y - 86, PALETTE_INT.neonAmber, 0.3, depthForWorldY(y) + 1, 0.35);
+          addFlicker(this, lamp.core, 0.55, 0.18);
+          break;
+        }
+        // V2 tall/thin — the stovepipe breathes (steam is life, §12A).
+        case 'stovepipe': {
+          const img = addVoxelSprite(this, `stovepipe-${p.variant % 2}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          addSteamVent(this, x + 2, y - (p.variant % 2 === 0 ? 76 : 64), depthForWorldY(y) + 2, {
+            periodMs: 1700,
+            drift: 10,
+          });
+          // The ember slit smoulders.
+          const ember = this.add.image(x - 2, y - 10, 'fx-glow');
+          ember.setTint(PALETTE_INT.emberOrange);
+          ember.setBlendMode(Phaser.BlendModes.ADD);
+          ember.setScale(0.16);
+          ember.setAlpha(bloom(0.4));
+          ember.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, ember, 0.4, 0.22);
+          break;
+        }
+        // V2 round-ish — the water tank's level-marker lamp.
+        case 'watertank': {
+          const img = addVoxelSprite(this, 'watertank', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          const marker = addLayeredGlow(this, x, y - 96, PALETTE_INT.neonAmber, 0.26, depthForWorldY(y) + 1, 0.3);
+          addFlicker(this, marker.core, 0.5, 0.15);
+          break;
+        }
         case 'ledgerhouse': {
           const img = addVoxelSprite(this, 'ledgerhouse', x, y);
           const wt = worldSpriteTint();

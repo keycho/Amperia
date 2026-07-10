@@ -869,6 +869,286 @@ function toolrackModel(): Voxel[] {
   return v;
 }
 
+// ── V2 shape vocabulary: fabric · organic · tall/thin · round-ish ─────────
+// The city was all boxes; these four families break the silhouette monotony
+// (§12A: silhouette first, materials honest, one accent per prop).
+
+/** FABRIC: a sloped market canopy on timber posts, stash huddled beneath. */
+function canopyModel(variant: number): Voxel[] {
+  const hot = [
+    mixPalette('neonRose', 'structureMid', 0.12),
+    mixPalette('neonTeal', 'structureMid', 0.18),
+    mixPalette('neonAmber', 'structureMid', 0.1),
+  ][variant % 3] as number;
+  const pale = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const v: Voxel[] = [];
+  // Timber posts: tall front pair, short back pair — the cloth slopes.
+  for (const [px, py, h] of [
+    [1, 1, 9],
+    [13, 1, 9],
+    [1, 13, 12],
+    [13, 13, 12],
+  ] as const) {
+    v.push(...mbox(px, py, 0, 1, 1, h, MATERIALS.woodDeep));
+  }
+  // The cloth: striped sheet sagging front-to-back with a ragged hem.
+  for (let x = 0; x < 15; x++) {
+    for (let y = 0; y < 15; y++) {
+      const z = 12 - Math.floor((14 - y) / 6) - (x > 4 && x < 10 && y > 4 && y < 10 ? 1 : 0);
+      const edge = x === 0 || y === 0 || x === 14 || y === 14;
+      if (edge && (x * 3 + y) % 4 === 0) continue; // ragged hem
+      v.push({ x, y, z, c: x % 3 === 0 ? pale : hot });
+    }
+  }
+  // Drip edge hanging off the front bar.
+  for (let x = 1; x < 14; x += 2) v.push({ x, y: 0, z: 10, c: hot });
+  // The stash beneath: a crate + barrel, half in shade.
+  v.push(...mbox(4, 4, 0, 4, 4, 4, MATERIALS.rust));
+  v.push(...mbox(9, 6, 0, 3, 3, 4, MATERIALS.wood));
+  v.push({ x: 7, y: 4, z: 4, c: PALETTE_INT.neonAmber }); // routing tag
+  return v;
+}
+
+/** FABRIC + TALL/THIN: a vertical banner hanging from a mast crossarm. */
+function bannerModel(variant: number): Voxel[] {
+  const cloth = [MATERIALS.paintRose, MATERIALS.paintTeal, MATERIALS.paintOchre][
+    variant % 3
+  ] as (typeof MATERIALS)['paintRose'];
+  const emblem = [PALETTE_INT.neonAmber, PALETTE_INT.neonRose, PALETTE_INT.neonTeal][
+    variant % 3
+  ] as number;
+  const v: Voxel[] = [];
+  v.push(...mbox(2, 2, 0, 3, 3, 2, MATERIALS.concreteDeep)); // plinth
+  v.push(...mbox(3, 3, 2, 1, 1, 20, MATERIALS.gunmetal)); // mast
+  v.push(...mbox(1, 3, 21, 6, 1, 1, MATERIALS.gunmetalDeep)); // crossarm
+  // The banner: hangs from the crossarm, swallowtail cut at the foot.
+  for (let z = 9; z <= 20; z++) {
+    for (let x = 1; x <= 4; x++) {
+      if (z === 9 && (x === 2 || x === 3)) continue; // swallowtail
+      if (z === 10 && x === 3) continue; // ragged
+      const weath = (x + z) % 5 === 0;
+      v.push({ x, y: 4, z, c: weath ? shade(cloth.base, -0.14) : cloth.base, mat: weath ? undefined : cloth });
+    }
+  }
+  // The emblem: a two-voxel glyph mid-banner (its one light).
+  v.push({ x: 2, y: 5, z: 16, c: emblem });
+  v.push({ x: 3, y: 5, z: 15, c: emblem });
+  return v;
+}
+
+/** FABRIC: a laundry line — two posts, sagging rope, cloth drying. */
+function laundryModel(variant: number): Voxel[] {
+  const pale = mixPalette('warmGlow', 'groundAccent', 0.3);
+  const pieces =
+    variant % 2 === 0
+      ? [
+          { x0: 3, w: 4, drop: 4, mat: MATERIALS.paintTeal },
+          { x0: 9, w: 3, drop: 3, mat: null }, // the pale towel
+          { x0: 14, w: 4, drop: 5, mat: MATERIALS.paintRose },
+          { x0: 19, w: 2, drop: 3, mat: MATERIALS.paintOchre },
+        ]
+      : [
+          { x0: 2, w: 3, drop: 5, mat: MATERIALS.paintRose },
+          { x0: 7, w: 4, drop: 3, mat: null },
+          { x0: 13, w: 3, drop: 4, mat: MATERIALS.paintOchre },
+          { x0: 18, w: 4, drop: 4, mat: MATERIALS.paintTeal },
+        ];
+  const v: Voxel[] = [];
+  v.push(...mbox(0, 3, 0, 1, 1, 10, MATERIALS.woodDeep)); // west post
+  v.push(...mbox(23, 3, 0, 1, 1, 10, MATERIALS.woodDeep)); // east post
+  // The rope, sagging one voxel mid-span.
+  for (let x = 1; x < 23; x++) {
+    const z = x > 7 && x < 17 ? 8 : 9;
+    v.push({ x, y: 3, z, c: MATERIALS.gunmetalDeep.base });
+  }
+  // The wash: pieces pinned over the line, hems ragged.
+  for (const p of pieces) {
+    for (let x = p.x0; x < p.x0 + p.w; x++) {
+      const ropeZ = x > 7 && x < 17 ? 8 : 9;
+      for (let dz = 1; dz <= p.drop; dz++) {
+        if (dz === p.drop && (x + dz) % 3 === 0) continue; // ragged hem
+        const c = p.mat === null ? pale : p.mat.base;
+        v.push({ x, y: 4, z: ropeZ - dz, c, mat: p.mat ?? undefined });
+      }
+    }
+  }
+  return v;
+}
+
+/** ORGANIC: a wild bush shouldering up through cracked pavement. */
+function wildbushModel(variant: number): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.35);
+  const v: Voxel[] = [];
+  // Broken slab collar.
+  for (const vox of mbox(0, 0, 0, 6, 6, 1, MATERIALS.concreteDeep)) {
+    if ((vox.x === 2 || vox.x === 3) && (vox.y === 2 || vox.y === 3)) continue; // the crack
+    if ((vox.x * 5 + vox.y * 3) % 7 === 0) continue; // crumbled bits
+    v.push(vox);
+  }
+  const puff = (cx: number, cy: number, z: number, r: number) => {
+    for (let x = cx - r; x <= cx + r; x++) {
+      for (let y = cy - r; y <= cy + r; y++) {
+        if (Math.abs(x - cx) + Math.abs(y - cy) > r) continue;
+        v.push({ x, y, z, c: (x + y + z) % 2 === 0 ? leafA : leafB });
+      }
+    }
+  };
+  if (variant % 3 === 0) {
+    // Round and healthy.
+    puff(2, 3, 1, 2);
+    puff(3, 2, 2, 2);
+    puff(2, 3, 3, 1);
+    v.push({ x: 3, y: 2, z: 4, c: leafB });
+  } else if (variant % 3 === 1) {
+    // Leaning into the light, one tall shoot.
+    puff(2, 2, 1, 2);
+    puff(3, 3, 2, 1);
+    for (let z = 3; z < 6; z++) v.push({ x: 4, y: 3, z, c: z % 2 === 0 ? leafA : leafB });
+    v.push({ x: 4, y: 4, z: 5, c: leafB });
+  } else {
+    // Scraggly, grown through a rusted pipe.
+    v.push(...mbox(1, 3, 0, 4, 1, 1, MATERIALS.rust)); // the pipe it ate
+    puff(3, 3, 1, 1);
+    puff(2, 2, 2, 1);
+    v.push({ x: 2, y: 4, z: 3, c: leafA });
+    v.push({ x: 1, y: 2, z: 3, c: leafB });
+  }
+  return v;
+}
+
+/** ORGANIC: a rusted trellis panel gone green — vines own it now. */
+function vinewallModel(variant: number): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.35);
+  const v: Voxel[] = [];
+  // The lattice: uprights + rails, rust-eaten.
+  for (const px of [0, 7]) v.push(...mbox(px, 3, 0, 1, 1, 12, MATERIALS.rustDeep));
+  for (const z of [3, 7, 11]) {
+    for (let x = 1; x < 7; x++) {
+      if ((x + z) % 4 === 0) continue; // eaten through
+      v.push({ x, y: 3, z, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+    }
+  }
+  // The vine: a diagonal climb with hanging tendrils.
+  const mirror = variant % 2 === 1;
+  const X = (x: number) => (mirror ? 7 - x : x);
+  const climb: Array<[number, number]> = [
+    [1, 1], [1, 2], [2, 3], [2, 4], [3, 5], [3, 6], [4, 7], [4, 8], [5, 9], [5, 10], [6, 11], [6, 12],
+  ];
+  for (const [x, z] of climb) {
+    v.push({ x: X(x), y: 4, z, c: (x + z) % 2 === 0 ? leafA : leafB });
+    if (z % 3 === 0) v.push({ x: X(x - 1), y: 4, z, c: leafB }); // side sprig
+  }
+  // Tendrils hanging off the top rail.
+  for (const [tx, drop] of [
+    [2, 3],
+    [5, 2],
+    [6, 4],
+  ] as const) {
+    for (let dz = 0; dz < drop; dz++) {
+      v.push({ x: X(tx), y: 4, z: 11 - dz, c: dz % 2 === 0 ? leafB : leafA });
+    }
+  }
+  return v;
+}
+
+/** TALL/THIN: a junction signpost, fingerboards pointing three ways. */
+function signpostModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(2, 2, 0, 2, 2, 1, MATERIALS.concreteDeep)); // stub base
+  v.push(...mbox(2, 2, 1, 1, 1, 17, MATERIALS.woodDeep)); // the pole
+  const arm = (z: number, dir: 'px' | 'nx' | 'py', len: number) => {
+    if (dir === 'px') v.push(...mbox(3, 2, z, len, 1, 2, MATERIALS.wood));
+    else if (dir === 'nx') v.push(...mbox(2 - len, 2, z, len, 1, 2, MATERIALS.wood));
+    else v.push(...mbox(2, 3, z, 1, len, 2, MATERIALS.wood));
+  };
+  if (variant % 2 === 0) {
+    arm(14, 'px', 5);
+    arm(11, 'nx', 4);
+    arm(8, 'py', 4);
+  } else {
+    arm(14, 'nx', 5);
+    arm(11, 'py', 4);
+    arm(8, 'px', 4);
+  }
+  // Painted destination chips on two boards (worn lettering, not neon).
+  v.push({ x: variant % 2 === 0 ? 6 : -1, y: 2, z: 15, c: shade(MATERIALS.wood.base, 0.3) });
+  v.push({ x: 2, y: 5, z: variant % 2 === 0 ? 9 : 12, c: shade(MATERIALS.wood.base, 0.3) });
+  // The junction lamp on top — its one light.
+  v.push({ x: 2, y: 2, z: 18, c: PALETTE_INT.neonAmber });
+  return v;
+}
+
+/** TALL/THIN: a squatter's stovepipe — firebox, flue, rain cap. */
+function stovepipeModel(variant: number): Voxel[] {
+  const tall = variant % 2 === 0 ? 16 : 13;
+  const v: Voxel[] = [];
+  // The firebox with an ember slit (emberOrange = the sanctioned accent).
+  v.push(...mbox(0, 0, 0, 5, 5, 4, MATERIALS.rustDeep));
+  v.push({ x: 2, y: 4, z: 1, c: PALETTE_INT.emberOrange });
+  v.push({ x: 3, y: 4, z: 1, c: mixPalette('emberOrange', 'ink', 0.3) });
+  // The flue, banded where sections join.
+  for (const vox of mbox(1, 1, 4, 2, 2, tall - 4, MATERIALS.gunmetal)) {
+    const band = (vox.z - 4) % 5 === 4;
+    v.push(band ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox);
+  }
+  // Rain cap.
+  v.push(...mbox(0, 0, tall, 4, 4, 1, MATERIALS.gunmetalDeep));
+  return v;
+}
+
+/** ROUND-ISH: the neighbourhood water tank up on legs (2×2 tiles). */
+function watertankModel(): Voxel[] {
+  const v: Voxel[] = [];
+  const cx = 7.5;
+  const cy = 7.5;
+  const disc = (z: number, r: number, mat: (typeof MATERIALS)['gunmetal'], hollow = false) => {
+    for (let x = 0; x < 16; x++) {
+      for (let y = 0; y < 16; y++) {
+        const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if (d2 > r * r) continue;
+        if (hollow && d2 < (r - 1.4) * (r - 1.4)) continue;
+        v.push({ x, y, z, c: mat.base, mat });
+      }
+    }
+  };
+  // Legs on the diagonals + cross-brace.
+  for (const [lx, ly] of [
+    [3, 3],
+    [11, 3],
+    [3, 11],
+    [11, 11],
+  ] as const) {
+    v.push(...mbox(lx, ly, 0, 2, 2, 6, MATERIALS.gunmetalDeep));
+  }
+  v.push(...mbox(4, 7, 3, 8, 1, 1, MATERIALS.gunmetalDeep));
+  // The tank: a fat drum with hoop bands and an ochre repaint patch.
+  disc(6, 6.4, MATERIALS.gunmetalDeep);
+  for (let z = 7; z <= 16; z++) {
+    const band = z === 9 || z === 14;
+    disc(z, 6.4, band ? MATERIALS.rustDeep : MATERIALS.gunmetal, true);
+  }
+  // Repaint patch across three courses on the south face.
+  for (let z = 10; z <= 12; z++) {
+    for (let x = 5; x <= 9; x++) {
+      v.push({ x, y: 14, z, c: MATERIALS.paintOchre.base, mat: MATERIALS.paintOchre });
+    }
+  }
+  // Domed cap.
+  disc(17, 6.4, MATERIALS.gunmetal);
+  disc(18, 4.5, MATERIALS.gunmetal);
+  disc(19, 2.5, MATERIALS.gunmetalDeep);
+  // Ladder up the east side.
+  for (let z = 1; z < 17; z++) {
+    if (z % 2 === 0) v.push({ x: 14, y: 7, z, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+    v.push({ x: 15, y: 7, z, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  }
+  // The level-marker lamp on the cap — its one light.
+  v.push({ x: 7, y: 7, z: 20, c: PALETTE_INT.neonAmber });
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -924,6 +1204,19 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `scrapbin-${i}`, voxels: scrapbinModel(i) });
   }
   bakeVoxelModel(scene, { name: 'ventbox', voxels: ventboxModel() });
+  // V2 shape vocabulary: fabric / organic / tall-thin / round-ish pools.
+  for (const i of [0, 1, 2]) {
+    bakeVoxelModel(scene, { name: `canopy-${i}`, voxels: canopyModel(i) });
+    bakeVoxelModel(scene, { name: `banner-${i}`, voxels: bannerModel(i) });
+    bakeVoxelModel(scene, { name: `wildbush-${i}`, voxels: wildbushModel(i) });
+  }
+  for (const i of [0, 1]) {
+    bakeVoxelModel(scene, { name: `laundry-${i}`, voxels: laundryModel(i) });
+    bakeVoxelModel(scene, { name: `vinewall-${i}`, voxels: vinewallModel(i) });
+    bakeVoxelModel(scene, { name: `signpost-${i}`, voxels: signpostModel(i) });
+    bakeVoxelModel(scene, { name: `stovepipe-${i}`, voxels: stovepipeModel(i) });
+  }
+  bakeVoxelModel(scene, { name: 'watertank', voxels: watertankModel() });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

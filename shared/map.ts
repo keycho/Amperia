@@ -43,7 +43,19 @@ export type PropKind =
   /** Gunmetal machine carcasses rusting in the maze pockets. */
   | 'deadmachine'
   /** Cable pylons — the client strings sagging bundles between pairs. */
-  | 'pylon';
+  | 'pylon'
+  /** V2 shape vocabulary — FABRIC: canopy, banner, laundry line. */
+  | 'canopy'
+  | 'banner'
+  | 'laundry'
+  /** V2 — ORGANIC: wild bushes through the pavement, vine-eaten trellis. */
+  | 'wildbush'
+  | 'vinewall'
+  /** V2 — TALL/THIN: junction signposts, squatters' stovepipes. */
+  | 'signpost'
+  | 'stovepipe'
+  /** V2 — ROUND-ISH: the neighbourhood water tank on legs (2×2). */
+  | 'watertank';
 
 export interface Prop {
   kind: PropKind;
@@ -122,50 +134,112 @@ function blockFootprint(walkable: boolean[][], p: { x: number; y: number; w: num
  * free-ring rule. One flood fill per candidate — map build is one-time.
  */
 function wouldSealPocket(walkable: boolean[][], x: number, y: number, size: number): boolean {
-  const total = () => {
-    let n = 0;
-    for (const row of walkable) for (const w2 of row) if (w2) n++;
-    return n;
-  };
-  const flood = (): number => {
-    let sx = -1;
-    let sy = -1;
-    outer: for (let yy = 0; yy < size; yy++) {
-      for (let xx = 0; xx < size; xx++) {
-        if (walkable[yy]?.[xx] === true) {
-          sx = xx;
-          sy = yy;
-          break outer;
-        }
-      }
+  return wouldSealPocketRect(walkable, x, y, 1, 1, size);
+}
+
+/** Rect flavor for multi-tile props (V2 decor): block, flood, restore. */
+function wouldSealPocketRect(
+  walkable: boolean[][],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  size: number,
+): boolean {
+  const prior: boolean[] = [];
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      prior.push(walkable[y + dy]?.[x + dx] === true);
+      const row = walkable[y + dy];
+      if (row) row[x + dx] = false;
     }
-    if (sx < 0) return 0;
-    const seen = new Set<number>([sy * size + sx]);
-    const stack: Array<[number, number]> = [[sx, sy]];
-    while (stack.length > 0) {
-      const [cx2, cy2] = stack.pop() as [number, number];
-      for (const [dx, dy] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nx = cx2 + dx;
-        const ny = cy2 + dy;
-        if (walkable[ny]?.[nx] === true && !seen.has(ny * size + nx)) {
-          seen.add(ny * size + nx);
-          stack.push([nx, ny]);
-        }
-      }
+  }
+  const sealed = floodCount(walkable, size) !== totalWalkable(walkable);
+  let i = 0;
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const row = walkable[y + dy];
+      if (row) row[x + dx] = prior[i] as boolean;
+      i++;
     }
-    return seen.size;
-  };
-  const row = walkable[y];
-  if (!row) return true;
-  row[x] = false;
-  const sealed = flood() !== total();
-  row[x] = true;
+  }
   return sealed;
+}
+
+function totalWalkable(walkable: boolean[][]): number {
+  let n = 0;
+  for (const row of walkable) for (const w2 of row) if (w2) n++;
+  return n;
+}
+
+function floodCount(walkable: boolean[][], size: number): number {
+  let sx = -1;
+  let sy = -1;
+  outer: for (let yy = 0; yy < size; yy++) {
+    for (let xx = 0; xx < size; xx++) {
+      if (walkable[yy]?.[xx] === true) {
+        sx = xx;
+        sy = yy;
+        break outer;
+      }
+    }
+  }
+  if (sx < 0) return 0;
+  const seen = new Set<number>([sy * size + sx]);
+  const stack: Array<[number, number]> = [[sx, sy]];
+  while (stack.length > 0) {
+    const [cx2, cy2] = stack.pop() as [number, number];
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nx = cx2 + dx;
+      const ny = cy2 + dy;
+      if (walkable[ny]?.[nx] === true && !seen.has(ny * size + nx)) {
+        seen.add(ny * size + nx);
+        stack.push([nx, ny]);
+      }
+    }
+  }
+  return seen.size;
+}
+
+
+/**
+ * Would blocking `prop`'s footprint leave any node with NO adjacent
+ * walkable tile? (The koi banks taught us — S5.) Every decorative
+ * placement checks this; nodes always keep at least one approach.
+ */
+function stealsNodeAccess(walkable: boolean[][], nodes: GatherNode[], prop: Prop): boolean {
+  for (const n of nodes) {
+    const adj = [
+      [n.x + 1, n.y],
+      [n.x - 1, n.y],
+      [n.x, n.y + 1],
+      [n.x, n.y - 1],
+    ].filter(([ax, ay]) => {
+      const inProp =
+        (ax as number) >= prop.x &&
+        (ax as number) < prop.x + prop.w &&
+        (ay as number) >= prop.y &&
+        (ay as number) < prop.y + prop.h;
+      return !inProp && walkable[ay as number]?.[ax as number] === true;
+    });
+    if (adj.length === 0) return true;
+  }
+  return false;
+}
+
+/** Every tile of the prop's footprint is currently walkable. */
+function footprintWalkable(walkable: boolean[][], p: Prop): boolean {
+  for (let dy = 0; dy < p.h; dy++) {
+    for (let dx = 0; dx < p.w; dx++) {
+      if (walkable[p.y + dy]?.[p.x + dx] !== true) return false;
+    }
+  }
+  return true;
 }
 
 function isAreaFree(walkable: boolean[][], x: number, y: number, w: number, h: number): boolean {
@@ -641,34 +715,48 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { kind: 'barrels', x: 30, y: 26, w: 1, h: 1, variant: 1 },
     { kind: 'pallets', x: 9, y: 22, w: 1, h: 1, variant: 0 },
   ];
-  const stealsNodeAccess = (prop: Prop): boolean => {
-    // Would blocking this footprint leave any node with NO adjacent
-    // walkable tile? (The koi banks taught us — S5.)
-    for (const n of nodes) {
-      const adj = [
-        [n.x + 1, n.y],
-        [n.x - 1, n.y],
-        [n.x, n.y + 1],
-        [n.x, n.y - 1],
-      ].filter(([ax, ay]) => {
-        const inProp =
-          (ax as number) >= prop.x &&
-          (ax as number) < prop.x + prop.w &&
-          (ay as number) >= prop.y &&
-          (ay as number) < prop.y + prop.h;
-        return !inProp && walkable[ay as number]?.[ax as number] === true;
-      });
-      if (adj.length === 0) return true;
-    }
-    return false;
-  };
   for (const prop of vignette) {
-    if (walkable[prop.y]?.[prop.x] === true && !stealsNodeAccess(prop)) {
+    if (walkable[prop.y]?.[prop.x] === true && !stealsNodeAccess(walkable, nodes, prop)) {
       props.push(prop);
       blockFootprint(walkable, prop);
     }
   }
 
+  // ── V2 shape vocabulary: fabric, organic, tall/thin, round-ish ─────────
+  // Break the box monotony with four new silhouette families. Every
+  // placement flood-checks its whole footprint (never seals a pocket)
+  // and keeps node access; footprints may hug existing props on purpose.
+  const decor: Prop[] = [
+    // FABRIC — canopies over stashes, banners on the approaches, wash out.
+    { kind: 'canopy', x: 12, y: 6, w: 2, h: 2, variant: 0 },
+    { kind: 'canopy', x: 19, y: 31, w: 2, h: 2, variant: 1 },
+    { kind: 'laundry', x: 9, y: 33, w: 3, h: 1, variant: 0 },
+    { kind: 'laundry', x: 31, y: 24, w: 3, h: 1, variant: 1 },
+    { kind: 'banner', x: 29, y: 16, w: 1, h: 1, variant: 0 },
+    { kind: 'banner', x: 11, y: 24, w: 1, h: 1, variant: 1 },
+    { kind: 'banner', x: 21, y: 31, w: 1, h: 1, variant: 2 },
+    // TALL/THIN — junction signposts + squatters' stovepipes.
+    { kind: 'signpost', x: 29, y: 24, w: 1, h: 1, variant: 0 },
+    { kind: 'signpost', x: 16, y: 10, w: 1, h: 1, variant: 1 },
+    { kind: 'stovepipe', x: 7, y: 27, w: 1, h: 1, variant: 0 },
+    { kind: 'stovepipe', x: 33, y: 30, w: 1, h: 1, variant: 1 },
+    // ORGANIC — vines eat the Ledgerhouse flank, bushes crack the paving.
+    { kind: 'vinewall', x: 7, y: 12, w: 1, h: 1, variant: 0 },
+    { kind: 'vinewall', x: 28, y: 8, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 6, y: 22, w: 1, h: 1, variant: 0 },
+    { kind: 'wildbush', x: 14, y: 30, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 34, y: 14, w: 1, h: 1, variant: 2 },
+    { kind: 'wildbush', x: 18, y: 34, w: 1, h: 1, variant: 0 },
+    // ROUND-ISH — the neighbourhood water tank over the NE alleys.
+    { kind: 'watertank', x: 33, y: 11, w: 2, h: 2, variant: 0 },
+  ];
+  for (const prop of decor) {
+    if (!footprintWalkable(walkable, prop)) continue;
+    if (stealsNodeAccess(walkable, nodes, prop)) continue;
+    if (wouldSealPocketRect(walkable, prop.x, prop.y, prop.w, prop.h, size)) continue;
+    props.push(prop);
+    blockFootprint(walkable, prop);
+  }
 
   // Catwalk light pools (I5): the tram-platform landing + the plaza rim.
   const catwalks: TilePoint[] = [
@@ -881,6 +969,37 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
     (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6 && !nearRamp(x, y),
   );
+
+  // ── V2 shape vocabulary, Tangle flavor: squatters' fabric, weeds through
+  // the scrap, junction posts, one tank. Placed after the nodes (which get
+  // first pick) with the same guards the Filament decor uses. ────────────
+  const decor: Prop[] = [
+    { kind: 'laundry', x: 4, y: 9, w: 3, h: 1, variant: 1 },
+    { kind: 'stovepipe', x: 7, y: 5, w: 1, h: 1, variant: 0 },
+    { kind: 'stovepipe', x: 32, y: 34, w: 1, h: 1, variant: 1 },
+    { kind: 'banner', x: 12, y: 22, w: 1, h: 1, variant: 1 },
+    { kind: 'signpost', x: 9, y: 22, w: 1, h: 1, variant: 1 },
+    { kind: 'vinewall', x: 12, y: 11, w: 1, h: 1, variant: 0 },
+    { kind: 'vinewall', x: 28, y: 29, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 21, y: 28, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 35, y: 21, w: 1, h: 1, variant: 2 },
+    { kind: 'wildbush', x: 15, y: 4, w: 1, h: 1, variant: 0 },
+    { kind: 'watertank', x: 18, y: 33, w: 2, h: 2, variant: 0 },
+  ];
+  for (const prop of decor) {
+    if (!footprintWalkable(walkable, prop)) continue;
+    if (stealsNodeAccess(walkable, nodes, prop)) continue;
+    let ramped = false;
+    for (let dy = 0; dy < prop.h && !ramped; dy++) {
+      for (let dx = 0; dx < prop.w && !ramped; dx++) {
+        if (nearRamp(prop.x + dx, prop.y + dy)) ramped = true;
+      }
+    }
+    if (ramped) continue;
+    if (wouldSealPocketRect(walkable, prop.x, prop.y, prop.w, prop.h, size)) continue;
+    props.push(prop);
+    blockFootprint(walkable, prop);
+  }
 
   // ── rust-family clutter, clustered against the walls (no confetti) ─────
   const clutterTarget = Math.floor(size * size * 0.022);
