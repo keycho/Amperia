@@ -1,5 +1,67 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 RENDER OVERHAUL + TANGLE v2 run (R1–R6 + B1–B2)
+
+The whole game got a new renderer, then the Tangle got rebuilt on top of
+it. Composite: `docs/screenshots/render-overhaul-before-after.png` · the
+new district: `tangle-v2.png` · per-phase progression:
+`ref-{lane,tangle}-{before,r1,r2,r3,glow,r4,r5,r6i2,final}.png`.
+**Art freeze was lifted for this block only and is back in effect** (level
+design for shipped districts follows the §12B brief process).
+
+- **R1 · Shadows + AO** — every voxel model bakes a directional cast
+  shadow (height-sheared toward screen bottom-right, matching the
+  top-left key light; long shadows off tall things), contact-AO rings at
+  the base, ambient wall shade on tiles against tall structures, and
+  Sparks carry walking contact shadows.
+- **R2 · Block definition** — face ramp widened to top +30% / right −35%,
+  1px top-edge highlight bevels, same-material voxel seams, baked
+  crevice/overhang AO. Big shapes read BUILT from blocks.
+- **SHARP (owner addendum a)** — global NEAREST + roundPixels pipeline,
+  zoom clamped to texel-stable steps (0.5/1/2), bake details widened to
+  survive decimation. Verified: `sharpness-{before,after}-crop.png`.
+- **R3 (+addendum c) · Color grade** — splitTone() curve (darks lean
+  teal, lights lean amber, mids hold), three-tier saturation hierarchy in
+  the material system, lit faces at FULL material color (awnings vivid,
+  rust rich orange) with desaturated shadow faces, and three sanctioned
+  accents with meanings: emberOrange (hazard/heat), signalRed (danger,
+  sparse), violetNeon (premium signage) — in palette.ts + the
+  ART-DIRECTION hex table.
+- **GLOW (addendum b)** — one glow language everywhere: hot emissive core
+  (hue leaned ≤32% to white — never white-out) + hue bloom + wide skirt;
+  bulbs, lanterns, beacons, amperite, and the Dynamo as the biggest
+  softest instance.
+- **R4 · Terrain elevation** — integer tile levels + ramp/stair rules in
+  shared pathfinding (cliff edges block for players AND mobs; server and
+  client share the one canStep rule); raised Dynamo plaza behind its
+  step ring, loading dock, raised tram platform, sunken canal; platform
+  edge faces with lip highlights + foot shadows; elevation-aware
+  projection lifts everything automatically. probe-ptrade re-passed on
+  the live server over the new terrain.
+- **R5 · Atmosphere** — Dynamo god-rays, lamp cones, neon-smearing
+  puddles near real lights, warm haze over light clusters, film grain,
+  and selective sign life (one BAD flicker, two hue-cyclers).
+- **R6 · Self-critique loop** — three scored iterations (log below);
+  stopped with nothing under 4.
+- **B1 · §12B district briefs** — binding rule in ART-DIRECTION (hue +
+  accents, XL landmark, XL/L/M/S mass hierarchy, light plan) with the
+  Tangle's brief as the first instance; §12A amended to the new pipeline.
+- **B2 · The Tangle v2** — rust-canyon maze: container-stack walls 2-4
+  high, the dead Craneking hulk (lattice tower, long jib, hanging claw,
+  slow rose apex beacon) over the scrap yard, hazard-amber junction
+  lamps ≤5 tiles apart on main routes, teal ONLY as amperite/beacons,
+  rose ONLY as Scrapcache/mob/crane, sagging cable bundles between
+  pylons, two +1 terraces. Gameplay placements functionally identical
+  (node formulas, mob boxes, tram/spawn); probe-travel's full death→
+  Scrapcache→reclaim loop re-passed live. Map suite green (27 tests,
+  elevation cases included).
+
+### Tests
+
+130 green (client+shared 125 — pathfinding elevation cases new — server
+5); both workspaces strict-compile; probes re-run against the live
+server after the shared-map changes.
+
 ## R6 self-critique log (render overhaul, 2026-07-10)
 
 Rubric scored 1–5 per iteration across BOTH reference angles
@@ -7,25 +69,26 @@ Rubric scored 1–5 per iteration across BOTH reference angles
 mid-run addendum criteria (sharpness, glow quality, lit saturation) are
 scored alongside the original six.
 
-| # | criterion | iter 1 (r5) | iter 2 (r6i2) | iter 3 (post-Tangle) |
+| # | criterion | iter 1 (r5) | iter 2 (r6i2) | iter 3 (final, post-Tangle) |
 |---|---|---|---|---|
-| 1 | instant depth | 3.5 | 4 | — |
-| 2 | block crispness | 4.5 | 4.5 | — |
-| 3 | color intent | 3 | 3 | — |
-| 4 | light drama | 3.5 | 4 | — |
-| 5 | place identity | 2.5 | 2.5 | — |
-| 6 | readability | 4 | 4 | — |
-| 7 | sharpness (addendum) | 4.5 | 4.5 | — |
-| 8 | glow quality (addendum) | 4 | 4 | — |
-| 9 | lit saturation (addendum) | 3.5 | 4 | — |
+| 1 | instant depth | 3.5 | 4 | 4 |
+| 2 | block crispness | 4.5 | 4.5 | 4.5 |
+| 3 | color intent | 3 | 3 | **4.5** |
+| 4 | light drama | 3.5 | 4 | 4 |
+| 5 | place identity | 2.5 | 2.5 | **4.5** |
+| 6 | readability | 4 | 4 | 4 |
+| 7 | sharpness (addendum) | 4.5 | 4.5 | 4.5 |
+| 8 | glow quality (addendum) | 4 | 4 | 4 |
+| 9 | lit saturation (addendum) | 3.5 | 4 | 4 |
 
 - **Iter 1 → 2 fixes** (two lowest renderer-addressable: light drama,
   instant depth): shadow shear 0.95→1.15 + alpha 0.55 (longer, harder
   cast shadows), wall-shade cap 0.26→0.32, dusk vignette 0.42→0.52 —
   the histogram now runs true darks to hot brights.
-- **Iter 2 lowest two** (place identity 2.5, color intent 3) are the
-  Tangle's crate-confetti problem — their designed fix IS Part B's
-  district rebuild, so iteration 3 re-scores after it lands.
+- **Iter 2 → 3 fix** (the two lowest: place identity 2.5, color intent
+  3): Part B's Tangle rebuild — rust-canyon walls, the Craneking, the
+  §12B accent discipline. Iter 3 scored on `ref-lane-final.png` +
+  `tangle-v2.png`: **nothing under 4 → the loop stops here.**
 
 ## Status after the 2026-07-10 PLAYER ECONOMY block (E1–E4)
 
