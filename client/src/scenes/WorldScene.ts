@@ -48,7 +48,7 @@ import {
 } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
-import { addFlicker, addSteamVent } from '../render/life';
+import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
@@ -708,6 +708,12 @@ export class WorldScene extends Phaser.Scene {
           beacon.setDepth(depthForWorldY(y) + 2);
           this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
           this.placeDynamoCables(x, y);
+          // Embers boiling off the coil housing.
+          addEmberMotes(this, x, y - 70, depthForWorldY(y) + 3, {
+            count: 8,
+            radius: 56,
+            rise: 110,
+          });
           break;
         }
         case 'stall': {
@@ -723,6 +729,12 @@ export class WorldScene extends Phaser.Scene {
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, lantern, bloom(0.88), 0.1);
+          addEmberMotes(this, x + 34, y - 52, depthForWorldY(y) + 2, {
+            count: 2,
+            radius: 8,
+            rise: 34,
+            tint: p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose,
+          });
           // Sign glyph glow (left of center, under the awning).
           const sign = this.add.image(x - 6, y - 62, 'fx-glow');
           sign.setTint(PALETTE_INT.neonAmber);

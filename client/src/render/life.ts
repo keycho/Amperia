@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { mixPalette } from '@shared/palette';
+import { mixPalette, PALETTE_INT } from '@shared/palette';
 
 /**
  * Small ambient-motion helpers — the city breathing. Everything here is
@@ -99,4 +99,46 @@ export function addFlicker(
     p2: Phaser.Math.Between(680, 1150),
     phase: Math.random() * Math.PI * 2,
   });
+}
+
+/**
+ * Ember motes: tiny warm sparks drifting up and dying, each relaunching on
+ * a re-randomized path. A handful of images — no particle manager needed.
+ */
+export function addEmberMotes(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  depth: number,
+  opts: { count?: number; radius?: number; rise?: number; tint?: number } = {},
+): void {
+  const count = opts.count ?? 5;
+  const radius = opts.radius ?? 36;
+  const rise = opts.rise ?? 60;
+  const tint = opts.tint ?? PALETTE_INT.neonAmber;
+  for (let i = 0; i < count; i++) {
+    const mote = scene.add.image(x, y, 'fx-spark');
+    mote.setTint(tint);
+    mote.setBlendMode(Phaser.BlendModes.ADD);
+    mote.setDepth(depth);
+    mote.setAlpha(0);
+    const launch = (): void => {
+      if (!mote.active) return;
+      const sx = x + Phaser.Math.Between(-radius, radius);
+      const sy = y + Phaser.Math.Between(-8, 8);
+      mote.setPosition(sx, sy);
+      mote.setScale(Phaser.Math.FloatBetween(0.014, 0.028));
+      scene.tweens.add({
+        targets: mote,
+        y: sy - rise - Phaser.Math.Between(0, 26),
+        x: sx + Phaser.Math.Between(-14, 14),
+        alpha: { from: Phaser.Math.FloatBetween(0.3, 0.6), to: 0 },
+        duration: Phaser.Math.Between(1900, 3300),
+        delay: Phaser.Math.Between(0, 1600),
+        ease: 'sine.out',
+        onComplete: launch,
+      });
+    };
+    launch();
+  }
 }
