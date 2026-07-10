@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { MATERIAL_INT, PALETTE_INT, sat, splitTone } from '@shared/palette';
+import { FLOOR_SPECKLE, GRIT, gritDownsample, gritSize } from './grit';
 import { voxelHash } from './materials';
 import { shade } from './voxel';
 
@@ -42,6 +43,11 @@ const VARIANTS: Record<FloorKind, number> = {
 export function floorTileKey(kind: FloorKind, seed: number): string {
   const v = Math.abs(seed) % VARIANTS[kind];
   return `ftile-${kind}-${v}`;
+}
+
+/** Display scale for floor tiles (0.5 smooth; scaled up under grit). */
+export function floorTileScale(): number {
+  return GRIT.on ? 0.5 * (W / gritSize(W)) : 0.5;
 }
 
 /** Night-air mix — a light touch now (§2: cut the purple wash ~70%).
@@ -228,6 +234,7 @@ export function bakeFloorTiles(scene: Phaser.Scene): void {
       if (scene.textures.exists(key)) continue;
       const spec = specFor(kind, v);
       const g = scene.make.graphics({ x: 0, y: 0 }, false);
+      const speckle = GRIT.on ? (FLOOR_SPECKLE[kind] ?? 0) : 0;
       // Cell pass: chunky 8×8px cells clipped to the diamond row spans.
       for (let y = 0; y < 64; y++) {
         const [xl, xr] = span(y);
@@ -241,13 +248,29 @@ export function bakeFloorTiles(scene: Phaser.Scene): void {
           if (color === null) {
             color = shade(spec.base, (h(7) - 0.5) * 2 * spec.noise);
           }
-          g.fillStyle(color, 1);
-          g.fillRect(cx0, PAD + y, cx1 - cx0, 1);
+          if (speckle > 0) {
+            // GRIT (G2, floors): sub-cell texel speckle aligned to the
+            // downsample grid — each variation survives as one texel.
+            const f = GRIT.factor;
+            const tRow = Math.floor((PAD + y) / f);
+            for (let k = Math.floor(cx0 / f); k * f < cx1; k++) {
+              const xs = Math.max(cx0, Math.round(k * f));
+              const xe = Math.min(cx1, Math.round((k + 1) * f));
+              if (xe <= xs) continue;
+              const t = voxelHash(k, tRow, v * 131 + 7, 43);
+              g.fillStyle(shade(color, (t - 0.5) * 2 * speckle), 1);
+              g.fillRect(xs, PAD + y, xe - xs, 1);
+            }
+          } else {
+            g.fillStyle(color, 1);
+            g.fillRect(cx0, PAD + y, cx1 - cx0, 1);
+          }
         }
       }
       spec.post?.(g, v, span);
       g.generateTexture(key, W, H);
       g.destroy();
+      gritDownsample(scene, key, W, H);
     }
   }
 }

@@ -85,7 +85,7 @@ import { session, SessionEvents } from '../net/session';
 import { showCreatorOverlay, type CreatorHandle } from '../ui/creatorOverlay';
 import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
-import { floorTileKey, type FloorKind } from '../render/floorTiles';
+import { floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
@@ -1405,7 +1405,7 @@ export class WorldScene extends Phaser.Scene {
         // Coolant canal: baked coolant tiles (the one zone that stays dark).
         if (this.map.canal[ty]?.[tx] === true) {
           const tile = this.add.image(x, y, floorTileKey('coolant', (tx * 7 + ty * 13) | 0));
-          tile.setScale(0.5);
+          tile.setScale(floorTileScale());
           tile.setDepth(DEPTH_FLOOR);
           continue;
         }
@@ -1436,7 +1436,7 @@ export class WorldScene extends Phaser.Scene {
         else if (distToEdgeT <= 6 || (!isTangle && tx >= 27 && ty >= 28)) kind = 'plating';
         else kind = 'asphalt';
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
-        tile.setScale(0.5);
+        tile.setScale(floorTileScale());
         tile.setDepth(DEPTH_FLOOR);
 
         // Platform edge faces (R4b): where this tile stands above its two

@@ -22,6 +22,11 @@ export interface Material {
   stainChance: number;
   /** Saturation boost on lit (top) faces — rust glows orange in the sun. */
   litSat: number;
+  /** GRIT: per-TEXEL value swing inside a face (0 = flat face). Strong on
+   *  rust/concrete, subtle on painted panels. Only used when grit is on. */
+  speckle: number;
+  /** GRIT: multiplier on the global scratch-tick face chance. */
+  scratchMult: number;
 }
 
 const def = (
@@ -30,6 +35,8 @@ const def = (
   wearChance: number,
   stainChance: number,
   litSat: number,
+  speckle: number,
+  scratchMult: number,
   tier: 'low' | 'mid' = 'mid',
 ): Material => ({
   // LOW tier (ground/walls/backdrop) sits greyer than MID (props).
@@ -38,29 +45,31 @@ const def = (
   wearChance,
   stainChance,
   litSat,
+  speckle,
+  scratchMult,
 });
 
 export const MATERIALS = {
   /** Warm brown-orange old steel: crates, junk, machines past their prime. */
-  rust: def(MATERIAL_INT.rust, 0.11, 0.24, 0.12, 0.4),
-  rustDeep: def(MATERIAL_INT.rustDeep, 0.1, 0.2, 0.12, 0.35),
+  rust: def(MATERIAL_INT.rust, 0.11, 0.24, 0.12, 0.4, 0.13, 1.4),
+  rustDeep: def(MATERIAL_INT.rustDeep, 0.1, 0.2, 0.12, 0.35, 0.12, 1.3),
   /** Cool grey-blue plating: the Dynamo, pipes, industrial frames. */
-  gunmetal: def(MATERIAL_INT.gunmetal, 0.05, 0.07, 0.09, 0.1, 'low'),
-  gunmetalDeep: def(MATERIAL_INT.gunmetalDeep, 0.05, 0.06, 0.09, 0.08, 'low'),
+  gunmetal: def(MATERIAL_INT.gunmetal, 0.05, 0.07, 0.09, 0.1, 0.08, 1.0, 'low'),
+  gunmetalDeep: def(MATERIAL_INT.gunmetalDeep, 0.05, 0.06, 0.09, 0.08, 0.08, 1.0, 'low'),
   /** Tan decking and stall timber. */
-  wood: def(MATERIAL_INT.wood, 0.09, 0.2, 0.07, 0.25),
-  woodDeep: def(MATERIAL_INT.woodDeep, 0.09, 0.16, 0.07, 0.2),
+  wood: def(MATERIAL_INT.wood, 0.09, 0.2, 0.07, 0.25, 0.08, 0.8),
+  woodDeep: def(MATERIAL_INT.woodDeep, 0.09, 0.16, 0.07, 0.2, 0.08, 0.8),
   /** Weathered paint — truer color under the lamps (addendum c). */
-  paintTeal: def(MATERIAL_INT.paintTeal, 0.06, 0.12, 0.1, 0.5),
-  paintOchre: def(MATERIAL_INT.paintOchre, 0.06, 0.12, 0.1, 0.5),
-  paintRose: def(MATERIAL_INT.paintRose, 0.06, 0.12, 0.1, 0.5),
+  paintTeal: def(MATERIAL_INT.paintTeal, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  paintOchre: def(MATERIAL_INT.paintOchre, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  paintRose: def(MATERIAL_INT.paintRose, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
   /** Neutral grey-mauve pavement and curbs. */
-  concrete: def(MATERIAL_INT.concrete, 0.045, 0.09, 0.13, 0.05, 'low'),
-  concreteDeep: def(MATERIAL_INT.concreteDeep, 0.045, 0.08, 0.13, 0.05, 'low'),
+  concrete: def(MATERIAL_INT.concrete, 0.045, 0.09, 0.13, 0.05, 0.11, 1.2, 'low'),
+  concreteDeep: def(MATERIAL_INT.concreteDeep, 0.045, 0.08, 0.13, 0.05, 0.11, 1.2, 'low'),
   /** Character skin: quiet noise, no wear/stains, gentle lit warmth. */
-  skin: def(MATERIAL_INT.skin, 0.035, 0, 0, 0.12),
+  skin: def(MATERIAL_INT.skin, 0.035, 0, 0, 0.12, 0.02, 0),
   /** Character cloth (hair, jackets, knitwear): soft weave variation. */
-  cloth: def(MATERIAL_INT.paintRose, 0.06, 0, 0.04, 0.3),
+  cloth: def(MATERIAL_INT.paintRose, 0.06, 0, 0.04, 0.3, 0.04, 0),
 } as const;
 
 export type MaterialId = keyof typeof MATERIALS;

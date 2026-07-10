@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE_INT } from '@shared/palette';
+import { FILM_GRAIN_ALPHA } from './grit';
 import { bloom } from './styleConfig';
 
 /**
@@ -107,12 +108,13 @@ export function addHaze(
   haze.setDepth(1e5 + 2);
 }
 
-/** Screen-fixed film grain/dither — kills banding, adds tooth. */
+/** Screen-fixed film grain/dither — kills banding, adds tooth (alpha in
+ *  grit.ts — strengthened a step by the grit pass, still subtle). */
 export function addFilmGrain(scene: Phaser.Scene): void {
   const grain = scene.add.tileSprite(0, 0, scene.scale.width, scene.scale.height, 'fx-grain');
   grain.setOrigin(0, 0);
   grain.setScrollFactor(0);
-  grain.setAlpha(0.05);
+  grain.setAlpha(FILM_GRAIN_ALPHA);
   grain.setDepth(9e5);
   const layout = () => grain.setSize(scene.scale.width, scene.scale.height);
   scene.scale.on('resize', layout);

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PALETTE_INT, sat, splitTone } from '@shared/palette';
 import { DEPTH_SHADOW } from '../iso/project';
+import { GRIT, GRIT_FACE, gritDownsample } from './grit';
 import { voxelHash, type Material } from './materials';
 
 /**
@@ -25,6 +26,12 @@ export const VOXEL_UNIT = 8;
 const HALF_W = VOXEL_UNIT; // 8px at 2× = half diamond width
 const HALF_H = VOXEL_UNIT / 2; // 4px at 2×
 const SIDE_H = VOXEL_UNIT; // vertical face height at 2×
+
+// GRIT (G1/G2): hi-res bake px per final texel, and the widths that keep
+// bevels/seams/outlines exactly one texel thick after the downsample.
+const GF = GRIT.factor;
+const LINE_W = GRIT.on ? Math.round(GF) : 2;
+const OUTLINE_OFF = GRIT.on ? Math.round(GF) : 1;
 
 export interface Voxel {
   x: number;
@@ -312,13 +319,92 @@ function drawMatCube(
   g.lineTo(px + HALF_W, py + SIDE_H);
   g.closePath();
   g.fillPath();
+
+  // FACE GRIT (G2): intra-face detail at the final texel scale — only when
+  // the texel cap is on (the smooth bake keeps its flat faces). Speckle
+  // cells align to the downsample grid so each survives as ONE texel.
+  if (GRIT.on) {
+    const spk = mat.speckle;
+    if (spk > 0) {
+      // Top diamond: sample its texel grid, keep off the tips.
+      if (exp.top) {
+        const nu = Math.max(2, Math.round((2 * HALF_W) / GF));
+        const nv = Math.max(2, Math.round((2 * HALF_H) / GF));
+        for (let u = 0; u < nu; u++) {
+          for (let w2 = 0; w2 < nv; w2++) {
+            const dx = ((u + 0.5) / nu - 0.5) * 2 * HALF_W;
+            const dy = ((w2 + 0.5) / nv - 0.5) * 2 * HALF_H;
+            if (
+              Math.abs(dx) / HALF_W + Math.abs(dy) / HALF_H >
+              GRIT_FACE.topInset
+            ) {
+              continue;
+            }
+            const t = voxelHash(v.x, v.y, v.z, 101 + u * 53 + w2 * 97);
+            g.fillStyle(shade(top, (t - 0.5) * 2 * spk), 1);
+            g.fillRect(px + dx - GF / 2, py + dy - GF / 2, GF, GF);
+          }
+        }
+      }
+      // Side faces: texel grid over each exposed parallelogram.
+      const side = (isRight: boolean, color: number, saltBase: number): void => {
+        const nu = Math.max(2, Math.round(HALF_W / GF));
+        const nw = Math.max(2, Math.round(SIDE_H / GF));
+        for (let u = 0; u < nu; u++) {
+          for (let w2 = 0; w2 < nw; w2++) {
+            const uu = (u + 0.5) / nu;
+            const x = isRight ? px + uu * HALF_W : px - HALF_W + uu * HALF_W;
+            const yTop = isRight ? py + HALF_H - uu * HALF_H : py + uu * HALF_H;
+            const y = yTop + ((w2 + 0.5) / nw) * SIDE_H;
+            const t = voxelHash(v.x, v.y, v.z, saltBase + u * 53 + w2 * 97);
+            g.fillStyle(shade(color, (t - 0.5) * 2 * spk), 1);
+            g.fillRect(x - GF / 2, y - GF / 2, GF, GF);
+          }
+        }
+      };
+      if (exp.left) side(false, left, 211);
+      if (exp.right) side(true, right, 307);
+    }
+    // Scratch ticks: a short 1×2-texel mark on a fraction of side faces.
+    const scratch = GRIT_FACE.scratchFaceChance * mat.scratchMult;
+    const tick = (isRight: boolean, color: number, salt: number): void => {
+      if (voxelHash(v.x, v.y, v.z, salt) >= scratch) return;
+      const uu = 0.2 + voxelHash(v.x, v.y, v.z, salt + 2) * 0.6;
+      const ww = 0.1 + voxelHash(v.x, v.y, v.z, salt + 4) * 0.5;
+      const x = isRight ? px + uu * HALF_W : px - HALF_W + uu * HALF_W;
+      const yTop = isRight ? py + HALF_H - uu * HALF_H : py + uu * HALF_H;
+      const dark = voxelHash(v.x, v.y, v.z, salt + 6) < 0.5;
+      g.fillStyle(
+        shade(color, dark ? -GRIT_FACE.scratchShade : GRIT_FACE.scratchShade),
+        0.9,
+      );
+      g.fillRect(x - GF / 2, yTop + ww * SIDE_H - GF, GF, GF * 2);
+    };
+    if (exp.left) tick(false, left, 401);
+    if (exp.right) tick(true, right, 409);
+    // Edge wear (G2): the exposed corner texel where top meets a visible
+    // side face catches the light — brightened, chance-gated per material.
+    if (exp.top) {
+      const wear = mat.wearChance * GRIT_FACE.cornerWearMult;
+      if (exp.left && voxelHash(v.x, v.y, v.z, 421) < wear) {
+        g.fillStyle(shade(top, GRIT_FACE.cornerWearShade), 1);
+        g.fillRect(px - HALF_W, py - GF / 2, GF, GF);
+      }
+      if (exp.right && voxelHash(v.x, v.y, v.z, 431) < wear) {
+        g.fillStyle(shade(top, GRIT_FACE.cornerWearShade), 1);
+        g.fillRect(px + HALF_W - GF, py - GF / 2, GF, GF);
+      }
+    }
+  }
+
   // Top-edge highlight bevel (R2b): a 1px lighter line where the top face
   // meets a visible side face or an open back edge — the "crisp" detail.
   if (exp.top) {
     const bevel = shade(top, 0.45);
-    // 2px at the 2× bake = 1px on screen at zoom 1 (survives decimation).
+    // One texel thick after the grit downsample (2px = 1px on screen at
+    // the smooth bake).
     const line = (x1: number, y1: number, x2: number, y2: number, a: number) => {
-      g.lineStyle(2, bevel, a);
+      g.lineStyle(LINE_W, bevel, a);
       g.beginPath();
       g.moveTo(x1, y1);
       g.lineTo(x2, y2);
@@ -345,7 +431,7 @@ function drawMatCube(
       color: number,
       a: number,
     ) => {
-      g.lineStyle(2, color, a);
+      g.lineStyle(LINE_W, color, a);
       g.beginPath();
       g.moveTo(x1, y1);
       g.lineTo(x2, y2);
@@ -376,7 +462,7 @@ function drawMatCube(
   // Edge wear: a light chipped line along an exposed top edge.
   if (exp.top && voxelHash(v.x, v.y, v.z, 13) < mat.wearChance) {
     const chipLeft = voxelHash(v.x, v.y, v.z, 17) < 0.5;
-    g.lineStyle(2, shade(baseColor, 0.5), 0.9);
+    g.lineStyle(LINE_W, shade(baseColor, 0.5), 0.9);
     g.beginPath();
     if (chipLeft) {
       g.moveTo(px - HALF_W, py);
@@ -392,7 +478,7 @@ function drawMatCube(
     const t = 0.2 + voxelHash(v.x, v.y, v.z, 23) * 0.6;
     const sx = px - HALF_W + t * HALF_W;
     const sy = py + t * HALF_H;
-    g.lineStyle(2, shade(left, -0.32), 0.55);
+    g.lineStyle(LINE_W, shade(left, -0.32), 0.55);
     g.beginPath();
     g.moveTo(sx, sy + 1);
     g.lineTo(sx, sy + SIDE_H * (0.5 + voxelHash(v.x, v.y, v.z, 29) * 0.5));
@@ -402,7 +488,7 @@ function drawMatCube(
     const t = 0.2 + voxelHash(v.x, v.y, v.z, 37) * 0.6;
     const sx = px + t * HALF_W;
     const sy = py + HALF_H - t * HALF_H;
-    g.lineStyle(2, shade(right, -0.32), 0.55);
+    g.lineStyle(LINE_W, shade(right, -0.32), 0.55);
     g.beginPath();
     g.moveTo(sx, sy + 1);
     g.lineTo(sx, sy + SIDE_H * (0.5 + voxelHash(v.x, v.y, v.z, 41) * 0.5));
@@ -474,12 +560,13 @@ function bakeShadow(
   }
   g.generateTexture(key, w, h);
   g.destroy();
+  const mult = gritDownsample(scene, key, w, h);
 
   const baked: BakedVoxelSprite = {
     key,
     originX: (anchorX + ox) / w,
     originY: (anchorY + oy) / h,
-    scale: 0.5,
+    scale: 0.5 * mult,
   };
   registry.set(regKey, baked);
   return baked;
@@ -506,7 +593,7 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
     (a, b) => a.x + a.y - (b.x + b.y) || a.z - b.z,
   );
   const proj = project(sorted);
-  const pad = 3;
+  const pad = 3 + OUTLINE_OFF;
   const w = Math.ceil(proj.maxX - proj.minX) + pad * 2;
   const h = Math.ceil(proj.maxY - proj.minY) + pad * 2;
   const ox = pad - proj.minX;
@@ -515,12 +602,13 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
 
   // Silhouette passes: ink outline all around, then a warm rim top-left.
+  // Offsets scale with the grit texel so the outline stays ~1 texel wide.
   if (model.outline !== false) {
     for (const [dx, dy] of [
-      [-1, 0],
-      [1, 0],
-      [0, -1],
-      [0, 1],
+      [-OUTLINE_OFF, 0],
+      [OUTLINE_OFF, 0],
+      [0, -OUTLINE_OFF],
+      [0, OUTLINE_OFF],
     ] as const) {
       for (const p of proj.points) {
         drawCube(g, p.px + ox + dx, p.py + oy + dy, null);
@@ -529,7 +617,7 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
   }
   if (model.warmRim === true) {
     for (const p of proj.points) {
-      drawCube(g, p.px + ox - 1, p.py + oy - 1, PALETTE_INT.warmGlow, 1);
+      drawCube(g, p.px + ox - OUTLINE_OFF, p.py + oy - OUTLINE_OFF, PALETTE_INT.warmGlow, 1);
     }
   }
 
@@ -563,12 +651,15 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
 
   g.generateTexture(key, w, h);
   g.destroy();
+  // GRIT (G1): decimate to the texel grid; scale back up nearest-neighbor
+  // so the chunky grid rides the world at every zoom.
+  const mult = gritDownsample(scene, key, w, h);
 
   const baked: BakedVoxelSprite = {
     key,
     originX: (proj.anchorX + ox) / w,
     originY: (proj.anchorY + oy) / h,
-    scale: 0.5,
+    scale: 0.5 * mult,
   };
   registry.set(model.name, baked);
   if (model.shadow !== false) bakeShadow(scene, model.name, visible);
