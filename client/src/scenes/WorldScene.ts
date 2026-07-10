@@ -75,6 +75,7 @@ import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { addLayeredGlow } from '../render/glow';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -1238,17 +1239,22 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
-          // Crown halo — the biggest light in the city.
-          const halo = this.add.image(x, y - 168, 'fx-glow');
-          halo.setTint(PALETTE_INT.warmGlow);
-          halo.setAlpha(bloom(0.44));
-          halo.setScale(1.35);
-          halo.setBlendMode(Phaser.BlendModes.ADD);
-          halo.setDepth(depthForWorldY(y) + 1);
+          // Crown halo — the biggest, SOFTEST instance of the glow language
+          // (addendum b): hot core + hue bloom + wide skirt, all amber.
+          // Biggest and SOFTEST: wide skirt, restrained core — the coil
+          // bakes supply the hot metal; the glow must never white them out.
+          const halo = addLayeredGlow(
+            this,
+            x,
+            y - 160,
+            PALETTE_INT.neonAmber,
+            1.5,
+            depthForWorldY(y) + 1,
+            0.38,
+          );
           this.tweens.add({
-            targets: halo,
-            alpha: { from: bloom(0.36), to: bloom(0.52) },
-            scale: { from: 1.28, to: 1.42 },
+            targets: [halo.mid, halo.outer],
+            alpha: { from: bloom(0.28), to: bloom(0.44) },
             duration: 2200,
             yoyo: true,
             repeat: -1,
@@ -1272,13 +1278,8 @@ export class WorldScene extends Phaser.Scene {
               ease: 'sine.inout',
             });
           });
-          // Teal beacon glint on the cap.
-          const beacon = this.add.image(x, y - 210, 'fx-glow');
-          beacon.setTint(PALETTE_INT.neonTeal);
-          beacon.setBlendMode(Phaser.BlendModes.ADD);
-          beacon.setScale(0.12);
-          beacon.setAlpha(bloom(0.6));
-          beacon.setDepth(depthForWorldY(y) + 2);
+          // Teal beacon glint on the cap (layered mini-glow, own hue).
+          addLayeredGlow(this, x, y - 210, PALETTE_INT.neonTeal, 0.12, depthForWorldY(y) + 2);
           const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
@@ -1377,14 +1378,11 @@ export class WorldScene extends Phaser.Scene {
               send.shop(this.room, { action: 'browse', stallId });
             },
           );
-          // Lantern glow on the baked lantern voxel (right post, mid-height).
-          const lantern = this.add.image(x + 34, y - 58, 'fx-glow');
-          lantern.setTint(p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose);
-          lantern.setAlpha(bloom(0.88));
-          lantern.setScale(0.14);
-          lantern.setBlendMode(Phaser.BlendModes.ADD);
-          lantern.setDepth(depthForWorldY(y) + 1);
-          addFlicker(this, lantern, bloom(0.88), 0.1);
+          // Lantern glow on the baked lantern voxel (right post, mid-height)
+          // — layered core + hue bloom (addendum b).
+          const lanternTint = p.variant % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose;
+          const lantern = addLayeredGlow(this, x + 34, y - 58, lanternTint, 0.14, depthForWorldY(y) + 1);
+          addFlicker(this, lantern.mid, bloom(0.5), 0.1);
           addEmberMotes(this, x + 34, y - 52, depthForWorldY(y) + 2, {
             count: 2,
             radius: 8,
@@ -1666,14 +1664,11 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
-          // A single dim lantern for the dark corners — barely holding on.
-          const glow = this.add.image(x, y - 32, 'fx-glow');
-          glow.setTint(PALETTE_INT.warmGlow);
-          glow.setBlendMode(Phaser.BlendModes.ADD);
-          glow.setScale(0.09);
-          glow.setAlpha(bloom(0.42));
-          glow.setDepth(depthForWorldY(y) + 1);
-          addFlicker(this, glow, bloom(0.42), 0.16);
+          // A single dim lantern for the dark corners — barely holding on,
+          // but still a proper core + bloom (addendum b).
+          const glow = addLayeredGlow(this, x, y - 32, PALETTE_INT.warmGlow, 0.09, depthForWorldY(y) + 1, 0.55);
+          addFlicker(this, glow.mid, bloom(0.28), 0.16);
+          addFlicker(this, glow.core, bloom(0.5), 0.12);
           const pool = this.addGroundPool(x, y - 2, PALETTE_INT.warmGlow, 0.34);
           pool.setAlpha(0.15);
           break;
@@ -1833,17 +1828,13 @@ export class WorldScene extends Phaser.Scene {
         const tint = bulbTints[bulbIdx++ % bulbTints.length] as number;
         g.fillStyle(tint, 0.95);
         g.fillCircle(p.x, p.y + 2, 2.2);
-        const glow = this.add.image(p.x, p.y + 2, 'fx-glow');
-        glow.setTint(tint);
-        glow.setBlendMode(Phaser.BlendModes.ADD);
-        glow.setScale(0.062);
-        glow.setAlpha(bloom(0.85));
-        glow.setDepth(1e5 + 1);
+        // Glow language (addendum b): hot core + hue bloom per bulb.
+        const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.08, 1e5 + 1);
         // Every third bulb wavers a touch — strings feel strung, not printed.
-        if (i % 3 === 0) addFlicker(this, glow, bloom(0.85), 0.09);
+        if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
-        // The Citywide Charge dims/relights these (E3b) — keep the handle.
-        this.stringBulbGlows.push(glow);
+        // The Citywide Charge dims/relights these (E3b) — keep the handles.
+        this.stringBulbGlows.push(glow.core, glow.mid, glow.outer);
       }
     }
     this.applyChargeLighting(this.chargeLightingTier);
@@ -1859,9 +1850,11 @@ export class WorldScene extends Phaser.Scene {
     if (this.stringBulbGlows.length === 0) return;
     const fraction = Math.min(1, 0.45 + 0.19 * tier);
     this.stringBulbGlows.forEach((glow, i) => {
-      // Deterministic thinning: bulb i stays lit if its slot falls inside
-      // the fraction (stable as the tier climbs — lights ADD, never shuffle).
-      const lit = (i % 100) / 100 < fraction;
+      // Deterministic thinning: each bulb owns THREE glow layers (core/
+      // mid/outer — addendum b), so the lit test keys on the bulb index;
+      // lights ADD as the tier climbs, never shuffle.
+      const bulb = Math.floor(i / 3);
+      const lit = (bulb % 100) / 100 < fraction;
       glow.setVisible(lit);
     });
   }

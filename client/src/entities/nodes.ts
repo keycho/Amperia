@@ -5,6 +5,7 @@ import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
 import { TEX_SCALE } from '../render/textures';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { addLayeredGlow, type LayeredGlow } from '../render/glow';
 import { sound } from '../audio/sound';
 import { addVoxelSprite, applyVoxelTexture } from '../render/voxel';
 
@@ -133,6 +134,9 @@ export class AmperiteNode implements NodeView {
     this.glow.setScale(0.16);
     this.glow.setAlpha(0.0);
     this.glow.setDepth(depthForWorldY(y) + 2);
+    // Standing amperite glow (addendum b): the crystal is a light source
+    // even between pulses — "something valuable glowing in the dark".
+    addLayeredGlow(scene, x, y - 26, PALETTE_INT.neonTeal, 0.14, depthForWorldY(y) + 1, 0.4);
   }
 
   /** Animate the pulse locally from the server's rhythm parameters. */
@@ -334,6 +338,7 @@ export class AntennaNode implements NodeView {
   readonly image: Phaser.GameObjects.Image;
   depleted = false;
   private readonly beaconGlow: Phaser.GameObjects.Image;
+  private readonly beaconParts: LayeredGlow;
 
   constructor(
     scene: Phaser.Scene,
@@ -348,15 +353,14 @@ export class AntennaNode implements NodeView {
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
 
-    this.beaconGlow = scene.add.image(x, y - 108, 'fx-glow');
-    this.beaconGlow.setTint(PALETTE_INT.neonTeal);
-    this.beaconGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.beaconGlow.setScale(0.26);
-    this.beaconGlow.setAlpha(bloom(0.75));
-    this.beaconGlow.setDepth(depthForWorldY(y) + 2);
+    // Beacon in the glow language (addendum b): hot core + teal bloom;
+    // the breathing tween rides the mid layer.
+    const beacon = addLayeredGlow(scene, x, y - 108, PALETTE_INT.neonTeal, 0.24, depthForWorldY(y) + 2);
+    this.beaconGlow = beacon.mid;
+    this.beaconParts = beacon;
     scene.tweens.add({
       targets: this.beaconGlow,
-      alpha: { from: bloom(0.25), to: bloom(0.5) },
+      alpha: { from: bloom(0.3), to: bloom(0.55) },
       duration: 1400,
       yoyo: true,
       repeat: -1,
@@ -374,7 +378,9 @@ export class AntennaNode implements NodeView {
 
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
-    this.beaconGlow.setVisible(!depleted);
+    this.beaconParts.core.setVisible(!depleted);
+    this.beaconParts.mid.setVisible(!depleted);
+    this.beaconParts.outer.setVisible(!depleted);
     this.image.setAlpha(depleted ? 0.75 : 1);
     if (depleted) this.image.disableInteractive();
     else this.image.setInteractive({ useHandCursor: true });
