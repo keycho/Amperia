@@ -752,11 +752,14 @@ export class WorldScene extends Phaser.Scene {
     const rng: Rng = makeRng(CONFIG.map.seed ^ 0x5eed);
 
     // Where lamplight lands (tile coords) — the wet glaze catches it there.
+    // §B9 light discipline: every sheen spot maps to a REAL glow source.
     const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
     for (const p of this.map.props) {
       if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
-      if (p.kind === 'planter') lightSpots.push({ x: p.x, y: p.y, cool: false });
+      if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
+      if (p.kind === 'alleylamp') lightSpots.push({ x: p.x, y: p.y, cool: false });
+      if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
     }
     for (const n of this.map.nodes) {
       if (n.kind === 'antenna') lightSpots.push({ x: n.x, y: n.y, cool: true });
@@ -810,12 +813,26 @@ export class WorldScene extends Phaser.Scene {
           continue;
         }
 
-        let fill: number;
+        // §B10 material patchwork: plating in the plaza, decking on the
+        // market lane and the canal boardwalk, night streets elsewhere.
+        const inLane = ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
+        const onBoardwalk = tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
         const inPlaza = plazaDist <= plaza.radius;
-        if (inPlaza) {
-          // Night market at night: even the plaza is deep plum — the warmth
-          // on it comes from lamplight pools, not from the ground color.
-          fill = mixPalette('duskSky', 'groundBase', 0.24 + rng() * 0.08);
+        const onStepRing = plazaDist === plaza.radius;
+        let fill: number;
+        if (inLane || onBoardwalk) {
+          // Wood decking under the night air.
+          fill = this.lerpColor(
+            MATERIAL_INT.wood,
+            PALETTE_INT.duskSky,
+            0.52 + rng() * 0.06,
+          );
+        } else if (onStepRing) {
+          // The plaza's raised step ring: a shade lighter than the plates.
+          fill = this.lerpColor(MATERIAL_INT.concrete, PALETTE_INT.duskSky, 0.42 + rng() * 0.05);
+        } else if (inPlaza) {
+          // Concrete plating, sunk in plum night air.
+          fill = this.lerpColor(MATERIAL_INT.concrete, PALETTE_INT.duskSky, 0.52 + rng() * 0.07);
         } else {
           // Streets: deep ink-plum, sinking toward ink at the fringe.
           const t = 0.12 + edgeness * 0.3 + rng() * 0.06;
@@ -826,10 +843,53 @@ export class WorldScene extends Phaser.Scene {
         this.traceDiamond(g, x, y);
         g.fillPath();
 
-        // Plaza decking planks (subtle seams along the NE facet).
-        if (inPlaza && (tx + ty) % 2 === 0) {
-          g.lineStyle(1, mixPalette('groundAccent', 'ink', 0.3), 0.1);
-          g.lineBetween(x - TILE_W / 4, y - TILE_H / 4 + 2, x + TILE_W / 4, y + TILE_H / 4 + 2);
+        // Decking planks: seams across the boards + the odd knot.
+        if (inLane || onBoardwalk) {
+          g.lineStyle(1, this.lerpColor(MATERIAL_INT.woodDeep, PALETTE_INT.ink, 0.45), 0.5);
+          g.lineBetween(x - TILE_W / 4, y + TILE_H / 4, x + TILE_W / 4, y - TILE_H / 4);
+          if (rng() < 0.2) {
+            g.fillStyle(this.lerpColor(MATERIAL_INT.woodDeep, PALETTE_INT.ink, 0.3), 0.6);
+            g.fillCircle(x - 8 + rng() * 16, y - 4 + rng() * 8, 1.3);
+          }
+        }
+
+        // Plaza plating: 2×2 plate seams with rivets at the plate corners.
+        if (inPlaza && !onStepRing) {
+          if (tx % 2 === 0) {
+            g.lineStyle(1, this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.4), 0.32);
+            g.lineBetween(x - TILE_W / 2, y, x, y + TILE_H / 2);
+          }
+          if (ty % 2 === 0) {
+            g.lineStyle(1, this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.4), 0.32);
+            g.lineBetween(x, y + TILE_H / 2, x + TILE_W / 2, y);
+          }
+          if (tx % 2 === 0 && ty % 2 === 0) {
+            g.fillStyle(this.lerpColor(MATERIAL_INT.gunmetal, PALETTE_INT.ink, 0.35), 0.55);
+            g.fillCircle(x, y + TILE_H / 2 - 3, 1.4);
+          }
+          // The occasional drainage grate.
+          if (rng() < 0.015) {
+            g.fillStyle(this.lerpColor(MATERIAL_INT.gunmetalDeep, PALETTE_INT.ink, 0.5), 0.85);
+            g.fillRect(x - 9, y - 4, 18, 8);
+            g.lineStyle(1, this.lerpColor(MATERIAL_INT.gunmetal, PALETTE_INT.ink, 0.2), 0.7);
+            for (let sl = -6; sl <= 6; sl += 4) g.lineBetween(x + sl, y - 3, x + sl, y + 3);
+          }
+        }
+
+        // Step-ring lip: a bright leading edge + shadow line under it.
+        if (onStepRing) {
+          g.lineStyle(1.6, this.lerpColor(MATERIAL_INT.concrete, PALETTE_INT.warmGlow, 0.22), 0.5);
+          g.lineBetween(x - TILE_W / 2, y, x, y + TILE_H / 2);
+          g.lineBetween(x, y + TILE_H / 2, x + TILE_W / 2, y);
+          g.lineStyle(1.2, PALETTE_INT.ink, 0.5);
+          g.lineBetween(x - TILE_W / 2 + 2, y + 3, x, y + TILE_H / 2 + 3);
+          g.lineBetween(x, y + TILE_H / 2 + 3, x + TILE_W / 2 - 2, y + 3);
+        }
+
+        // Stains: quiet dark blotches, denser off the lit paths.
+        if (!inLane && !onBoardwalk && rng() < (inPlaza ? 0.03 : 0.05)) {
+          g.fillStyle(this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.55), 0.22);
+          g.fillEllipse(x - 8 + rng() * 16, y - 4 + rng() * 8, 10 + rng() * 12, 5 + rng() * 5);
         }
 
         // No grid strokes — the floor reads through shading variation only
@@ -861,6 +921,29 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
+    // Rugs at the stall fronts (§B10): muted woven mats, one per stall.
+    const rugTints = [MATERIAL_INT.paintRose, MATERIAL_INT.paintOchre, MATERIAL_INT.paintTeal];
+    let rugIdx = 0;
+    for (const p of this.map.props) {
+      if (p.kind !== 'stall') continue;
+      const front = tileToWorld(p.x + 0.5, p.y + p.h);
+      const tint = this.lerpColor(
+        rugTints[rugIdx++ % rugTints.length] as number,
+        PALETTE_INT.duskSky,
+        0.35,
+      );
+      g.fillStyle(tint, 0.55);
+      g.beginPath();
+      g.moveTo(front.x, front.y - TILE_H / 2 + 4);
+      g.lineTo(front.x + TILE_W - 6, front.y + TILE_H / 2 - 2);
+      g.lineTo(front.x + TILE_W / 2 - 3, front.y + TILE_H - 5);
+      g.lineTo(front.x - TILE_W / 2 + 3, front.y + 3);
+      g.closePath();
+      g.fillPath();
+      g.lineStyle(1, this.lerpColor(tint, PALETTE_INT.warmGlow, 0.35), 0.5);
+      g.strokePath();
+    }
+
     // THE VOID (§B5): the map is an island of light — its last rows fade
     // into near-black so screenshot corners are dark, not plum.
     const voidG = this.add.graphics();
@@ -877,6 +960,16 @@ export class WorldScene extends Phaser.Scene {
         voidG.fillPath();
       }
     }
+  }
+
+  /** Plain integer color lerp for material/palette blends in the floor. */
+  private lerpColor(a: number, b: number, t: number): number {
+    const clamp = Math.max(0, Math.min(1, t));
+    const mix = (sa: number, sb: number) => Math.round(sa + (sb - sa) * clamp);
+    const r = mix((a >> 16) & 0xff, (b >> 16) & 0xff);
+    const gc = mix((a >> 8) & 0xff, (b >> 8) & 0xff);
+    const bl = mix(a & 0xff, b & 0xff);
+    return (r << 16) | (gc << 8) | bl;
   }
 
   private traceDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
