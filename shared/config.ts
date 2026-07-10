@@ -412,6 +412,8 @@ export const CONFIG = {
     compostCount: 8,
     /** Loftpod berth pads are 3×3; the count comes from the map. */
     berthSize: 3,
+    /** Compost glint rares (replace the junk rare in this district). */
+    rares: ['silverfern', 'emberseed'],
   },
 
   /**

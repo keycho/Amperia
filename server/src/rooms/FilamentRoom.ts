@@ -3525,6 +3525,12 @@ export class FilamentRoom extends Room<FilamentState> {
         }
         if (s.elapsed >= s.seconds) {
           const roll = rollGather(cfg, s.glintHit, this.rng);
+          // D2c: the Terrarium's compost gives up GARDEN rares instead —
+          // same odds, same glint discipline, its own Manifest page.
+          if (this.districtId === 'terrarium' && roll.rare !== null) {
+            const pool = CONFIG.terrarium.rares;
+            roll.rare = pool[Math.floor(this.rng() * pool.length)] as ItemId;
+          }
           rt.session = null;
           this.setGatheringFlag(sessionId, false);
           this.grantLoot(client, rt, s.nodeId, 'salvage', roll.amount, roll.rare, {

@@ -12,6 +12,7 @@ export type ManifestPageId =
   | 'delving'
   | 'skimming'
   | 'tuning'
+  | 'gardens'
   | 'mobs'
   | 'wardrobe';
 
@@ -27,6 +28,7 @@ export const MANIFEST_PAGES: readonly ManifestPageDef[] = [
   { id: 'delving', label: 'Delving', blurb: 'What the seams were hiding.' },
   { id: 'skimming', label: 'Skimming', blurb: 'What the canal let go.' },
   { id: 'tuning', label: 'Tuning', blurb: 'What the static was saying.' },
+  { id: 'gardens', label: 'Gardens', blurb: 'What the Terrarium let you keep.' },
   { id: 'mobs', label: 'Junkbots', blurb: 'What the ferals left behind.' },
   { id: 'wardrobe', label: 'Wardrobe', blurb: 'What the city put on your back.' },
 ];
@@ -65,6 +67,9 @@ export const MANIFEST_ENTRIES: readonly ManifestEntryDef[] = [
     'item',
   ),
   E('ghostFrequency', 'tuning', 'Ghost Frequency', 'Locked signal, steady hands.', 'item'),
+  // The Terrarium's compost secrets (D2c).
+  E('silverfern', 'gardens', 'Silverfern', 'The compost keeps what the beds lose.', 'item'),
+  E('emberseed', 'gardens', 'Emberseed', 'Sharp eyes on the garden glints.', 'item'),
   // Mob trophies.
   E('dentedCrest', 'mobs', 'Dented Crest', 'Feral Scuttlebots wear their history.', 'item'),
   // The wardrobe (cosmetics are Manifest entries too).
@@ -122,6 +127,7 @@ export const PAGE_AWARDS: readonly PageAward[] = [
   { page: 'delving', title: 'Seamreader' },
   { page: 'skimming', title: 'Koiwhisper' },
   { page: 'tuning', title: 'Statictamer' },
+  { page: 'gardens', title: 'Seedkeeper' },
   { page: 'mobs', title: 'Botbreaker' },
   { page: 'wardrobe', title: 'City-Dressed' },
 ];

@@ -176,7 +176,42 @@ const BUILDERS: Record<string, (accent: number) => Voxel[]> = {
   'icon-skimnet': (a) => skimnetModel(a),
   'icon-tuner': (a) => tunerModel(a),
   'icon-riveter': (a) => riveterModel(a),
+  // D2c garden rares.
+  'icon-silverfern': () => silverfernModel(),
+  'icon-emberseed': () => emberseedModel(),
 };
+
+/** A frond gone chrome — stem + mirrored silver-green leaflets. */
+function silverfernModel(): Voxel[] {
+  const silver = shade(PALETTE_INT.solarGreen, 0.45);
+  const deep = blendInt(PALETTE_INT.solarGreen, C.ink, 0.35);
+  const v: Voxel[] = [];
+  for (let z = 0; z < 6; z++) v.push({ x: 3, y: 3, z, c: deep });
+  for (const [dx, dz] of [
+    [1, 4], [2, 3], [1, 2], [2, 1], [1, 5],
+  ] as const) {
+    v.push({ x: 3 - dx, y: 3, z: dz, c: silver });
+    v.push({ x: 3 + dx, y: 3, z: dz, c: (dx + dz) % 2 === 0 ? silver : PALETTE_INT.solarGreen });
+  }
+  v.push({ x: 3, y: 3, z: 6, c: silver });
+  return v;
+}
+
+/** A seed that never sprouts — a warm kernel with one hot fleck. */
+function emberseedModel(): Voxel[] {
+  const v: Voxel[] = [];
+  for (const [x, y, z, w, d, h] of [
+    [2, 2, 0, 3, 3, 1], [1, 1, 1, 5, 5, 2], [2, 2, 3, 3, 3, 1],
+  ] as const) {
+    for (let dx = 0; dx < w; dx++)
+      for (let dy = 0; dy < d; dy++)
+        for (let dz = 0; dz < h; dz++)
+          v.push({ x: x + dx, y: y + dy, z: z + dz, c: blendInt(PALETTE_INT.emberOrange, C.rustDeep, 0.45) });
+  }
+  v.push({ x: 3, y: 3, z: 4, c: PALETTE_INT.emberOrange });
+  v.push({ x: 2, y: 3, z: 2, c: C.amber });
+  return v;
+}
 
 /** Fallback accents per family when the item declares no iconTint. */
 const DEFAULT_ACCENT: Record<string, number> = {

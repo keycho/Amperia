@@ -16,6 +16,8 @@ export type ItemId =
   | 'prismaticGlowkoi'
   | 'ghostFrequency'
   | 'dentedCrest'
+  | 'silverfern'
+  | 'emberseed'
   | 'heatlamp'
   | 'warmcup'
   | 'cellwax'
@@ -129,6 +131,20 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     flavor: 'A voice from the dead grid, caught mid-word.',
     icon: 'icon-ghost-frequency',
     iconTint: 'neonRose',
+    rare: true,
+  },
+  silverfern: {
+    id: 'silverfern',
+    name: 'Silverfern',
+    flavor: 'A frond gone chrome in the compost. The gardeners bow to it.',
+    icon: 'icon-silverfern',
+    rare: true,
+  },
+  emberseed: {
+    id: 'emberseed',
+    name: 'Emberseed',
+    flavor: 'Warm to the touch, and it never sprouts. One for the Manifest.',
+    icon: 'icon-emberseed',
     rare: true,
   },
   dentedCrest: {
