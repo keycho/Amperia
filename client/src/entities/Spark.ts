@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
-import { DEPTH_SHADOW, depthForWorldY, tileToWorld } from '../iso/project';
+import { DEPTH_SHADOW, depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { worldSpriteTint } from '../render/styleConfig';
 import { voxelSprite } from '../render/voxel';
 
@@ -28,7 +28,11 @@ export class Spark {
   onStep: (() => void) | null = null;
   private cosmetic = '';
   private trim = '';
-  private lastFace: [number, number] = [1, 0];
+  private dir: 'se' | 'sw' | 'ne' | 'nw' = 'se';
+  private frame: 'idle' | 'walkA' | 'walkP' | 'walkB' = 'idle';
+  /** Alternates which leg strides first on each step (A vs B). */
+  private strideParity = false;
+  private pose: string | null = null;
   private shadow: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
@@ -61,28 +65,62 @@ export class Spark {
     });
   }
 
-  /** Voxel-bake facing: SE/SW use the front bake, NE/NW the back bake. */
+  /** Facing: every direction is its own bake with true shading — no flips. */
   private face(dx: number, dy: number): void {
-    let name: 'spark-se' | 'spark-ne' | null = null;
-    let flip = false;
-    if (dx > 0) [name, flip] = ['spark-se', false];
-    else if (dx < 0) [name, flip] = ['spark-ne', true];
-    else if (dy > 0) [name, flip] = ['spark-se', true];
-    else if (dy < 0) [name, flip] = ['spark-ne', false];
-    if (name === null) return;
-    this.lastFace = [dx, dy];
-    const suffix = this.cosmetic !== '' ? `-${this.cosmetic}` : '';
-    const baked = voxelSprite(`${name}${suffix}`);
+    if (dx > 0) this.dir = 'se';
+    else if (dx < 0) this.dir = 'nw';
+    else if (dy > 0) this.dir = 'sw';
+    else if (dy < 0) this.dir = 'ne';
+    else return;
+    this.applyTexture();
+  }
+
+  /** Pose bakes win over walk frames; cosmetics ride the base frames. */
+  private textureName(): string {
+    if (this.pose !== null) return `spark-${this.dir}-pose-${this.pose}`;
+    const frame = this.frame === 'idle' ? '' : `-${this.frame}`;
+    const cos = this.cosmetic !== '' ? `-${this.cosmetic}` : '';
+    return `spark-${this.dir}${frame}${cos}`;
+  }
+
+  private applyTexture(): void {
+    const baked = voxelSprite(this.textureName());
     this.image.setTexture(baked.key);
     this.image.setOrigin(baked.originX, baked.originY);
-    this.image.setFlipX(flip);
+  }
+
+  private setFrame(frame: 'idle' | 'walkA' | 'walkP' | 'walkB'): void {
+    if (frame === this.frame) return;
+    this.frame = frame;
+    if (this.pose === null) this.applyTexture();
+  }
+
+  /** Turn toward an adjacent world point (gather target, trade partner). */
+  faceTowardWorld(wx: number, wy: number): void {
+    const dx = wx - this.image.x;
+    const dy = wy - this.image.y;
+    // Inverse iso: tile dx ∝ (sx/half_w + sy/half_h), dy ∝ (sy/half_h − sx/half_w).
+    const tdx = dx / (TILE_W / 2) + dy / (TILE_H / 2);
+    const tdy = dy / (TILE_H / 2) - dx / (TILE_W / 2);
+    if (Math.abs(tdx) >= Math.abs(tdy)) this.face(Math.sign(tdx), 0);
+    else this.face(0, Math.sign(tdy));
+  }
+
+  /**
+   * Working pose (server-broadcast presentation state): the tool id while
+   * gathering, 'brawl' during a melee flash, null to return to the walk set.
+   */
+  setPose(id: string | null): void {
+    if (id === this.pose) return;
+    this.pose = id;
+    this.applyTexture();
   }
 
   /** Worn cosmetic (quest rewards — presentation only, never gameplay). */
   setCosmetic(id: string): void {
     if (id === this.cosmetic) return;
     this.cosmetic = id;
-    this.face(this.lastFace[0], this.lastFace[1]);
+    this.applyTexture();
   }
 
   /**
@@ -202,10 +240,14 @@ export class Spark {
     this.bubble.setDepth(this.image.depth + 2);
   }
 
-  /** A melee swing: short lunge toward the target and back. */
+  /** A melee swing: brawl pose + short lunge toward the target and back. */
   lungeToward(worldX: number, worldY: number): void {
     const ox = this.image.x;
     const oy = this.image.y;
+    this.setPose('brawl');
+    this.scene.time.delayedCall(320, () => {
+      if (this.image.active && this.pose === 'brawl') this.setPose(null);
+    });
     this.scene.tweens.add({
       targets: this.image,
       x: ox + Math.sign(worldX - ox) * 9,
@@ -317,12 +359,18 @@ export class Spark {
     if (next === undefined) {
       const done = this.onArrive;
       this.onArrive = null;
+      this.setFrame('idle');
       if (done !== null) done();
       return;
     }
     this.stepTarget = next;
     const to = tileToWorld(next.x, next.y);
     this.face(next.x - this.tile.x, next.y - this.tile.y);
+    // Walk cycle with weight: stride (A/B alternating legs) for the first
+    // half of the step, the raised passing frame (P) for the second half.
+    this.strideParity = !this.strideParity;
+    const strideFrame = this.strideParity ? 'walkA' : 'walkB';
+    this.setFrame(strideFrame);
 
     this.stepTween = this.scene.tweens.add({
       targets: this.image,
@@ -330,7 +378,8 @@ export class Spark {
       y: to.y,
       duration: CONFIG.player.secondsPerTile * 1000,
       ease: 'linear',
-      onUpdate: () => {
+      onUpdate: (tween) => {
+        this.setFrame(tween.progress < 0.5 ? strideFrame : 'walkP');
         this.image.setDepth(depthForWorldY(this.image.y));
         this.syncLabel();
       },

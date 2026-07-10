@@ -13,6 +13,8 @@ export class PlayerState extends Schema {
   tileY = 0;
   /** True while the server is gathering for this Spark (busy pose). */
   gathering = false;
+  /** Working-pose tool id while gathering ('' = none) — presentation only. */
+  pose = '';
   hp = 0;
   maxHp = 0;
   cosmetic = '';
@@ -24,6 +26,7 @@ defineTypes(PlayerState, {
   tileX: 'int16',
   tileY: 'int16',
   gathering: 'boolean',
+  pose: 'string',
   hp: 'int16',
   maxHp: 'int16',
   cosmetic: 'string',

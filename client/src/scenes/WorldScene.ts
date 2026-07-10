@@ -311,6 +311,9 @@ export class WorldScene extends Phaser.Scene {
       spark.setCosmetic(p.cosmetic);
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
+      // Working pose while gathering (server-set, presentation only).
+      proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
+      spark.setPose(p.pose === '' ? null : p.pose);
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
         if (s === undefined || s.isMoving) return;
@@ -426,7 +429,11 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.gatherStart, (e: GatherStartEvent) => {
       const node = this.nodes.get(e.nodeId);
       this.activeSessionNode = e.nodeId;
-      if (node !== undefined) this.gatherView.start(node, e.seconds);
+      if (node !== undefined) {
+        this.gatherView.start(node, e.seconds);
+        // Work FACING the node, so the tool pose points at it.
+        this.sparks.get(room.sessionId)?.faceTowardWorld(node.image.x, node.image.y);
+      }
     });
     room.onMessage(MSG.gatherStop, (e: GatherStopEvent) => {
       this.gatherView.stop();

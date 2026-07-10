@@ -2506,6 +2506,7 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.tileY = spawn.y;
     ps.hp = rt.hp;
     ps.gathering = false;
+    ps.pose = '';
     this.broadcast(MSG.combat, { type: 'playerDown', sessionId });
     this.broadcast(MSG.notice, {
       text: `${rt.sparkName} got knocked flat by a Scuttlebot — hauled back to the Dynamo.`,
@@ -2816,7 +2817,12 @@ export class FilamentRoom extends Room<FilamentState> {
 
   private setGatheringFlag(sessionId: string, gathering: boolean): void {
     const ps = this.state.players.get(sessionId);
-    if (ps !== undefined) ps.gathering = gathering;
+    if (ps === undefined) return;
+    ps.gathering = gathering;
+    // Working pose (presentation only): the tool the session's node needs.
+    const kind = this.runtimes.get(sessionId)?.session?.kind;
+    ps.pose =
+      gathering && kind !== undefined ? CONFIG.tools.requiredByNode[kind] : '';
   }
 
   private sendNodeEvent(client: Client, payload: NodeEventPayload): void {

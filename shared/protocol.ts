@@ -411,6 +411,8 @@ export interface PlayerStateShape {
   tileX: number;
   tileY: number;
   gathering: boolean;
+  /** Working-pose tool id while gathering ('' = none) — presentation only. */
+  pose: string;
   hp: number;
   maxHp: number;
   /** Worn cosmetic id ('' = none) — quest rewards, never gameplay. */
