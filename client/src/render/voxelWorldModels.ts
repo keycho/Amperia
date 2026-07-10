@@ -11,29 +11,30 @@ import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 // ── Junk heap ─────────────────────────────────────────────────────────────
 
 function junkHeapModel(depleted: boolean): Voxel[] {
-  const scrapA = mixPalette('structureMid', 'groundAccent', 0.4);
-  const scrapB = mixPalette('structureMid', 'ink', 0.15);
-  const scrapC = mixPalette('groundAccent', 'ink', 0.2);
+  // Rusted scrap through and through, with a gunmetal pipe poking out.
+  const A = MATERIALS.rust;
+  const B = MATERIALS.rustDeep;
+  const C = MATERIALS.wood; // splintered pallet wood in the pile
   const v: Voxel[] = [];
-  const lumps: Array<[number, number, number, number, number, number, number]> = depleted
+  const lumps: Array<[number, number, number, number, number, number, typeof A]> = depleted
     ? [
-        [0, 2, 0, 4, 4, 2, scrapB],
-        [3, 0, 0, 4, 4, 2, scrapA],
-        [5, 3, 0, 3, 3, 1, scrapC],
+        [0, 2, 0, 4, 4, 2, B],
+        [3, 0, 0, 4, 4, 2, A],
+        [5, 3, 0, 3, 3, 1, C],
       ]
     : [
-        [0, 2, 0, 5, 5, 3, scrapB],
-        [3, 0, 0, 5, 5, 4, scrapA],
-        [5, 4, 0, 4, 4, 2, scrapC],
-        [2, 3, 3, 3, 3, 2, scrapC],
-        [4, 2, 4, 2, 2, 2, scrapB],
+        [0, 2, 0, 5, 5, 3, B],
+        [3, 0, 0, 5, 5, 4, A],
+        [5, 4, 0, 4, 4, 2, C],
+        [2, 3, 3, 3, 3, 2, A],
+        [4, 2, 4, 2, 2, 2, B],
       ];
-  for (const [x, y, z, w, d, h, c] of lumps) v.push(...box(x, y, z, w, d, h, c));
+  for (const [x, y, z, w, d, h, m] of lumps) v.push(...mbox(x, y, z, w, d, h, m));
   if (!depleted) {
     // Sticking-out bits: a strut, a pipe, a plate — junk should bristle.
-    v.push(...box(1, 1, 3, 1, 1, 4, scrapC)); // strut
-    v.push(...box(6, 2, 2, 3, 1, 1, scrapB)); // pipe
-    v.push(...box(0, 5, 2, 2, 3, 1, scrapA)); // plate
+    v.push(...mbox(1, 1, 3, 1, 1, 4, MATERIALS.rustDeep)); // strut
+    v.push(...mbox(6, 2, 2, 3, 1, 1, MATERIALS.gunmetal)); // pipe
+    v.push(...mbox(0, 5, 2, 2, 3, 1, MATERIALS.rust)); // plate
     v.push({ x: 4, y: 1, z: 6, c: PALETTE_INT.neonAmber }); // sign chip accent
   }
   return v;
@@ -42,15 +43,13 @@ function junkHeapModel(depleted: boolean): Voxel[] {
 // ── Brass seam: a rock hump with live veins ───────────────────────────────
 
 function brassNodeModel(depleted: boolean): Voxel[] {
-  const rock = mixPalette('structureMid', 'duskSky', 0.35);
-  const rockDark = mixPalette('structureMid', 'ink', 0.3);
   const vein = depleted
     ? mixPalette('groundAccent', 'structureMid', 0.5)
     : mixPalette('neonAmber', 'groundAccent', 0.25);
   const v: Voxel[] = [];
-  v.push(...box(0, 1, 0, 6, 5, 3, rock));
-  v.push(...box(1, 0, 0, 4, 3, 4, rockDark));
-  v.push(...box(2, 2, 3, 3, 3, 2, rock));
+  v.push(...mbox(0, 1, 0, 6, 5, 3, MATERIALS.concrete));
+  v.push(...mbox(1, 0, 0, 4, 3, 4, MATERIALS.concreteDeep));
+  v.push(...mbox(2, 2, 3, 3, 3, 2, MATERIALS.concrete));
   // The seam: a vein crawling over the hump.
   const veinPath: Array<[number, number, number]> = [
     [0, 3, 2],
@@ -70,11 +69,10 @@ function brassNodeModel(depleted: boolean): Voxel[] {
 // ── Amperite: crystal cluster jutting from a base ─────────────────────────
 
 function amperiteNodeModel(depleted: boolean): Voxel[] {
-  const base = mixPalette('structureMid', 'ink', 0.35);
   const crystal = mixPalette('neonTeal', 'structureMid', 0.25);
   const crystalLit = PALETTE_INT.neonTeal;
   const v: Voxel[] = [];
-  v.push(...box(0, 0, 0, 6, 6, 2, base));
+  v.push(...mbox(0, 0, 0, 6, 6, 2, MATERIALS.concreteDeep));
   const spire = (x: number, y: number, h: number, lit: boolean) => {
     const c = lit ? crystalLit : crystal;
     v.push(...box(x, y, 2, 2, 2, Math.max(1, h - 2), c));
@@ -95,23 +93,23 @@ function amperiteNodeModel(depleted: boolean): Voxel[] {
 // ── Antenna shrine ────────────────────────────────────────────────────────
 
 function antennaModel(): Voxel[] {
-  const frame = mixPalette('structureMid', 'ink', 0.2);
-  const frameLight = mixPalette('structureMid', 'groundAccent', 0.35);
+  const gm = MATERIALS.gunmetal;
+  const gmd = MATERIALS.gunmetalDeep;
   const v: Voxel[] = [];
-  // Plinth with a kneeling-height shrine box.
-  v.push(...box(0, 0, 0, 6, 6, 2, frame));
-  v.push(...box(1, 1, 2, 4, 4, 2, frameLight));
-  // Lattice mast.
+  // Concrete plinth with a rusted shrine box.
+  v.push(...mbox(0, 0, 0, 6, 6, 2, MATERIALS.concrete));
+  v.push(...mbox(1, 1, 2, 4, 4, 2, MATERIALS.rust));
+  // Gunmetal lattice mast.
   for (let z = 4; z < 26; z++) {
-    v.push({ x: 2, y: 2, z, c: z % 4 === 0 ? frameLight : frame });
-    v.push({ x: 3, y: 3, z, c: z % 4 === 2 ? frameLight : frame });
+    v.push({ x: 2, y: 2, z, c: z % 4 === 0 ? shade(gm.base, 0.12) : gm.base, mat: gm });
+    v.push({ x: 3, y: 3, z, c: z % 4 === 2 ? shade(gm.base, 0.12) : gmd.base, mat: gmd });
   }
   // Cross braces.
-  v.push(...box(1, 2, 10, 4, 1, 1, frameLight));
-  v.push(...box(2, 1, 18, 1, 4, 1, frameLight));
+  v.push(...mbox(1, 2, 10, 4, 1, 1, gm));
+  v.push(...mbox(2, 1, 18, 1, 4, 1, gm));
   // Dish.
-  v.push(...box(3, 3, 20, 3, 1, 3, frameLight));
-  v.push({ x: 5, y: 3, z: 21, c: mixPalette('structureMid', 'ink', 0.05) });
+  v.push(...mbox(3, 3, 20, 3, 1, 3, gm));
+  v.push({ x: 5, y: 3, z: 21, c: gmd.base, mat: gmd });
   // Beacon — the cool accent.
   v.push(...box(2, 2, 26, 2, 2, 2, PALETTE_INT.neonTeal));
   return v;
@@ -157,64 +155,57 @@ function drumsModel(): Voxel[] {
 // ── Salvage shacks (modular, with lit windows + neon sign) ────────────────
 
 function shackModel(variant: number): Voxel[] {
-  const walls = [
-    mixPalette('structureMid', 'groundAccent', 0.25),
-    mixPalette('structureMid', 'duskSky', 0.2),
-    mixPalette('groundAccent', 'structureMid', 0.5),
-  ][variant % 3] as number;
-  const wallsDark = mixPalette('structureMid', 'ink', 0.25);
-  const roof = mixPalette('duskSky', 'ink', 0.25);
-  const roofLip = mixPalette('structureMid', 'ink', 0.1);
-  const door = mixPalette('groundAccent', 'ink', 0.35);
+  // Painted-panel walls (weathered), rust patches, gunmetal roof, wood door.
+  const wallMat = [MATERIALS.paintTeal, MATERIALS.paintOchre, MATERIALS.paintRose][
+    variant % 3
+  ] as (typeof MATERIALS)['paintTeal'];
   const window = PALETTE_INT.warmGlow;
   const signC = [PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.neonTeal][
     variant % 3
   ] as number;
   const v: Voxel[] = [];
-  // Body 14×12, 12 tall with a patched second tone.
-  for (const vox of box(0, 0, 0, 14, 12, 12, walls)) {
+  // Body 14×12, 12 tall with a rust-patched corner.
+  for (const vox of mbox(0, 0, 0, 14, 12, 12, wallMat)) {
     const patched = vox.z > 7 && vox.x < 5 && vox.y > 5;
-    v.push({ ...vox, c: patched ? wallsDark : walls });
+    if (patched) v.push({ ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+    else v.push(vox);
   }
-  // Roof slab with overhang + lip.
-  v.push(...box(-1, -1, 12, 16, 14, 1, roof));
-  v.push(...box(-1, 12, 11, 16, 1, 1, roofLip));
-  // Door (front face, +y side) and two lit windows.
-  v.push(...box(3, 11, 0, 3, 1, 6, door));
+  // Gunmetal roof slab with overhang + lip.
+  v.push(...mbox(-1, -1, 12, 16, 14, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(-1, 12, 11, 16, 1, 1, MATERIALS.gunmetal));
+  // Wood door (front face, +y side) and two lit windows.
+  v.push(...mbox(3, 11, 0, 3, 1, 6, MATERIALS.woodDeep));
   v.push(...box(8, 11, 4, 3, 1, 3, window));
   v.push(...box(13, 5, 5, 1, 3, 3, window)); // side window (+x face)
   // Neon sign board above the door.
   v.push(...box(2, 11, 8, 5, 1, 2, mixPalette('ink', 'structureMid', 0.2)));
   v.push({ x: 3, y: 11, z: 9, c: signC });
   v.push({ x: 5, y: 11, z: 8, c: signC });
-  // Rooftop junk: pipe + vent.
-  v.push(...box(2, 3, 13, 1, 1, 3, wallsDark));
-  v.push(...box(10, 6, 13, 2, 2, 1, roofLip));
+  // Rooftop junk: gunmetal pipe + vent.
+  v.push(...mbox(2, 3, 13, 1, 1, 3, MATERIALS.gunmetal));
+  v.push(...mbox(10, 6, 13, 2, 2, 1, MATERIALS.gunmetalDeep));
   return v;
 }
 
 // ── Scuttlebots (little junk critters; accent = eye/antenna light) ────────
 
 export function scuttlebotModel(accent: number): Voxel[] {
-  const shell = mixPalette('structureMid', 'ink', 0.15);
-  const shellLight = mixPalette('structureMid', 'groundAccent', 0.35);
-  const leg = mixPalette('structureMid', 'ink', 0.4);
   const v: Voxel[] = [];
-  // Four stub legs.
+  // Four gunmetal stub legs.
   for (const [lx, ly] of [
     [0, 0],
     [4, 0],
     [0, 3],
     [4, 3],
   ] as const) {
-    v.push({ x: lx, y: ly, z: 0, c: leg });
+    v.push({ x: lx, y: ly, z: 0, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
   }
-  // Dented shell with a lighter hatch.
-  v.push(...box(0, 0, 1, 5, 4, 2, shell));
-  v.push(...box(1, 1, 3, 3, 2, 1, shellLight));
+  // Dented rusty shell with a salvaged gunmetal hatch.
+  v.push(...mbox(0, 0, 1, 5, 4, 2, MATERIALS.rust));
+  v.push(...mbox(1, 1, 3, 3, 2, 1, MATERIALS.gunmetal));
   // One glowing eye on the front face + antenna tip — the accent.
   v.push({ x: 3, y: 3, z: 2, c: accent });
-  v.push({ x: 1, y: 1, z: 4, c: leg });
+  v.push({ x: 1, y: 1, z: 4, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
   v.push({ x: 1, y: 1, z: 5, c: accent });
   return v;
 }
@@ -222,14 +213,12 @@ export function scuttlebotModel(accent: number): Voxel[] {
 // ── Heatlamp (placeable consumable — its own little light pool) ───────────
 
 function heatlampModel(): Voxel[] {
-  const post = mixPalette('structureMid', 'ink', 0.25);
-  const base = mixPalette('structureMid', 'groundAccent', 0.3);
   const v: Voxel[] = [];
-  v.push(...box(0, 0, 0, 3, 3, 1, base));
-  v.push(...box(1, 1, 1, 1, 1, 6, post));
-  // Lamp head: hot core with a hood.
+  v.push(...mbox(0, 0, 0, 3, 3, 1, MATERIALS.rust));
+  v.push(...mbox(1, 1, 1, 1, 1, 6, MATERIALS.gunmetal));
+  // Lamp head: hot core with a gunmetal hood.
   v.push(...box(0, 0, 7, 3, 3, 2, PALETTE_INT.warmGlow));
-  v.push(...box(0, 0, 9, 3, 3, 1, post));
+  v.push(...mbox(0, 0, 9, 3, 3, 1, MATERIALS.gunmetalDeep));
   return v;
 }
 
