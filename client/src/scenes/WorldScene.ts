@@ -1642,6 +1642,31 @@ export class WorldScene extends Phaser.Scene {
           img.setDepth(depthForWorldY(y));
           break;
         }
+        // I6 vignette props: variants pick the sub-style bake.
+        case 'cablespool':
+        case 'barrels':
+        case 'pallets':
+        case 'gascans':
+        case 'tarp':
+        case 'scrapbin': {
+          const img = addVoxelSprite(this, `${p.kind}-${p.variant % 2}`, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'ventbox':
+        case 'toolrack': {
+          const img = addVoxelSprite(this, p.kind, x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          if (p.kind === 'ventbox') {
+            // The status lamp hums teal (light is life — §12A).
+            addFlicker(this, addLayeredGlow(this, x + 10, y - 26, PALETTE_INT.neonTeal, 0.28, depthForWorldY(y) + 1, 0.35).core, 0.5, 0.2);
+          }
+          break;
+        }
         case 'block': {
           // Variants: 0-2 painted (Filament), 3 drums, 4-6 the Tangle's
           // rust/gunmetal family (§12B accent discipline — no confetti).

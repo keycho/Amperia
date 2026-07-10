@@ -27,6 +27,15 @@ export type PropKind =
   | 'stack'
   /** The dead Craneking hulk — the Tangle's XL landmark. */
   | 'cranehulk'
+  /** I6 vignette props (variant selects the sub-style). */
+  | 'cablespool'
+  | 'barrels'
+  | 'pallets'
+  | 'ventbox'
+  | 'gascans'
+  | 'tarp'
+  | 'scrapbin'
+  | 'toolrack'
   /** Gunmetal machine carcasses rusting in the maze pockets. */
   | 'deadmachine'
   /** Cable pylons — the client strings sagging bundles between pairs. */
@@ -561,6 +570,36 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   for (const ty of [19, 20, 21]) {
     (elevation[ty] as number[])[35] = 1;
     (ramp[ty] as boolean[])[35] = true;
+  }
+
+  // ── I6 vignettes: little scenes that make corners worth walking to ────
+  // The work corner (by the Tinkerbench), the canal-side stash, and the
+  // south-alley bins. All 1-tile props on open ground — never sealing.
+  const vignette: Prop[] = [
+    // Work corner, NW of the bench at (15,14).
+    { kind: 'toolrack', x: 13, y: 12, w: 1, h: 1, variant: 0 },
+    { kind: 'pallets', x: 12, y: 14, w: 1, h: 1, variant: 1 },
+    { kind: 'gascans', x: 14, y: 11, w: 1, h: 1, variant: 0 },
+    // Canal-side stash, east bank of the coolant channel.
+    { kind: 'cablespool', x: 7, y: 10, w: 1, h: 1, variant: 1 },
+    { kind: 'barrels', x: 6, y: 12, w: 1, h: 1, variant: 0 },
+    { kind: 'tarp', x: 7, y: 14, w: 1, h: 1, variant: 0 },
+    // South alley: bins and the humming vent.
+    { kind: 'scrapbin', x: 26, y: 33, w: 1, h: 1, variant: 0 },
+    { kind: 'scrapbin', x: 28, y: 34, w: 1, h: 1, variant: 1 },
+    { kind: 'ventbox', x: 25, y: 31, w: 1, h: 1, variant: 0 },
+    { kind: 'gascans', x: 29, y: 32, w: 1, h: 1, variant: 1 },
+    // A second spool + tarp off the market lane's north side.
+    { kind: 'cablespool', x: 27, y: 15, w: 1, h: 1, variant: 0 },
+    { kind: 'tarp', x: 12, y: 27, w: 1, h: 1, variant: 1 },
+    { kind: 'barrels', x: 30, y: 26, w: 1, h: 1, variant: 1 },
+    { kind: 'pallets', x: 9, y: 22, w: 1, h: 1, variant: 0 },
+  ];
+  for (const prop of vignette) {
+    if (walkable[prop.y]?.[prop.x] === true) {
+      props.push(prop);
+      blockFootprint(walkable, prop);
+    }
   }
 
   // Catwalk light pools (I5): the tram-platform landing + the plaza rim.

@@ -574,6 +574,153 @@ function dynamoModel(): Voxel[] {
   return v;
 }
 
+
+// ── Curated salvage-punk props (I6) ───────────────────────────────────────
+//
+// The kenney_voxel-pack ships no .vox sources (PNG renders only), so these
+// vignette props are BUILT, not imported — through the real material
+// system, which is what the import path was for anyway.
+
+/** A wooden cable spool with gunmetal windings and a live amber tail. */
+function cablespoolModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  const disc = (z: number) => {
+    for (const vox of mbox(0, 0, z, 5, 5, 1, MATERIALS.wood)) {
+      const corner =
+        (vox.x === 0 || vox.x === 4) && (vox.y === 0 || vox.y === 4);
+      if (!corner) v.push(vox);
+    }
+  };
+  disc(0);
+  v.push(...mbox(1, 1, 1, 3, 3, 2, MATERIALS.gunmetalDeep)); // windings
+  disc(3);
+  if (variant % 2 === 1) {
+    // A loose cable snaking off the spool, tipped live.
+    v.push({ x: 4, y: 2, z: 1, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+    v.push({ x: 5, y: 2, z: 0, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+    v.push({ x: 6, y: 2, z: 0, c: PALETTE_INT.neonAmber });
+  }
+  return v;
+}
+
+/** Wooden barrels with rusted hoops, huddled like regulars. */
+function barrelsModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  const barrel = (x: number, y: number, h: number) => {
+    for (const vox of mbox(x, y, 0, 2, 2, h, MATERIALS.wood)) {
+      const hoop = vox.z === 1 || vox.z === h - 1;
+      if (hoop) v.push({ ...vox, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+      else v.push(vox);
+    }
+  };
+  barrel(0, 0, 5);
+  barrel(3, 1, 4);
+  if (variant % 2 === 1) barrel(1, 3, 3); // the short one, lid ajar
+  return v;
+}
+
+/** A stack of slatted pallets; the tall variant carries a stray crate. */
+function palletsModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  const pallet = (z: number) => {
+    for (let x = 0; x < 5; x++) {
+      for (let y = 0; y < 5; y++) {
+        if (y % 2 === 1 && x > 0 && x < 4) continue; // slat gaps
+        v.push({ x, y, z, c: MATERIALS.wood.base, mat: MATERIALS.wood });
+      }
+    }
+  };
+  pallet(0);
+  pallet(1);
+  if (variant % 2 === 1) {
+    pallet(2);
+    v.push(...mbox(1, 1, 3, 3, 3, 3, MATERIALS.rust)); // stray crate
+    v.push({ x: 3, y: 2, z: 5, c: PALETTE_INT.neonAmber }); // routing tag
+  }
+  return v;
+}
+
+/** A gunmetal vent unit — dark slits, teal status lamp, always humming. */
+function ventboxModel(): Voxel[] {
+  const v: Voxel[] = [];
+  for (const vox of mbox(0, 0, 0, 4, 4, 3, MATERIALS.gunmetal)) {
+    const slit = vox.z === 1 && (vox.x === 0 || vox.y === 3) && (vox.y + vox.x) % 2 === 0;
+    if (slit) v.push({ ...vox, c: shade(MATERIALS.gunmetalDeep.base, -0.25) });
+    else v.push(vox);
+  }
+  v.push(...mbox(1, 1, 3, 2, 2, 1, MATERIALS.gunmetalDeep)); // fan cowl
+  v.push({ x: 3, y: 3, z: 3, c: PALETTE_INT.neonTeal }); // status lamp
+  return v;
+}
+
+/** Rusted gas canisters with the ember hazard band. */
+function gascansModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  const can = (x: number, y: number, h: number) => {
+    for (const vox of mbox(x, y, 0, 1, 1, h, MATERIALS.rust)) {
+      if (vox.z === 2) {
+        v.push({ ...vox, c: mixPalette('emberOrange', 'structureMid', 0.25) });
+      } else v.push(vox);
+    }
+    v.push({ x, y, z: h, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  };
+  can(0, 0, 4);
+  can(1, 1, 3);
+  if (variant % 2 === 1) can(2, 0, 4);
+  return v;
+}
+
+/** A weathered tarp roped over somebody's stash. */
+function tarpModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  const cloth = variant % 2 === 0 ? MATERIALS.paintTeal : MATERIALS.paintRose;
+  v.push(...mbox(1, 1, 0, 3, 3, 2, MATERIALS.rust)); // the stash beneath
+  for (let x = 0; x < 5; x++) {
+    for (let y = 0; y < 5; y++) {
+      const edge = x === 0 || y === 0 || x === 4 || y === 4;
+      const z = edge ? 1 : 2;
+      if (edge && (x + y) % 3 === 0) continue; // ragged hem
+      v.push({ x, y, z, c: cloth.base, mat: cloth });
+    }
+  }
+  v.push({ x: 4, y: 2, z: 0, c: MATERIALS.wood.base, mat: MATERIALS.wood }); // rope stake
+  return v;
+}
+
+/** A concrete scrap bin, junk cresting over the rim. */
+function scrapbinModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  for (const vox of mbox(0, 0, 0, 4, 4, 3, MATERIALS.concrete)) {
+    const hollow = vox.z === 2 && vox.x > 0 && vox.x < 3 && vox.y > 0 && vox.y < 3;
+    if (!hollow) v.push(vox);
+  }
+  // Junk cresting out.
+  v.push({ x: 1, y: 1, z: 2, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+  v.push({ x: 2, y: 2, z: 2, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+  v.push({ x: 2, y: 1, z: 3, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+  if (variant % 2 === 1) {
+    v.push({ x: 1, y: 2, z: 3, c: MATERIALS.wood.base, mat: MATERIALS.wood }); // plank
+    v.push({ x: 1, y: 2, z: 4, c: PALETTE_INT.neonRose }); // torn banner scrap
+  }
+  return v;
+}
+
+/** A leaning tool rack — the work corner's silhouette. */
+function toolrackModel(): Voxel[] {
+  const v: Voxel[] = [];
+  v.push(...mbox(0, 0, 0, 5, 1, 1, MATERIALS.wood)); // base rail
+  v.push(...mbox(0, 0, 4, 5, 1, 1, MATERIALS.wood)); // top rail
+  v.push(...mbox(0, 0, 1, 1, 1, 3, MATERIALS.wood)); // uprights
+  v.push(...mbox(4, 0, 1, 1, 1, 3, MATERIALS.wood));
+  // Hanging tools: gunmetal, rust, and one prized teal-tipped claw.
+  v.push({ x: 1, y: 0, z: 3, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+  v.push({ x: 1, y: 0, z: 2, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+  v.push({ x: 2, y: 0, z: 3, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+  v.push({ x: 3, y: 0, z: 3, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+  v.push({ x: 3, y: 0, z: 2, c: PALETTE_INT.neonTeal });
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'junk-heap', voxels: junkHeapModel(false) });
@@ -610,5 +757,16 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'dispatcher', voxels: dispatcherModel() });
   bakeVoxelModel(scene, { name: 'warden', voxels: wardenModel() });
   bakeVoxelModel(scene, { name: 'junkhound', voxels: junkhoundModel() });
+  // I6 vignette props (variants share a model fn; see PropKind docs).
+  for (const i of [0, 1]) {
+    bakeVoxelModel(scene, { name: `cablespool-${i}`, voxels: cablespoolModel(i) });
+    bakeVoxelModel(scene, { name: `barrels-${i}`, voxels: barrelsModel(i) });
+    bakeVoxelModel(scene, { name: `pallets-${i}`, voxels: palletsModel(i) });
+    bakeVoxelModel(scene, { name: `gascans-${i}`, voxels: gascansModel(i) });
+    bakeVoxelModel(scene, { name: `tarp-${i}`, voxels: tarpModel(i) });
+    bakeVoxelModel(scene, { name: `scrapbin-${i}`, voxels: scrapbinModel(i) });
+  }
+  bakeVoxelModel(scene, { name: 'ventbox', voxels: ventboxModel() });
+  bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
 }
