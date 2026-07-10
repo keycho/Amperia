@@ -1,5 +1,22 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 MATERIALS + COMPOSITION pass
+
+The "too purple" world is gone. Every voxel asset is now built from real
+MATERIALS (rusted steel, gunmetal, wood/decking, weathered painted panels,
+concrete) with per-voxel value noise, chipped edge wear, stain streaks and
+a grounding gradient — purple survives only in shadows, the night air, and
+the void. The map is a real market district: Tramgate arrival → a
+stall-lined lane (awning-to-awning, per-stall sign colors) → the Dynamo
+plaza with a raised step ring, buildings walling the edges with alley
+gaps, dark corner clutter with dim lanterns, the roped SE scrap yard
+(brass + amperite among the Scuttlebots), junk in the alleys, antennas on
+the dark outskirts with cables to the nearest roofs, a ground patchwork
+(plating/seams/rivets/grates, lane + boardwalk decking, stall rugs,
+stains) and a void that fades the last rows to near-black. Check shots:
+`docs/screenshots/lane-view.png` + `plaza-view.png` (see also
+`materials-test-wide.png`, `materials-all.png`).
+
 ## Status after the 2026-07-10 "bring the city to life" block
 
 On top of the 07-09 slice, the city is now **alive and defended**: the voxel
