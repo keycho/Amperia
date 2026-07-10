@@ -190,6 +190,43 @@ export const CONFIG = {
   },
 
   /**
+   * Bolts + the Nightstalls merchant (Economy Design §5 published bands).
+   * The merchant BUYS the five resources inside floor/ceiling bands (sale
+   * volume slides price down; recovers over time) and SELLS basics. The
+   * daily NPC-sale cap is the anti-Sybil throttle mechanism.
+   */
+  economy: {
+    merchant: {
+      /** Max Bolts of NPC sales per account per UTC day (generous). */
+      dailySaleCapBolts: 1500,
+      /** Published buy bands per resource. */
+      buy: {
+        salvage: { floor: 1, ceiling: 3, slidePerUnit: 0.004, recoverPerHour: 0.5 },
+        brass: { floor: 3, ceiling: 7, slidePerUnit: 0.01, recoverPerHour: 0.4 },
+        amperite: { floor: 4, ceiling: 9, slidePerUnit: 0.012, recoverPerHour: 0.4 },
+        glowkoi: { floor: 3, ceiling: 8, slidePerUnit: 0.01, recoverPerHour: 0.5 },
+        signal: { floor: 5, ceiling: 12, slidePerUnit: 0.015, recoverPerHour: 0.35 },
+      },
+      /** Fixed-price wares (Bolts). */
+      sells: [
+        { itemId: 'magclaw', price: 40 },
+        { itemId: 'drillhammer', price: 60 },
+        { itemId: 'skimnet', price: 60 },
+        { itemId: 'tuner', price: 80 },
+        { itemId: 'riveter', price: 50 },
+        { itemId: 'warmcup', price: 12 },
+        { itemId: 'cellwax', price: 18 },
+      ],
+      /** Server-checked interaction reach (chebyshev tiles). */
+      tradeRadiusTiles: 3,
+    },
+    /** Warmcup heal on use. */
+    warmcupHeal: 10,
+    /** Cellwax durability restored on use (lands with gear durability). */
+    cellwaxDurability: 40,
+  },
+
+  /**
    * First combat slice (Game Bible B6/B7): feral Scuttlebots in the SE
    * scrap fringe. Weak, mischievous, telegraphed. Mobs drop NO Bolts and
    * NO stack loot — only the rare Manifest trophy roll below.

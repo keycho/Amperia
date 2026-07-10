@@ -10,6 +10,7 @@ import { makeRng, randInt, type Rng } from './rng';
 
 export type PropKind =
   | 'dynamo'
+  | 'merchant'
   | 'stall'
   | 'crate'
   | 'block'
@@ -200,6 +201,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     props.push(stall);
     blockFootprint(walkable, stall);
   }
+  // The merchant's stand: the gap in the north row, facing the lane.
+  {
+    const merchant: Prop = { kind: 'merchant', x: 30, y: 17, w: 1, h: 1, variant: 0 };
+    props.push(merchant);
+    blockFootprint(walkable, merchant);
+  }
+
   // One more on the plaza's north-east edge, facing the plaza.
   {
     const stall: Prop = { kind: 'stall', x: 22, y: c - plaza.radius - 2, w: 2, h: 2, variant: 3 };

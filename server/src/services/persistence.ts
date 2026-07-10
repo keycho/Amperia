@@ -11,6 +11,12 @@ export interface CharacterSnapshot {
   pack: Inventory | null;
   hotbar: Inventory | null;
   skills: SkillXp;
+  bolts: number;
+  dailySaleBolts: number;
+  dailySaleDate: string;
+  quests: Record<string, unknown>;
+  cosmetics: string[];
+  district: string;
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -55,12 +61,34 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     pack: parseInventory(c.packJson, CONFIG.inventory.slots),
     hotbar: parseInventory(c.hotbarJson, CONFIG.inventory.hotbarSlots),
     skills: parseSkills(c.skillsJson),
+    bolts: c.bolts,
+    dailySaleBolts: c.dailySaleBolts,
+    dailySaleDate: c.dailySaleDate,
+    quests:
+      typeof c.questsJson === 'object' && c.questsJson !== null && !Array.isArray(c.questsJson)
+        ? (c.questsJson as Record<string, unknown>)
+        : {},
+    cosmetics: Array.isArray(c.cosmeticsJson)
+      ? (c.cosmeticsJson as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [],
+    district: c.district,
   };
 }
 
 export async function persistCharacter(
   characterId: string,
-  data: { tile: TilePoint; pack: Inventory; hotbar: Inventory; skills: SkillXp },
+  data: {
+    tile: TilePoint;
+    pack: Inventory;
+    hotbar: Inventory;
+    skills: SkillXp;
+    bolts: number;
+    dailySaleBolts: number;
+    dailySaleDate: string;
+    quests: Record<string, unknown>;
+    cosmetics: string[];
+    district: string;
+  },
 ): Promise<void> {
   try {
     await prisma.character.update({
@@ -71,6 +99,12 @@ export async function persistCharacter(
         packJson: data.pack.slots as object[],
         hotbarJson: data.hotbar.slots as object[],
         skillsJson: data.skills,
+        bolts: data.bolts,
+        dailySaleBolts: data.dailySaleBolts,
+        dailySaleDate: data.dailySaleDate,
+        questsJson: data.quests as object,
+        cosmeticsJson: data.cosmetics,
+        district: data.district,
       },
     });
   } catch (err) {

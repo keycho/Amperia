@@ -3,6 +3,8 @@ import { MSG } from '@shared/protocol';
 import type {
   AttackIntent,
   ChatIntent,
+  TradeIntent,
+  UseItemIntent,
   GatherIntent,
   GlintClickIntent,
   MoveIntent,
@@ -60,6 +62,8 @@ export const send = {
   nodeAction: (room: FilamentRoom, msg: NodeActionIntent) => room.send(MSG.nodeAction, msg),
   attack: (room: FilamentRoom, msg: AttackIntent) => room.send(MSG.attack, msg),
   placeHeatlamp: (room: FilamentRoom) => room.send(MSG.placeHeatlamp, {}),
+  trade: (room: FilamentRoom, msg: TradeIntent) => room.send(MSG.trade, msg),
+  useItem: (room: FilamentRoom, msg: UseItemIntent) => room.send(MSG.useItem, msg),
   selectSlot: (room: FilamentRoom, msg: SelectSlotIntent) => room.send(MSG.selectSlot, msg),
   moveStack: (room: FilamentRoom, msg: MoveStackIntent) => room.send(MSG.moveStack, msg),
   chat: (room: FilamentRoom, msg: ChatIntent) => room.send(MSG.chat, msg),

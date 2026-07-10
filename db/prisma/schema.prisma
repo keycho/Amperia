@@ -33,8 +33,23 @@ model Character {
   packJson  Json     @default("[]")
   hotbarJson Json    @default("[]")
   skillsJson Json    @default("{}")
+  bolts     Int      @default(0)
+  /// Anti-Sybil throttle state: Bolts of NPC sales so far on dailySaleDate.
+  dailySaleBolts Int    @default(0)
+  dailySaleDate  String @default("")
+  questsJson     Json   @default("{}")
+  cosmeticsJson  Json   @default("[]")
+  /// Which district the Spark was last in ('filament' | 'tangle').
+  district       String @default("filament")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// World-shared merchant price pressure per resource (0 = ceiling price).
+model MerchantState {
+  resourceId String   @id
+  pressure   Float    @default(0)
+  updatedAt  DateTime @updatedAt
 }
 
 model LedgerEvent {

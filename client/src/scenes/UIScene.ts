@@ -8,6 +8,7 @@ import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
+import { MerchantPanel } from '../ui/MerchantPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { SlotStrip } from '../ui/SlotStrip';
 
@@ -31,6 +32,8 @@ export class UIScene extends Phaser.Scene {
   private presenceChip!: Phaser.GameObjects.Text;
   private chat!: ChatUI;
   private skillsPanel!: SkillsPanel;
+  private merchantPanel!: MerchantPanel;
+  private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
@@ -123,6 +126,25 @@ export class UIScene extends Phaser.Scene {
 
     this.chat = new ChatUI(this);
     this.skillsPanel = new SkillsPanel(this);
+    this.merchantPanel = new MerchantPanel(this);
+
+    this.boltsChip = this.add.text(12, 32, '', {
+      fontFamily: 'monospace',
+      fontSize: '13px',
+      color: PALETTE.warmGlow,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.boltsChip.setDepth(900);
+    const refreshBolts = () => this.boltsChip.setText(`Bolts ⚙ ${gameState.bolts}`);
+    refreshBolts();
+    gameState.events.on(GameEvents.boltsChanged, () => {
+      refreshBolts();
+      if (this.merchantPanel.visible) this.merchantPanel.refresh();
+    });
+    gameState.events.on(GameEvents.inventoryChanged, () => {
+      if (this.merchantPanel.visible) this.merchantPanel.refresh();
+    });
     gameState.events.on(GameEvents.skillsChanged, () => {
       if (this.skillsPanel.visible) this.skillsPanel.refresh();
     });
@@ -174,6 +196,8 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel.setPosition((w - inv.w) / 2, (h - inv.h) / 2 - 20);
     const sk = this.skillsPanel.pixelSize();
     this.skillsPanel.setPosition((w - sk.w) / 2, (h - sk.h) / 2 - 10);
+    const mp = this.merchantPanel.pixelSize();
+    this.merchantPanel.setPosition((w - mp.w) / 2, Math.max(40, (h - mp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
   }
@@ -305,7 +329,8 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-ESC', () => {
       if (typing()) return;
-      if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
+      if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
+      else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {

@@ -31,6 +31,8 @@ export const IMAGE_MANIFEST: Readonly<Record<string, string>> = {
   'icon-riveter': iconWrench,
   'icon-heatlamp': iconStar,
   'icon-gear': iconGear,
+  'icon-warmcup': iconStar,
+  'icon-cellwax': iconWrench,
   'icon-signal': iconSignal,
   'icon-ghost-frequency': iconSignal,
   'icon-tuner': iconSignal,

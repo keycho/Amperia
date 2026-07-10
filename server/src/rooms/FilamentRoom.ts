@@ -51,9 +51,13 @@ import {
   type NodeActionIntent,
   type NodeEventPayload,
   type SelectSlotIntent,
+  type TradeIntent,
+  type UseItemIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
+import { dailySaleHeadroom } from '@shared/economy';
 import { ledger } from '../services/ledger.js';
+import { merchant } from '../services/merchant.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
 import { FilamentState, LampState, MobState, NodeState, PlayerState } from './state.js';
@@ -116,6 +120,11 @@ interface PlayerRuntime {
   hotbar: Inventory;
   activeSlot: number;
   skills: SkillXp;
+  bolts: number;
+  dailySaleBolts: number;
+  dailySaleDate: string;
+  quests: Record<string, unknown>;
+  cosmetics: string[];
   hp: number;
   /** Fractional regen accumulator (hp stays an int on the wire). */
   healAcc: number;
@@ -192,6 +201,9 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
+    this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
+    this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    void merchant.load();
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
   }
@@ -223,6 +235,11 @@ export class FilamentRoom extends Room<FilamentState> {
       hotbar: character.hotbar ?? makeStarterHotbar(),
       activeSlot: 0,
       skills: character.skills,
+      bolts: character.bolts,
+      dailySaleBolts: character.dailySaleBolts,
+      dailySaleDate: character.dailySaleDate,
+      quests: character.quests,
+      cosmetics: character.cosmetics,
       hp: CONFIG.combat.player.maxHp,
       healAcc: 0,
       lastAttackAtMs: 0,
@@ -243,6 +260,7 @@ export class FilamentRoom extends Room<FilamentState> {
 
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
+    client.send(MSG.prices, { buy: merchant.prices(Date.now()) });
     this.broadcast(
       MSG.notice,
       { text: `${character.sparkName} stepped off the tram.` },
@@ -671,6 +689,134 @@ export class FilamentRoom extends Room<FilamentState> {
         const ps = this.state.players.get(sessionId);
         if (ps !== undefined) ps.hp = rt.hp;
       }
+    }
+  }
+
+  /**
+   * Nightstalls merchant trades. Server checks reach, stock, the published
+   * price bands, and the per-account daily NPC-sale cap (the anti-Sybil
+   * throttle). Every Bolt movement writes a ledger row.
+   */
+  private handleTrade(client: Client, msg: TradeIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    const stand = this.map.props.find((p) => p.kind === 'merchant');
+    if (stand === undefined) return;
+    const reach = CONFIG.economy.merchant.tradeRadiusTiles;
+    if (chebyshev(rt.move.tile, { x: stand.x, y: stand.y }) > reach) {
+      client.send(MSG.notice, { text: 'Step up to the stand to trade.' });
+      return;
+    }
+    const now = Date.now();
+
+    if (msg.action === 'sellResource') {
+      const qtyWanted = Math.floor(Number(msg.qty));
+      if (!Number.isFinite(qtyWanted) || qtyWanted <= 0) return;
+      if (typeof msg.itemId !== 'string' || !merchant.isResource(msg.itemId)) return;
+      const resource = msg.itemId;
+      // Daily cap headroom (rolls over on a new UTC day).
+      const head = dailySaleHeadroom(
+        rt.dailySaleBolts,
+        rt.dailySaleDate,
+        now,
+        CONFIG.economy.merchant.dailySaleCapBolts,
+      );
+      rt.dailySaleDate = head.day;
+      rt.dailySaleBolts = head.soldToday;
+      if (head.headroom <= 0) {
+        client.send(MSG.notice, {
+          text: 'The merchant is stocked up on your goods for today — come back tomorrow.',
+        });
+        return;
+      }
+      const have = rt.pack.slots.reduce(
+        (acc, sl) => (sl !== null && sl.itemId === resource ? acc + sl.qty : acc),
+        0,
+      );
+      const askQty = Math.min(qtyWanted, have);
+      if (askQty <= 0) {
+        client.send(MSG.notice, { text: 'Nothing of that in your Pack.' });
+        return;
+      }
+      // Dry-run first: trim the sale to the daily headroom, THEN commit —
+      // the price pressure must not slide for a refused sale.
+      const quote = merchant.quoteWithinCap(resource, askQty, head.headroom, now);
+      if (quote.qty <= 0) {
+        client.send(MSG.notice, {
+          text: 'That would pass your daily stand limit — come back tomorrow.',
+        });
+        return;
+      }
+      const qty = quote.qty;
+      const r = removeItem(rt.pack, resource, qty);
+      if (r.removed < qty) {
+        client.send(MSG.notice, { text: 'Nothing of that in your Pack.' });
+        return;
+      }
+      rt.pack = r.inv;
+      const paid = merchant.sell(resource, qty, now);
+      rt.bolts += paid;
+      rt.dailySaleBolts += paid;
+      ledger.log({
+        type: 'trade',
+        account: rt.accountId,
+        data: { side: 'npcBuys', itemId: resource, qty, bolts: paid },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      this.broadcast(MSG.prices, { buy: merchant.prices(now) });
+      client.send(MSG.notice, { text: `Sold ${qty} ${resource} for ${paid} Bolts.` });
+      return;
+    }
+
+    if (msg.action === 'buyItem') {
+      const ware = CONFIG.economy.merchant.sells.find((w) => w.itemId === msg.itemId);
+      if (ware === undefined) return;
+      if (rt.bolts < ware.price) {
+        client.send(MSG.notice, { text: `That costs ${ware.price} Bolts.` });
+        return;
+      }
+      const add = addItem(rt.pack, ware.itemId as ItemId, 1, CONFIG.inventory.stackMax);
+      if (add.added < 1) {
+        client.send(MSG.notice, { text: 'Your Pack is full.' });
+        return;
+      }
+      rt.pack = add.inv;
+      rt.bolts -= ware.price;
+      ledger.log({
+        type: 'trade',
+        account: rt.accountId,
+        data: { side: 'npcSells', itemId: ware.itemId, qty: 1, bolts: -ware.price },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, { text: `Bought 1 ${ware.itemId} for ${ware.price} Bolts.` });
+    }
+  }
+
+  /** Consumables from the Pack (Warmcup now; Cellwax lands with durability). */
+  private handleUseItem(client: Client, msg: UseItemIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || !Number.isInteger(msg.slot)) return;
+    const slot = rt.pack.slots[msg.slot];
+    if (slot === null || slot === undefined) return;
+    if (slot.itemId === 'warmcup') {
+      const maxHp = CONFIG.combat.player.maxHp;
+      if (rt.hp >= maxHp) {
+        client.send(MSG.notice, { text: 'Already warm through.' });
+        return;
+      }
+      const r = removeItem(rt.pack, 'warmcup', 1);
+      if (r.removed < 1) return;
+      rt.pack = r.inv;
+      rt.hp = Math.min(maxHp, rt.hp + CONFIG.economy.warmcupHeal);
+      const ps = this.state.players.get(client.sessionId);
+      if (ps !== undefined) ps.hp = rt.hp;
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'warmcup', itemId: 'warmcup', qty: 1 },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, { text: 'The Warmcup does its work.' });
     }
   }
 
@@ -1276,7 +1422,7 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private inventorySync(rt: PlayerRuntime): InventorySync {
-    return { pack: rt.pack.slots, hotbar: rt.hotbar.slots };
+    return { pack: rt.pack.slots, hotbar: rt.hotbar.slots, bolts: rt.bolts };
   }
 
   private async persist(rt: PlayerRuntime): Promise<void> {
@@ -1284,6 +1430,12 @@ export class FilamentRoom extends Room<FilamentState> {
       tile: rt.move.tile,
       pack: rt.pack,
       hotbar: rt.hotbar,
+      bolts: rt.bolts,
+      dailySaleBolts: rt.dailySaleBolts,
+      dailySaleDate: rt.dailySaleDate,
+      quests: rt.quests,
+      cosmetics: rt.cosmetics,
+      district: 'filament',
       skills: rt.skills,
     });
   }

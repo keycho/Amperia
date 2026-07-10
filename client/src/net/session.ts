@@ -19,4 +19,8 @@ export const SessionEvents = {
   notice: 'notice',
   /** Own Spark's HP changed: payload { hp, maxHp }. */
   hp: 'hp',
+  /** Merchant unit prices changed: payload PricesSync. */
+  prices: 'prices',
+  /** Open the merchant panel (world → UI scene). */
+  openMerchant: 'openMerchant',
 } as const;

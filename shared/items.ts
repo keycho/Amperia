@@ -17,6 +17,8 @@ export type ItemId =
   | 'ghostFrequency'
   | 'dentedCrest'
   | 'heatlamp'
+  | 'warmcup'
+  | 'cellwax'
   // tools (Game Bible B3)
   | 'magclaw'
   | 'drillhammer'
@@ -108,6 +110,20 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     icon: 'icon-gilded-scrap',
     iconTint: 'neonRose',
     rare: true,
+  },
+  warmcup: {
+    id: 'warmcup',
+    name: 'Warmcup',
+    flavor: 'Hot broth in a battered tin. Mends a Spark from the inside.',
+    icon: 'icon-warmcup',
+    iconTint: 'neonAmber',
+  },
+  cellwax: {
+    id: 'cellwax',
+    name: 'Cellwax',
+    flavor: 'Tool balm. Works worn joints and coils back into shape.',
+    icon: 'icon-cellwax',
+    iconTint: 'neonTeal',
   },
   heatlamp: {
     id: 'heatlamp',

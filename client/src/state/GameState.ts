@@ -14,6 +14,7 @@ export const GameEvents = {
   inventoryChanged: 'inventory:changed',
   hotbarChanged: 'hotbar:changed',
   skillsChanged: 'skills:changed',
+  boltsChanged: 'bolts:changed',
 } as const;
 
 class GameStateStore {
@@ -31,11 +32,15 @@ class GameStateStore {
     this.events.emit(GameEvents.skillsChanged);
   }
 
+  bolts = 0;
+
   applySync(sync: InventorySync): void {
     this.inventory = { slots: [...sync.pack] };
     this.hotbar = { slots: [...sync.hotbar] };
+    this.bolts = sync.bolts;
     this.events.emit(GameEvents.inventoryChanged);
     this.events.emit(GameEvents.hotbarChanged);
+    this.events.emit(GameEvents.boltsChanged);
   }
 
   /** Total across pack + hotbar (what the player "has"). */

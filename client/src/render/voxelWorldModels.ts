@@ -258,6 +258,31 @@ function ropepostModel(): Voxel[] {
   return v;
 }
 
+// ── The Nightstalls merchant's stand (1×1 tile, figure behind counter) ────
+
+function merchantModel(): Voxel[] {
+  const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const hair = mixPalette('structureMid', 'ink', 0.3);
+  const v: Voxel[] = [];
+  // Counter along the front (+y face toward the lane).
+  v.push(...mbox(0, 5, 0, 8, 3, 5, MATERIALS.wood));
+  for (const vox of mbox(0, 5, 5, 8, 3, 1, MATERIALS.wood)) {
+    v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  }
+  // Goods on the counter: little resource crates + a jar.
+  v.push(...mbox(1, 5, 6, 2, 2, 2, MATERIALS.rust));
+  v.push(...mbox(5, 5, 6, 2, 2, 1, MATERIALS.paintTeal));
+  v.push({ x: 4, y: 6, z: 6, c: PALETTE_INT.neonAmber }); // price chip
+  // The merchant: chunky figure behind the counter (ochre apron).
+  v.push(...mbox(3, 1, 0, 3, 2, 4, MATERIALS.paintOchre)); // apron/body
+  v.push(...box(3, 1, 4, 3, 2, 2, skin)); // head
+  v.push(...box(3, 1, 6, 3, 2, 1, hair)); // cap
+  // Hanging lantern post at the side.
+  v.push(...mbox(7, 1, 0, 1, 1, 9, MATERIALS.gunmetal));
+  v.push({ x: 7, y: 1, z: 9, c: PALETTE_INT.warmGlow });
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -353,4 +378,5 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'heatlamp', voxels: heatlampModel() });
   bakeVoxelModel(scene, { name: 'tramgate', voxels: tramgateModel() });
   bakeVoxelModel(scene, { name: 'ropepost', voxels: ropepostModel() });
+  bakeVoxelModel(scene, { name: 'merchant', voxels: merchantModel() });
 }

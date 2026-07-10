@@ -15,6 +15,9 @@ export const MSG = {
   nodeAction: 'nodeAction',
   attack: 'attack',
   placeHeatlamp: 'placeHeatlamp',
+  trade: 'trade',
+  prices: 'prices',
+  useItem: 'useItem',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -148,6 +151,23 @@ export interface LootEvent {
 export interface InventorySync {
   pack: InventorySlot[];
   hotbar: InventorySlot[];
+  /** Soft-currency balance (server-owned; display only on the client). */
+  bolts: number;
+}
+
+/** Player → server: trade with the Nightstalls merchant. */
+export type TradeIntent =
+  | { action: 'sellResource'; itemId: string; qty: number }
+  | { action: 'buyItem'; itemId: string };
+
+/** Server → room: current merchant unit prices (published band positions). */
+export interface PricesSync {
+  buy: Record<string, number>;
+}
+
+/** Player → server: use a consumable from a pack slot. */
+export interface UseItemIntent {
+  slot: number;
 }
 
 export interface SkillsSync {

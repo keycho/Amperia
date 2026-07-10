@@ -20,6 +20,7 @@ import type {
   InventorySync,
   LootEvent,
   MoveAcceptedEvent,
+  PricesSync,
   NodeStateShape,
   PlayerStateShape,
 } from '@shared/protocol';
@@ -351,6 +352,9 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
+    room.onMessage(MSG.prices, (sync: PricesSync) =>
+      session.events.emit(SessionEvents.prices, sync),
+    );
     room.onMessage(MSG.skills, (sync: SkillsSync) => gameState.applySkills(sync));
     room.onMessage(MSG.xpGain, (e: XpGainEvent) => {
       const own = this.sparks.get(room.sessionId);
@@ -761,6 +765,7 @@ export class WorldScene extends Phaser.Scene {
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
       if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
       if (p.kind === 'alleylamp') lightSpots.push({ x: p.x, y: p.y, cool: false });
+      if (p.kind === 'merchant') lightSpots.push({ x: p.x, y: p.y, cool: false });
       if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
     }
     for (const n of this.map.nodes) {
@@ -1140,6 +1145,48 @@ export class WorldScene extends Phaser.Scene {
           beacon.setAlpha(bloom(0.6));
           beacon.setDepth(depthForWorldY(y) + 1);
           this.addGroundPool(x - 40, y - 10, PALETTE_INT.neonAmber, 0.7);
+          break;
+        }
+        case 'merchant': {
+          const img = addVoxelSprite(this, 'merchant', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > CONFIG.economy.merchant.tradeRadiusTiles) {
+                floatText(this, img.x, img.y - 60, 'step closer to trade', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              session.events.emit(SessionEvents.openMerchant);
+            },
+          );
+          // Lantern glow + a warm pool: the stand is a real light source.
+          const lamp = this.add.image(x + 26, y - 34, 'fx-glow');
+          lamp.setTint(PALETTE_INT.neonAmber);
+          lamp.setBlendMode(Phaser.BlendModes.ADD);
+          lamp.setScale(0.11);
+          lamp.setAlpha(bloom(0.8));
+          lamp.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, lamp, bloom(0.8), 0.09);
+          this.addGroundPool(x + 10, y - 2, PALETTE_INT.neonAmber, 0.4);
           break;
         }
         case 'alleylamp': {
