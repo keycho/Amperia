@@ -27,7 +27,7 @@ account-shaped items):
 
 The systems that make people come back — all server-authoritative,
 config-driven, ledger-logged. Shots: `nameplate-fade.png` ·
-`manifest-{toast,panel,hints}.png` · `goal-board.png` (probe pending) ·
+`manifest-{toast,panel,hints}.png` · `goal-board.png` ·
 `coil-{mid-spin,prize}.png` · `ledgerhouse-interior.png`.
 
 - **S0 · Nameplate fading** — full names ≤8 tiles, faded to 13, hidden
