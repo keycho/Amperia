@@ -102,4 +102,6 @@ export const send = {
   wardrobe: (room: FilamentRoom, msg: WardrobeIntent) => room.send(MSG.wardrobe, msg),
   inspect: (room: FilamentRoom, msg: InspectIntent) => room.send(MSG.inspect, msg),
   goalClaim: (room: FilamentRoom, msg: GoalClaimIntent) => room.send(MSG.goalClaim, msg),
+  /** The Fortune Coil: the spin takes NOTHING — free: true is the whole payload. */
+  coilSpin: (room: FilamentRoom) => room.send(MSG.coilSpin, { free: true }),
 };

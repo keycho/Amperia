@@ -51,6 +51,7 @@ import {
   DEFAULT_APPEARANCE_CODE,
   SPARK_NAME_RE,
 } from '@shared/appearance';
+import { assertFreeSpin, type CoilSpinIntent } from '@shared/coil';
 import { type GoalEvent, goalWeekKey } from '@shared/goals';
 import {
   COSMETICS,
@@ -73,6 +74,9 @@ import {
   type GatherIntent,
   type GlintClickIntent,
   type GoalClaimIntent,
+  type CoilResultEvent,
+  type CoilShowEvent,
+  type CoilStateEvent,
   type GoalsSync,
   type RestedSync,
   type InventorySync,
@@ -113,6 +117,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
+import { coilSpunToday, spinCoil } from '../services/coil.js';
 import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
 import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
@@ -353,6 +358,19 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
       void this.handleGoalClaim(client, msg);
     });
+    this.onMessage<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
+      void this.handleCoilSpin(client, msg).catch((err) => {
+        // The no-currency assert tripping is an anomaly worth remembering.
+        const rt = this.runtimes.get(client.sessionId);
+        if (rt !== undefined) {
+          ledger.log({
+            type: 'anomaly',
+            account: rt.accountId,
+            data: { source: 'fortuneCoil', error: String((err as Error).message) },
+          });
+        }
+      });
+    });
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
@@ -477,6 +495,17 @@ export class FilamentRoom extends Room<FilamentState> {
     client.send(MSG.inventory, this.inventorySync(runtime));
     client.send(MSG.skills, { xp: runtime.skills });
     this.sendRested(client, runtime);
+    void coilSpunToday(auth.characterId, Date.now()).then((spun) => {
+      if (this.runtimes.get(client.sessionId) !== runtime) return;
+      client.send(MSG.coilState, {
+        spunToday: spun,
+        shards: 0, // detail arrives with the first spin; join keeps it light
+        shardsTarget: CONFIG.coil.shardsForCosmetic,
+      } satisfies CoilStateEvent);
+      if (!spun) {
+        client.send(MSG.notice, { text: 'The Fortune Coil is wound — one free spin today.' });
+      }
+    });
     {
       const wk = goalWeekKey(Date.now());
       void loadGoals(auth.accountId, wk).then((rows) => {
@@ -928,6 +957,87 @@ export class FilamentRoom extends Room<FilamentState> {
       tokens: rt.goalTokens,
     } satisfies GoalsSync);
     client.send(MSG.inventory, this.inventorySync(rt));
+  }
+
+  /**
+   * The Fortune Coil (S4): ONE free spin daily, at the wheel. HARD RULE
+   * asserted right here — the intent carries no currency field, this
+   * handler never reads or debits Bolts/$AMP/SOL, and no other spin
+   * entry point exists. Prizes are all untradeable. (CLAUDE.md rule 6:
+   * $AMP never touches the wheel on either side.)
+   */
+  private async handleCoilSpin(client: Client, msg: CoilSpinIntent): Promise<void> {
+    assertFreeSpin(msg); // throws if any payload smuggles a currency key
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    const coil = this.map.props.find((p) => p.kind === 'fortunecoil');
+    if (coil === undefined) {
+      client.send(MSG.notice, { text: 'The Coil lives at the Nightstalls, in the Filament.' });
+      return;
+    }
+    const t = rt.move.tile;
+    if (Math.max(Math.abs(t.x - coil.x), Math.abs(t.y - coil.y)) > 3) {
+      client.send(MSG.notice, { text: 'Step up to the Coil to give it a spin.' });
+      return;
+    }
+    const owned = rt.cosmetics.includes(CONFIG.coil.cosmetic);
+    const res = await spinCoil(
+      rt.characterId,
+      owned,
+      Date.now(),
+      Math.floor(this.rng() * 2_147_483_647),
+    );
+    if (this.runtimes.get(client.sessionId) !== rt) return;
+    if (!res.ok) {
+      client.send(MSG.notice, { text: res.error });
+      return;
+    }
+    const prize = res.roll.prize;
+    // Grant — every branch ledger-logged; nothing here ever debits.
+    if (prize.kind === 'bolts') {
+      rt.bolts += prize.amount;
+    } else if (prize.kind === 'item') {
+      const add = addItem(rt.pack, prize.itemId as ItemId, prize.amount, CONFIG.inventory.stackMax);
+      rt.pack = add.inv;
+      if (prize.itemId === 'gildedScrap' && add.added > 0) {
+        this.recordManifest(client, rt, 'gildedScrap');
+      }
+      if (add.added < prize.amount) {
+        client.send(MSG.notice, { text: 'Your Pack is full — part of the prize slipped away.' });
+      }
+    }
+    ledger.log({
+      type: 'quest',
+      account: rt.accountId,
+      data: {
+        source: 'fortuneCoil',
+        prize: prize.id,
+        kind: prize.kind,
+        amount: prize.amount,
+        converted: res.roll.converted,
+        shards: res.shards,
+      },
+    });
+    if (res.cosmeticEarned) {
+      this.grantCosmetic(client, rt, CONFIG.coil.cosmetic, 'Coil shards, patiently');
+    }
+    client.send(MSG.coilResult, {
+      index: res.roll.index,
+      label: prize.label,
+      kind: prize.kind,
+      amount: prize.amount,
+      ...(prize.itemId !== undefined ? { itemId: prize.itemId } : {}),
+      converted: res.roll.converted,
+      shards: res.shards,
+      shardsTarget: CONFIG.coil.shardsForCosmetic,
+    } satisfies CoilResultEvent);
+    this.broadcast(
+      MSG.coilShow,
+      { sessionId: client.sessionId, index: res.roll.index } satisfies CoilShowEvent,
+      { except: client },
+    );
+    client.send(MSG.inventory, this.inventorySync(rt));
+    void this.persist(rt);
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {

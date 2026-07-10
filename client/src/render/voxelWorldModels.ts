@@ -705,6 +705,34 @@ function scrapbinModel(variant: number): Voxel[] {
   return v;
 }
 
+/**
+ * The Fortune Coil's housing (S4): a carnival-sized ring on a rusted
+ * kiosk, lamps up the sides. The spinning face itself is a live layer the
+ * scene lays over this frame (a machined disk reads cleaner than voxels).
+ */
+function fortunecoilModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Kiosk base: rusted counter with a wood lip.
+  v.push(...mbox(2, 2, 0, 12, 12, 3, MATERIALS.rust));
+  v.push(...mbox(1, 1, 3, 14, 14, 1, MATERIALS.wood));
+  // Twin masts holding the ring.
+  v.push(...mbox(3, 7, 4, 2, 2, 12, MATERIALS.gunmetalDeep));
+  v.push(...mbox(11, 7, 4, 2, 2, 12, MATERIALS.gunmetalDeep));
+  // Crossbar + hub stub the wheel face mounts on.
+  v.push(...mbox(3, 7, 16, 10, 2, 2, MATERIALS.gunmetal));
+  v.push(...mbox(7, 6, 10, 2, 2, 2, MATERIALS.gunmetalDeep));
+  // Lamps up the masts (glow layers land at placement).
+  for (const z of [6, 10, 14]) {
+    v.push({ x: 2, y: 7, z, c: PALETTE_INT.neonAmber });
+    v.push({ x: 13, y: 7, z, c: PALETTE_INT.neonAmber });
+  }
+  // The pointer perch on top.
+  v.push(...mbox(7, 7, 18, 2, 1, 1, MATERIALS.rustDeep));
+  v.push({ x: 7, y: 7, z: 19, c: PALETTE_INT.neonRose });
+  v.push({ x: 8, y: 7, z: 19, c: PALETTE_INT.neonRose });
+  return v;
+}
+
 /** A leaning tool rack — the work corner's silhouette. */
 function toolrackModel(): Voxel[] {
   const v: Voxel[] = [];
@@ -767,6 +795,7 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `scrapbin-${i}`, voxels: scrapbinModel(i) });
   }
   bakeVoxelModel(scene, { name: 'ventbox', voxels: ventboxModel() });
+  bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
 }

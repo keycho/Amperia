@@ -186,6 +186,11 @@ class SoundEngine {
     this.blip('triangle', 1976, 1976, 0.22, 0.08, 0.03);
   }
 
+  /** The Fortune Coil's ratchet tick (one per segment passing). */
+  coilTick(): void {
+    this.blip('square', 1240, 880, 0.03, 0.045);
+  }
+
   /** A rare Manifest find — a warmer, longer chime. */
   rareChime(): void {
     this.blip('sine', 784, 784, 0.3, 0.14);

@@ -27,6 +27,8 @@ export type PropKind =
   | 'stack'
   /** The dead Craneking hulk — the Tangle's XL landmark. */
   | 'cranehulk'
+  /** The Fortune Coil (S4): the daily-spin wheel at the Nightstalls. */
+  | 'fortunecoil'
   /** I6 vignette props (variant selects the sub-style). */
   | 'cablespool'
   | 'barrels'
@@ -237,6 +239,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   const gate: Prop = { kind: 'tramgate', x: 36, y: 18, w: 2, h: 5, variant: 0 };
   props.push(gate);
   blockFootprint(walkable, gate);
+
+  // The Fortune Coil: the daily ritual wheel at the west end of the row.
+  {
+    const coil: Prop = { kind: 'fortunecoil', x: 25, y: 16, w: 2, h: 2, variant: 0 };
+    props.push(coil);
+    blockFootprint(walkable, coil);
+  }
 
   // North lane row: four stalls whose counters (+y face) FACE the lane
   // (the westmost extends the row toward the plaza — a rentable pitch).

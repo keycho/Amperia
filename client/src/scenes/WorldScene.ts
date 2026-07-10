@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@shared/map';
-import { MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { blendInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   CacheStateShape,
   ChargeStateShape,
@@ -22,6 +22,9 @@ import type {
   GlintShowEvent,
   IdentityEvent,
   InspectInfoEvent,
+  CoilResultEvent,
+  CoilShowEvent,
+  CoilStateEvent,
   GoalsSync,
   ManifestFoundEvent,
   RestedSync,
@@ -115,6 +118,10 @@ export class WorldScene extends Phaser.Scene {
   /** Last-inspected Spark: their nameplate never fades (S0). */
   private inspectTarget: string | null = null;
   private nameFadeAcc = 0;
+  /** The Fortune Coil's live face + spin state (S4). */
+  private coilWheel: Phaser.GameObjects.Image | null = null;
+  private coilSpinning = false;
+  private coilSpunToday = false;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
@@ -234,6 +241,140 @@ export class WorldScene extends Phaser.Scene {
       .setDepth(1e9);
 
     void this.connect();
+  }
+
+  /**
+   * The Fortune Coil's machined face (S4): a segmented disk baked from the
+   * CONFIG prize table (same order the server rolls), laid over the voxel
+   * housing and rotated live. Segment hues by prize kind — amber Bolts,
+   * teal consumables, rose shards, warm Manifest fillers.
+   */
+  private placeCoilFace(p: Prop, frame: Phaser.GameObjects.Image): void {
+    const prizes = CONFIG.coil.prizes;
+    const key = 'coil-face';
+    if (!this.textures.exists(key)) {
+      const R = 46;
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      const seg = (Math.PI * 2) / prizes.length;
+      prizes.forEach((prize, i) => {
+        const base =
+          prize.kind === 'shard'
+            ? PALETTE_INT.neonRose
+            : prize.kind === 'bolts'
+              ? PALETTE_INT.neonAmber
+              : prize.itemId === 'gildedScrap'
+                ? PALETTE_INT.warmGlow
+                : PALETTE_INT.neonTeal;
+        // Every segment carries its prize hue; odds run deep for contrast.
+        g.fillStyle(i % 2 === 0 ? base : blendInt(base, PALETTE_INT.ink, 0.45), 1);
+        g.slice(R + 2, R + 2, R, i * seg - Math.PI / 2, (i + 1) * seg - Math.PI / 2, false);
+        g.fillPath();
+        g.lineStyle(2, PALETTE_INT.ink, 1);
+        g.slice(R + 2, R + 2, R, i * seg - Math.PI / 2, (i + 1) * seg - Math.PI / 2, false);
+        g.strokePath();
+      });
+      // Rim + hub.
+      g.lineStyle(4, MATERIAL_INT.gunmetalDeep, 1);
+      g.strokeCircle(R + 2, R + 2, R);
+      g.fillStyle(MATERIAL_INT.gunmetal, 1);
+      g.fillCircle(R + 2, R + 2, 9);
+      g.fillStyle(PALETTE_INT.neonAmber, 1);
+      g.fillCircle(R + 2, R + 2, 4);
+      g.generateTexture(key, (R + 2) * 2, (R + 2) * 2);
+      g.destroy();
+    }
+    const { x, y } = tileToWorld(p.x + 1, p.y + 1);
+    const wheel = this.add.image(x, y - 78, key);
+    wheel.setDepth(frame.depth + 1);
+    wheel.setScale(0.9);
+    this.coilWheel = wheel;
+    // Pointer above the face (the near-miss drama lives at this needle).
+    const pointer = this.add.triangle(x, y - 124, 0, 0, 10, 0, 5, 12, PALETTE_INT.neonRose);
+    pointer.setDepth(frame.depth + 2);
+    addLayeredGlow(this, x - 42, y - 96, PALETTE_INT.neonAmber, 0.3, frame.depth + 2, 0.4);
+    addLayeredGlow(this, x + 42, y - 96, PALETTE_INT.neonAmber, 0.3, frame.depth + 2, 0.4);
+    // Click to spin — the server holds the daily gate + proximity.
+    frame.setInteractive({ useHandCursor: true });
+    wheel.setInteractive({ useHandCursor: true });
+    const trySpin = (
+      ptr: Phaser.Input.Pointer,
+      _lx: number,
+      _ly: number,
+      ev: Phaser.Types.Input.EventData,
+    ) => {
+      if (!ptr.leftButtonDown() || this.room === null) return;
+      ev.stopPropagation();
+      if (this.coilSpinning) return;
+      if (this.coilSpunToday) {
+        session.events.emit(SessionEvents.notice, 'The Coil rests until tomorrow.');
+        return;
+      }
+      send.coilSpin(this.room);
+    };
+    frame.on('pointerdown', trySpin);
+    wheel.on('pointerdown', trySpin);
+  }
+
+  /** Spin to the rolled segment: 4 slow turns, ratchet ticks, ease-out
+   *  near-miss drama, then the prize moment (own spins only). */
+  private animateCoil(index: number, own: boolean, result: CoilResultEvent | null): void {
+    const wheel = this.coilWheel;
+    if (wheel === null || this.coilSpinning) return;
+    this.coilSpinning = true;
+    const segAngle = 360 / CONFIG.coil.prizes.length;
+    wheel.setAngle(((wheel.angle % 360) + 360) % 360);
+    const target = 360 * 4 + (360 - (index + 0.5) * segAngle);
+    let lastTick = 0;
+    this.tweens.add({
+      targets: wheel,
+      angle: target,
+      duration: 5400,
+      ease: 'cubic.out',
+      onUpdate: () => {
+        const tick = Math.floor(wheel.angle / segAngle);
+        if (tick !== lastTick) {
+          lastTick = tick;
+          sound.coilTick();
+        }
+      },
+      onComplete: () => {
+        this.coilSpinning = false;
+        wheel.setAngle(wheel.angle % 360);
+        if (own && result !== null) this.showCoilPrize(result);
+      },
+    });
+  }
+
+  private showCoilPrize(r: CoilResultEvent): void {
+    const wheel = this.coilWheel;
+    const good = r.kind === 'shard' || (r.kind === 'bolts' && r.amount >= 40) || r.itemId === 'gildedScrap';
+    if (good) sound.rareChime();
+    else sound.gatherChirp();
+    if (wheel !== null && good) {
+      // Confetti motes off the rim on a good hit.
+      for (let i = 0; i < 14; i++) {
+        const mote = this.add.image(wheel.x, wheel.y, 'fx-spark');
+        mote.setDepth(wheel.depth + 2);
+        mote.setScale(0.12 + Math.random() * 0.1);
+        mote.setTint([PALETTE_INT.neonAmber, PALETTE_INT.neonRose, PALETTE_INT.neonTeal][i % 3] as number);
+        mote.setBlendMode(Phaser.BlendModes.ADD);
+        const a = Math.random() * Math.PI * 2;
+        const d = 30 + Math.random() * 55;
+        this.tweens.add({
+          targets: mote,
+          x: wheel.x + Math.cos(a) * d,
+          y: wheel.y + Math.sin(a) * d - 24,
+          alpha: 0,
+          duration: 700 + Math.random() * 500,
+          ease: 'quad.out',
+          onComplete: () => mote.destroy(),
+        });
+      }
+    }
+    const shardLine =
+      r.kind === 'shard' ? ` · shards ${Math.min(r.shards, r.shardsTarget)}/${r.shardsTarget}` : '';
+    session.events.emit(SessionEvents.notice, `The Coil settles: ${r.label}${shardLine}`);
+    this.coilSpunToday = true;
   }
 
   update(time: number, deltaMs: number): void {
@@ -542,6 +683,11 @@ export class WorldScene extends Phaser.Scene {
     );
     room.onMessage(MSG.goals, (e: GoalsSync) => session.events.emit(SessionEvents.goals, e));
     room.onMessage(MSG.rested, (e: RestedSync) => session.events.emit(SessionEvents.rested, e));
+    room.onMessage(MSG.coilState, (e: CoilStateEvent) => {
+      this.coilSpunToday = e.spunToday;
+    });
+    room.onMessage(MSG.coilResult, (e: CoilResultEvent) => this.animateCoil(e.index, true, e));
+    room.onMessage(MSG.coilShow, (e: CoilShowEvent) => this.animateCoil(e.index, false, null));
     session.events.off(SessionEvents.openWardrobe);
     session.events.on(SessionEvents.openWardrobe, () => {
       if (this.creator === null && this.identity !== null) this.openCreator('wardrobe');
@@ -1701,6 +1847,14 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
+          break;
+        }
+        case 'fortunecoil': {
+          const img = addVoxelSprite(this, 'fortunecoil', x, y);
+          const wt = worldSpriteTint();
+          if (wt !== null) img.setTint(wt);
+          img.setDepth(depthForWorldY(y));
+          this.placeCoilFace(p, img);
           break;
         }
         case 'ventbox':

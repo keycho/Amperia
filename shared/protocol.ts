@@ -41,6 +41,7 @@ export const MSG = {
   wardrobe: 'wardrobe',
   inspect: 'inspect',
   goalClaim: 'goalClaim',
+  coilSpin: 'coilSpin',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -62,6 +63,9 @@ export const MSG = {
   manifestFound: 'manifestFound',
   goals: 'goals',
   rested: 'rested',
+  coilResult: 'coilResult',
+  coilShow: 'coilShow',
+  coilState: 'coilState',
 } as const;
 
 export interface MoveIntent {
@@ -431,6 +435,35 @@ export interface GoalsSync {
   rows: Array<{ goalId: string; progress: number; claimed: boolean }>;
   claimsUsed?: number;
   tokens?: number;
+}
+
+/**
+ * Server → client: the spinner's Fortune Coil outcome (S4). The client
+ * animates the wheel to `index`, then shows the prize. The wheel took no
+ * currency — there is no field for one anywhere in this flow.
+ */
+export interface CoilResultEvent {
+  index: number;
+  label: string;
+  kind: 'bolts' | 'item' | 'shard';
+  amount: number;
+  itemId?: string;
+  converted: boolean;
+  shards: number;
+  shardsTarget: number;
+}
+
+/** Server → room (except spinner): a bystander-visible spin. */
+export interface CoilShowEvent {
+  sessionId: string;
+  index: number;
+}
+
+/** Server → client on join: has today's free spin been used? */
+export interface CoilStateEvent {
+  spunToday: boolean;
+  shards: number;
+  shardsTarget: number;
 }
 
 /** Server → client (own client only): Rested Charge state (S3). */
