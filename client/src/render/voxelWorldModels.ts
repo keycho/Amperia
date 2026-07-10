@@ -366,36 +366,213 @@ function drumsModel(variant: number): Voxel[] {
 
 // ── Salvage shacks (modular, with lit windows + neon sign) ────────────────
 
-function shackModel(variant: number): Voxel[] {
-  // Painted-panel walls (weathered), rust patches, gunmetal roof, wood door.
-  const wallMat = [MATERIALS.paintTeal, MATERIALS.paintOchre, MATERIALS.paintRose][
-    variant % 3
-  ] as (typeof MATERIALS)['paintTeal'];
+/**
+ * V3 building set: EIGHT distinct designs on the 2×2-tile footprint —
+ * silhouette first, and NO bare roofs (rooftops are 40% of a building's
+ * read in iso; every one carries its own furniture). Doors face +y, one
+ * neon sign chip pair near each door (color rotates per design), lit
+ * windows in warmGlow. The old single-shack is design 0.
+ */
+function buildingModel(design: number): Voxel[] {
   const window = PALETTE_INT.warmGlow;
-  const signC = [PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.neonTeal][
-    variant % 3
-  ] as number;
+  const signC = [
+    PALETTE_INT.neonRose,
+    PALETTE_INT.neonAmber,
+    PALETTE_INT.neonTeal,
+    PALETTE_INT.neonCyan,
+  ][design % 4] as number;
+  const inkBoard = mixPalette('ink', 'structureMid', 0.2);
   const v: Voxel[] = [];
-  // Body 14×12, 12 tall with a rust-patched corner.
-  for (const vox of mbox(0, 0, 0, 14, 12, 12, wallMat)) {
-    const patched = vox.z > 7 && vox.x < 5 && vox.y > 5;
-    if (patched) v.push({ ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust });
-    else v.push(vox);
+  const rustPatch = (vox: Voxel, cond: boolean): Voxel =>
+    cond ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox;
+  const sign = (x: number, y: number, z: number) => {
+    v.push(...box(x, y, z, 5, 1, 2, inkBoard));
+    v.push({ x: x + 1, y, z: z + 1, c: signC });
+    v.push({ x: x + 3, y, z, c: signC });
+  };
+  const door = (x: number, y: number) => v.push(...mbox(x, y, 0, 3, 1, 6, MATERIALS.woodDeep));
+
+  switch (design % 8) {
+    case 0: {
+      // The classic parapet shack (teal), roof pipe + vent + spare spool.
+      for (const vox of mbox(0, 0, 0, 14, 12, 12, MATERIALS.paintTeal)) {
+        v.push(rustPatch(vox, vox.z > 7 && vox.x < 5 && vox.y > 5));
+      }
+      v.push(...mbox(-1, -1, 12, 16, 14, 1, MATERIALS.gunmetalDeep));
+      v.push(...mbox(-1, 12, 11, 16, 1, 1, MATERIALS.gunmetal));
+      door(3, 11);
+      v.push(...box(8, 11, 4, 3, 1, 3, window));
+      v.push(...box(13, 5, 5, 1, 3, 3, window));
+      sign(2, 11, 8);
+      v.push(...mbox(2, 3, 13, 1, 1, 3, MATERIALS.gunmetal)); // pipe
+      v.push(...mbox(10, 6, 13, 2, 2, 1, MATERIALS.gunmetalDeep)); // vent
+      v.push(...mbox(5, 4, 13, 3, 3, 2, MATERIALS.wood)); // spare spool up top
+      break;
+    }
+    case 1: {
+      // Two-storey: ochre base, wood upper floor overhanging the door side.
+      for (const vox of mbox(1, 1, 0, 12, 10, 9, MATERIALS.paintOchre)) {
+        v.push(rustPatch(vox, vox.z < 3 && vox.x > 9));
+      }
+      v.push(...mbox(0, 0, 9, 14, 12, 8, MATERIALS.wood)); // upper juts out
+      v.push(...mbox(0, 0, 17, 14, 12, 1, MATERIALS.gunmetalDeep)); // roof
+      door(4, 10);
+      v.push(...box(9, 10, 3, 2, 1, 3, window)); // ground window
+      v.push(...box(3, 11, 12, 3, 1, 3, window)); // upper window (front face)
+      v.push(...box(10, 11, 12, 2, 1, 3, window));
+      sign(3, 10, 7);
+      // Roofline: rain barrel + whip antenna with its marker.
+      v.push(...mbox(2, 2, 18, 3, 3, 4, MATERIALS.rustDeep));
+      for (let z = 18; z < 26; z++) v.push({ x: 11, y: 4, z, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+      v.push({ x: 11, y: 4, z: 26, c: PALETTE_INT.neonTeal });
+      break;
+    }
+    case 2: {
+      // L-shape: rose main + gunmetal annex at half height.
+      for (const vox of mbox(0, 0, 0, 8, 12, 12, MATERIALS.paintRose)) {
+        v.push(rustPatch(vox, vox.z > 8 && vox.y < 3));
+      }
+      v.push(...mbox(8, 5, 0, 7, 7, 7, MATERIALS.gunmetal)); // the annex
+      v.push(...mbox(-1, -1, 12, 10, 14, 1, MATERIALS.gunmetalDeep)); // main roof
+      v.push(...mbox(8, 4, 7, 8, 9, 1, MATERIALS.rustDeep)); // annex roof
+      door(2, 11);
+      v.push(...box(5, 11, 4, 2, 1, 3, window));
+      v.push(...box(10, 11, 3, 3, 1, 2, window)); // annex window
+      sign(1, 11, 8);
+      // Rooflines: skylight strip on the annex, stovepipe on the main.
+      v.push(...box(9, 6, 8, 5, 2, 1, mixPalette('warmGlow', 'structureMid', 0.35)));
+      v.push(...mbox(3, 3, 13, 2, 2, 5, MATERIALS.gunmetal));
+      v.push(...mbox(2, 2, 18, 4, 4, 1, MATERIALS.gunmetalDeep));
+      break;
+    }
+    case 3: {
+      // Quonset hut: stepped barrel vault IS the roof — gunmetal courses.
+      const profile: Array<[number, number]> = [
+        [0, 8], [1, 10], [2, 11], [4, 12], [10, 12], [12, 11], [13, 10], [14, 8],
+      ];
+      // End walls + vault courses along y.
+      for (const vox of mbox(0, 0, 0, 14, 12, 8, MATERIALS.gunmetalDeep)) {
+        v.push(rustPatch(vox, vox.x < 2 && vox.z < 4));
+      }
+      for (const [x, top] of profile) {
+        for (let y = 0; y < 12; y++) {
+          for (let z = 8; z < top; z++) {
+            const seam = y % 4 === 3;
+            v.push({
+              x, y, z,
+              c: seam ? MATERIALS.rust.base : MATERIALS.gunmetal.base,
+              mat: seam ? MATERIALS.rust : MATERIALS.gunmetal,
+            });
+          }
+        }
+      }
+      door(5, 11);
+      v.push(...box(2, 11, 3, 2, 1, 2, window)); // porthole-ish
+      v.push(...box(10, 11, 3, 2, 1, 2, window));
+      sign(4, 11, 7);
+      // End chimney off the vault crown.
+      v.push(...mbox(6, 1, 12, 2, 2, 4, MATERIALS.rustDeep));
+      break;
+    }
+    case 4: {
+      // Lean-to: wood walls, single corrugated slope, clerestory light.
+      for (const vox of mbox(0, 0, 0, 14, 12, 8, MATERIALS.wood)) {
+        v.push(rustPatch(vox, vox.x > 10 && vox.z > 4));
+      }
+      v.push(...mbox(0, 0, 8, 14, 4, 4, MATERIALS.wood)); // high back wall
+      // The slope: stepped gunmetal sheets falling front-ward, patched.
+      for (let y = 0; y < 13; y++) {
+        const z = 12 - Math.floor(y / 3);
+        for (let x = -1; x < 15; x++) {
+          const patch = (x > 9 && y > 6) || (x < 3 && y < 3);
+          v.push({
+            x, y, z,
+            c: patch ? MATERIALS.rust.base : MATERIALS.gunmetalDeep.base,
+            mat: patch ? MATERIALS.rust : MATERIALS.gunmetalDeep,
+          });
+        }
+      }
+      door(9, 11);
+      v.push(...box(3, 11, 3, 3, 1, 3, window));
+      v.push(...box(2, 4, 9, 4, 1, 2, window)); // clerestory under the high edge
+      sign(8, 11, 7);
+      break;
+    }
+    case 5: {
+      // Stacked setback: teal base, ochre top, terrace with railing.
+      for (const vox of mbox(0, 0, 0, 14, 12, 9, MATERIALS.paintTeal)) {
+        v.push(rustPatch(vox, vox.z < 3 && vox.y > 9 && vox.x > 10));
+      }
+      v.push(...mbox(0, 0, 9, 8, 12, 8, MATERIALS.paintOchre)); // set-back top
+      v.push(...mbox(0, 0, 17, 8, 12, 1, MATERIALS.gunmetalDeep));
+      v.push(...mbox(8, 0, 9, 6, 12, 1, MATERIALS.wood)); // the terrace deck
+      // Terrace railing + potted bush + the awning strip over the door.
+      for (let x = 8; x < 14; x++) {
+        if (x % 2 === 0) v.push({ x, y: 11, z: 10, c: MATERIALS.woodDeep.base, mat: MATERIALS.woodDeep });
+        v.push({ x, y: 11, z: 11, c: MATERIALS.woodDeep.base, mat: MATERIALS.woodDeep });
+      }
+      v.push(...mbox(10, 3, 10, 2, 2, 2, MATERIALS.wood));
+      v.push({ x: 10, y: 3, z: 12, c: PALETTE_INT.solarGreen });
+      v.push({ x: 11, y: 4, z: 12, c: mixPalette('solarGreen', 'ink', 0.3) });
+      const stripeHot = mixPalette('neonRose', 'structureMid', 0.12);
+      const stripePale = mixPalette('warmGlow', 'groundAccent', 0.25);
+      for (let x = 1; x < 8; x++) v.push({ x, y: 12, z: 7, c: x % 2 === 0 ? stripeHot : stripePale });
+      door(2, 11);
+      v.push(...box(5, 11, 3, 2, 1, 3, window));
+      v.push(...box(2, 11, 12, 3, 1, 3, window)); // upper window
+      sign(1, 11, 8);
+      // Roof: wash line strung across the top.
+      for (let x = 1; x < 7; x++) v.push({ x, y: 6, z: 19, c: MATERIALS.gunmetalDeep.base });
+      v.push(...box(2, 6, 17, 2, 1, 2, mixPalette('warmGlow', 'groundAccent', 0.3)));
+      v.push(...box(5, 6, 17, 1, 1, 2, stripeHot));
+      break;
+    }
+    case 6: {
+      // The watch kiosk: small footprint, tall, crow's nest + weather vane.
+      for (const vox of mbox(3, 2, 0, 8, 8, 16, MATERIALS.rust)) {
+        v.push(rustPatch(vox, false));
+      }
+      v.push(...mbox(2, 1, 16, 10, 10, 1, MATERIALS.wood)); // nest deck
+      for (let i = 0; i < 10; i += 2) {
+        v.push({ x: 2 + i, y: 1, z: 17, c: MATERIALS.woodDeep.base, mat: MATERIALS.woodDeep });
+        v.push({ x: 2 + i, y: 10, z: 17, c: MATERIALS.woodDeep.base, mat: MATERIALS.woodDeep });
+      }
+      v.push(...mbox(4, 3, 17, 6, 6, 5, MATERIALS.wood)); // the cabin
+      v.push(...mbox(3, 2, 22, 8, 8, 1, MATERIALS.gunmetalDeep)); // cap roof
+      v.push(...box(5, 8, 18, 3, 1, 3, window)); // lit lookout window
+      door(5, 9);
+      sign(4, 9, 7);
+      // Mast + weather vane (the V2 tall/thin family's crown piece).
+      for (let z = 23; z < 28; z++) v.push({ x: 7, y: 5, z, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+      v.push(...mbox(5, 5, 26, 5, 1, 1, MATERIALS.gunmetalDeep)); // the arrow
+      v.push({ x: 4, y: 5, z: 26, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+      v.push({ x: 5, y: 5, z: 27, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+      v.push({ x: 7, y: 5, z: 28, c: PALETTE_INT.neonAmber }); // masthead lamp
+      break;
+    }
+    default: {
+      // Gabled cottage: ochre walls, stepped wood gable, dormer + chimney.
+      for (const vox of mbox(0, 0, 0, 14, 12, 10, MATERIALS.paintOchre)) {
+        v.push(rustPatch(vox, vox.z > 6 && vox.x > 10 && vox.y < 4));
+      }
+      // The gable: stepped courses closing toward the ridge (along x).
+      for (let step = 0; step < 4; step++) {
+        const inset = step * 2;
+        v.push(...mbox(-1 + inset, -1, 10 + step, 16 - inset * 2, 14, 1, MATERIALS.woodDeep));
+      }
+      v.push(...mbox(5, -1, 14, 4, 14, 1, MATERIALS.wood)); // ridge cap
+      door(4, 11);
+      v.push(...box(9, 11, 3, 2, 1, 3, window));
+      v.push(...box(1, 11, 3, 2, 1, 3, window));
+      sign(3, 11, 7);
+      // Dormer vent on the south slope + chimney punching the ridge.
+      v.push(...mbox(9, 9, 11, 3, 3, 2, MATERIALS.wood));
+      v.push(...box(10, 11, 11, 1, 1, 1, window));
+      v.push(...mbox(2, 3, 12, 2, 2, 6, MATERIALS.rustDeep));
+      v.push(...mbox(1, 2, 18, 4, 4, 1, MATERIALS.rust));
+      break;
+    }
   }
-  // Gunmetal roof slab with overhang + lip.
-  v.push(...mbox(-1, -1, 12, 16, 14, 1, MATERIALS.gunmetalDeep));
-  v.push(...mbox(-1, 12, 11, 16, 1, 1, MATERIALS.gunmetal));
-  // Wood door (front face, +y side) and two lit windows.
-  v.push(...mbox(3, 11, 0, 3, 1, 6, MATERIALS.woodDeep));
-  v.push(...box(8, 11, 4, 3, 1, 3, window));
-  v.push(...box(13, 5, 5, 1, 3, 3, window)); // side window (+x face)
-  // Neon sign board above the door.
-  v.push(...box(2, 11, 8, 5, 1, 2, mixPalette('ink', 'structureMid', 0.2)));
-  v.push({ x: 3, y: 11, z: 9, c: signC });
-  v.push({ x: 5, y: 11, z: 8, c: signC });
-  // Rooftop junk: gunmetal pipe + vent.
-  v.push(...mbox(2, 3, 13, 1, 1, 3, MATERIALS.gunmetal));
-  v.push(...mbox(10, 6, 13, 2, 2, 1, MATERIALS.gunmetalDeep));
   return v;
 }
 
@@ -1167,8 +1344,11 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `container-d${i}`, voxels: containerModel(i, true) });
     bakeVoxelModel(scene, { name: `container-r${i}`, voxels: containerRustModel(i, false) });
     bakeVoxelModel(scene, { name: `container-rd${i}`, voxels: containerRustModel(i, true) });
-    bakeVoxelModel(scene, { name: `shack-${i}`, voxels: shackModel(i) });
     bakeVoxelModel(scene, { name: `deadmachine-${i}`, voxels: deadMachineModel(i) });
+  }
+  // V3 building set: eight silhouettes, every roof dressed.
+  for (let d = 0; d < 8; d++) {
+    bakeVoxelModel(scene, { name: `bldg-${d}`, voxels: buildingModel(d) });
   }
   for (const h of [2, 3, 4]) {
     bakeVoxelModel(scene, { name: `stack-${h}`, voxels: stackModel(h, false, false) });

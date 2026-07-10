@@ -2293,15 +2293,33 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'shack': {
-          const img = addVoxelSprite(this, `shack-${p.variant % 3}`, x, y);
+          // V3: eight building designs, picker-pooled so no street repeats
+          // a silhouette next door. FX anchors (sign/window) follow the
+          // design's own door and glazing.
+          const design = looks.pick('bldg', p.x, p.y, 8, 6); // reach 6: whole streets vary
+          const img = addVoxelSprite(this, `bldg-${design}`, x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
-          const signTint = [PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.neonTeal][
-            p.variant % 3
-          ] as number;
-          // Neon sign over the door (front-left face) + warm window spill.
-          const sign = this.add.image(x - 22, y - 34, 'fx-glow');
+          const signTint = [
+            PALETTE_INT.neonRose,
+            PALETTE_INT.neonAmber,
+            PALETTE_INT.neonTeal,
+            PALETTE_INT.neonCyan,
+          ][design % 4] as number;
+          const FX: Array<{ sign: [number, number]; win: [number, number] }> = [
+            { sign: [-22, -34], win: [20, -24] },
+            { sign: [-18, -30], win: [18, -20] },
+            { sign: [-24, -34], win: [22, -18] },
+            { sign: [-14, -30], win: [22, -18] },
+            { sign: [0, -30], win: [-14, -20] },
+            { sign: [-24, -34], win: [-6, -20] },
+            { sign: [-12, -30], win: [0, -70] },
+            { sign: [-18, -30], win: [18, -20] },
+          ];
+          const fx = FX[design] as { sign: [number, number]; win: [number, number] };
+          // Neon sign over the door + warm window spill.
+          const sign = this.add.image(x + fx.sign[0], y + fx.sign[1], 'fx-glow');
           sign.setTint(signTint);
           sign.setBlendMode(Phaser.BlendModes.ADD);
           sign.setAlpha(bloom(0.66));
@@ -2313,15 +2331,33 @@ export class WorldScene extends Phaser.Scene {
           else if (p.variant === 2) addHueCycle(this, sign, signTint, PALETTE_INT.violetNeon);
           else if (p.variant === 10) addHueCycle(this, sign, signTint, PALETTE_INT.emberOrange);
           else addFlicker(this, sign, bloom(0.66), 0.12);
-          const win = this.add.image(x + 20, y - 24, 'fx-glow');
+          const win = this.add.image(x + fx.win[0], y + fx.win[1], 'fx-glow');
           win.setTint(PALETTE_INT.warmGlow);
           win.setBlendMode(Phaser.BlendModes.ADD);
           win.setAlpha(bloom(0.42));
           win.setScale(0.09);
           win.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, win, bloom(0.42), 0.05);
-          this.addGroundPool(x - 12, y - 2, signTint, 0.5);
-          this.addGroundPool(x + 16, y - 2, PALETTE_INT.warmGlow, 0.34);
+          // Rooftop marks: the whip antenna / masthead lamp get their glint.
+          if (design === 1) {
+            const tip = this.add.image(x + 14, y - 92, 'fx-glow');
+            tip.setTint(PALETTE_INT.neonTeal);
+            tip.setBlendMode(Phaser.BlendModes.ADD);
+            tip.setScale(0.06);
+            tip.setAlpha(bloom(0.5));
+            tip.setDepth(depthForWorldY(y) + 1);
+            addFlicker(this, tip, bloom(0.5), 0.2);
+          } else if (design === 6) {
+            const mast = this.add.image(x + 2, y - 102, 'fx-glow');
+            mast.setTint(PALETTE_INT.neonAmber);
+            mast.setBlendMode(Phaser.BlendModes.ADD);
+            mast.setScale(0.07);
+            mast.setAlpha(bloom(0.5));
+            mast.setDepth(depthForWorldY(y) + 1);
+            addFlicker(this, mast, bloom(0.5), 0.16);
+          }
+          this.addGroundPool(x + fx.sign[0] + 10, y - 2, signTint, 0.5);
+          this.addGroundPool(x + fx.win[0] - 4, y - 2, PALETTE_INT.warmGlow, 0.34);
           break;
         }
       }
