@@ -1,14 +1,19 @@
 /**
- * WORLD POSTER RIG (D4b) — "four quarters, one city in the dark".
+ * LAUNCH POSTER RIG (G6) — the whole city as one image.
  *
- * Shoots one flattering wide angle per district through the client's
- * photo mode (window.__amperia.photo), then composites a 2×2 poster with
- * the wordmark band in a second headless page. Same dev-only assumptions
- * as marketing-shot.mjs: local server on :2567, Vite on :5173, postgres
- * via `su postgres -c psql`, Chromium at /opt/pw-browsers/chromium.
+ * Captures each district whole (photo mode, true-black void, skyline off,
+ * cast shadows dimmed so nothing floats), then composites the four decks
+ * as screen-blended islands on a 4K black canvas: the tram line strung
+ * gate to gate across the void, the Dynamo glowing as the city's heart,
+ * the G6b rims making every deck read as a structure — an island of
+ * light in the dark. Outputs:
+ *   docs/marketing/world-poster.png    4096x2304 (the launch image)
+ *   docs/marketing/world-banner-x.png  1500x500 (X banner crop)
+ *   docs/marketing/world-square.png    2048x2048 (1:1 letterboxed)
+ * Dev-only assumptions match marketing-shot.mjs (local :2567/:5173,
+ * postgres via su, Chromium at /opt/pw-browsers/chromium).
  *
  * Usage: node tools/world-poster.mjs
- * Output: docs/marketing/world-poster.png (2560×1440)
  */
 import { execSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
@@ -17,30 +22,26 @@ import { chromium } from 'playwright-core';
 const HTTP = 'http://localhost:2567';
 const WEB = 'http://localhost:5173';
 const SCRATCH = process.env.POSTER_TMP ?? '/tmp/amperia-poster';
-mkdirSync(SCRATCH, { recursive: true });
+const OUT = '/home/user/Amperia/docs/marketing';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const psql = (sql) => {
-  writeFileSync('/tmp/po.sql', sql);
-  return execSync('chmod 644 /tmp/po.sql && su postgres -c "psql amperia -f /tmp/po.sql"', { encoding: 'utf8' });
+  writeFileSync('/tmp/lp.sql', sql);
+  return execSync('chmod 644 /tmp/lp.sql && su postgres -c "psql amperia -f /tmp/lp.sql"', { encoding: 'utf8' });
 };
 
+mkdirSync(SCRATCH, { recursive: true });
 const r = await fetch(`${HTTP}/auth/guest`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
 const a = await r.json();
 
-// One flattering wide angle per quarter (1280x720 each -> 2560x1440 poster).
-const QUARTERS = [
-  { d: 'filament', label: 'THE FILAMENT', tile: { x: 26, y: 18 }, zoom: 1.05, at: { x: 30, y: 22 } },
-  { d: 'stacks', label: 'THE STACKS', tile: { x: 17, y: 15 }, zoom: 1.0, at: { x: 13, y: 16 } },
-  { d: 'terrarium', label: 'THE TERRARIUM', tile: { x: 27, y: 17 }, zoom: 1.3, at: { x: 24, y: 18 } },
-  { d: 'tangle', label: 'THE TANGLE', tile: { x: 20, y: 20 }, zoom: 1.0, at: { x: 18, y: 22 } },
-];
-
+// ── 1. Capture each district whole, high-res, void-clean ────────────────
+const CAP_W = 3200, CAP_H = 2100, ZOOM = 1.15;
+const DISTRICTS = ['filament', 'stacks', 'terrarium', 'tangle'];
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: CAP_W, height: CAP_H } });
 let first = true;
-for (const q of QUARTERS) {
-  psql(`UPDATE "Character" SET district='${q.d}', "tileX"=${q.at.x}, "tileY"=${q.at.y} WHERE "sparkName"='${a.sparkName}';`);
-  await page.addInitScript(([t, d]) => { localStorage.setItem('amperia.token', t); localStorage.setItem('amperia.district', d); }, [a.token, q.d]);
+for (const d of DISTRICTS) {
+  psql(`UPDATE "Character" SET district='${d}', "tileX"=20, "tileY"=20 WHERE "sparkName"='${a.sparkName}';`);
+  await page.addInitScript(([t, dd]) => { localStorage.setItem('amperia.token', t); localStorage.setItem('amperia.district', dd); }, [a.token, d]);
   await page.goto(WEB, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(() => window.__amperia?.session?.room != null, null, { timeout: 90000 });
   if (first) {
@@ -51,53 +52,119 @@ for (const q of QUARTERS) {
     }
     first = false;
   }
-  await sleep(2500);
-  await page.evaluate(([tile, zoom]) => window.__amperia.photo.enter({ tile, zoom }), [q.tile, q.zoom]);
+  await sleep(2800);
+  await page.evaluate(([z]) => {
+    const scene = window.__amperia.game.scene.getScene('world');
+    // The skyline backdrop belongs to gameplay, not the void poster — and
+    // the void itself goes TRUE black so islands screen-blend seamlessly.
+    scene.children.list.filter((o) => o.texture?.key === 'tex-skyline').forEach((o) => o.setVisible(false));
+    scene.cameras.main.setBackgroundColor('#000000');
+    // Cast shadows spill past the deck edge and read as grey slabs in the
+    // void — dim them for the poster (in-deck grounding survives).
+    scene.children.list
+      .filter((o) => o.texture?.key?.endsWith('-shadow'))
+      .forEach((o) => o.setAlpha(o.alpha * 0.4));
+    window.__amperia.photo.enter({ tile: { x: 20, y: 20 }, zoom: z });
+  }, [ZOOM]);
   await sleep(1400);
-  await page.screenshot({ path: `${SCRATCH}/poster-${q.d}.png` });
+  await page.screenshot({ path: `${SCRATCH}/launch-${d}.png` });
+  console.log(`launch-${d}.png ✓`);
   await page.evaluate(() => window.__amperia.photo.exit());
-  console.log(`poster-${q.d}.png ✓`);
-  // Disconnect cleanly before flipping the persisted district.
   await page.goto('about:blank');
   await sleep(1500);
 }
 
-// Composite in-browser: a 2x2 grid, thin ink gutters, the wordmark band.
+// ── 2. Composite: one city in the black void, 4K ─────────────────────────
+// Gate pixel positions inside a capture (camera on tile 20,20 center):
+// world(tx,ty) = ((tx-ty)*32, (tx+ty)*16); capture px = center + delta*zoom.
+const capPx = (tx, ty) => [
+  CAP_W / 2 + ((tx - ty) * 32 - 0) * ZOOM,
+  CAP_H / 2 + ((tx + ty) * 16 - 640) * ZOOM,
+];
+const GATE_SE = capPx(37, 20.5);  // filament's gate (x=36,w=2,h=5)
+const GATE_NW = capPx(2, 20.5);   // everyone else's gate (x=1)
+const DYNAMO = capPx(19, 18);
+
+// Island placement on the 4096×2304 master (tram order F→S→T→Tangle).
+const M_W = 4096, M_H = 2304;
+const ISLANDS = [
+  { d: 'filament', cx: 1250, cy: 1180, s: 0.62, gate: GATE_SE },
+  { d: 'stacks', cx: 2700, cy: 640, s: 0.44, gate: GATE_NW },
+  { d: 'terrarium', cx: 3300, cy: 1450, s: 0.44, gate: GATE_NW },
+  { d: 'tangle', cx: 2250, cy: 1900, s: 0.42, gate: GATE_NW },
+];
+const gatePos = (i) => [
+  i.cx + (i.gate[0] - CAP_W / 2) * i.s,
+  i.cy + (i.gate[1] - CAP_H / 2) * i.s,
+];
+const stops = ISLANDS.map(gatePos);
+const dyn = [
+  ISLANDS[0].cx + (DYNAMO[0] - CAP_W / 2) * ISLANDS[0].s,
+  ISLANDS[0].cy + (DYNAMO[1] - CAP_H / 2) * ISLANDS[0].s,
+];
 const b64 = (p) => readFileSync(p).toString('base64');
+const rail = stops.map(([x, y]) => `${x},${y}`).join(' ');
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   * { margin: 0; padding: 0; }
-  body { width: 2560px; height: 1440px; background: #0D0A18; position: relative; font-family: 'DejaVu Sans Mono', monospace; }
-  .q { position: absolute; width: 1277px; height: 717px; object-fit: cover; }
-  .nw { left: 0; top: 0; } .ne { right: 0; top: 0; }
-  .sw { left: 0; bottom: 0; } .se { right: 0; bottom: 0; }
-  .tag { position: absolute; color: #FFD9A0; letter-spacing: 3px; font-size: 22px;
-         text-shadow: 0 0 14px rgba(255,178,102,0.85), 0 2px 6px #000; }
-  .nw-t { left: 26px; top: 20px; } .ne-t { right: 26px; top: 20px; }
-  .sw-t { left: 26px; bottom: 20px; } .se-t { right: 26px; bottom: 20px; }
-  .band { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-          text-align: center; background: rgba(13,10,24,0.82); border: 2px solid #FFB266;
-          border-radius: 10px; padding: 26px 64px; box-shadow: 0 0 60px rgba(255,178,102,0.35); }
-  .band h1 { color: #FFD9A0; font-size: 88px; letter-spacing: 26px; text-indent: 26px;
-             text-shadow: 0 0 30px rgba(255,178,102,0.9); }
-  .band p { color: #B266FF; font-size: 26px; letter-spacing: 6px; margin-top: 10px;
-            text-shadow: 0 0 16px rgba(178,102,255,0.8); }
+  body { width: ${M_W}px; height: ${M_H}px; background: #030208; position: relative;
+         overflow: hidden; font-family: 'DejaVu Sans Mono', monospace; }
+  .isl { position: absolute; transform-origin: center center; mix-blend-mode: screen; }
+  .heart { position: absolute; width: 1100px; height: 1100px; border-radius: 50%;
+           background: radial-gradient(circle, rgba(255,178,102,0.30) 0%, rgba(255,178,102,0.10) 40%, transparent 70%);
+           mix-blend-mode: screen; }
+  svg { position: absolute; left: 0; top: 0; }
+  .mark { position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); text-align: center; }
+  .mark h1 { color: #FFD9A0; font-size: 64px; letter-spacing: 30px; text-indent: 30px;
+             text-shadow: 0 0 26px rgba(255,178,102,0.85); }
+  .mark p { color: #B266FF; font-size: 20px; letter-spacing: 8px; margin-top: 6px;
+            text-shadow: 0 0 14px rgba(178,102,255,0.8); }
 </style></head><body>
-  <img class="q nw" src="data:image/png;base64,${b64(`${SCRATCH}/poster-filament.png`)}">
-  <img class="q ne" src="data:image/png;base64,${b64(`${SCRATCH}/poster-stacks.png`)}">
-  <img class="q sw" src="data:image/png;base64,${b64(`${SCRATCH}/poster-terrarium.png`)}">
-  <img class="q se" src="data:image/png;base64,${b64(`${SCRATCH}/poster-tangle.png`)}">
-  <div class="tag nw-t">THE FILAMENT</div>
-  <div class="tag ne-t">THE STACKS</div>
-  <div class="tag sw-t">THE TERRARIUM</div>
-  <div class="tag se-t">THE TANGLE</div>
-  <div class="band"><h1>AMPERIA</h1><p>FOUR QUARTERS · ONE CITY IN THE DARK</p></div>
+  <svg width="${M_W}" height="${M_H}">
+    <polyline points="${rail}" fill="none" stroke="#FFB266" stroke-opacity="0.16" stroke-width="20" stroke-linejoin="round"/>
+    <polyline points="${rail}" fill="none" stroke="#FFB266" stroke-opacity="0.55" stroke-width="5" stroke-linejoin="round"/>
+    <polyline points="${rail}" fill="none" stroke="#1E1930" stroke-opacity="0.9" stroke-width="2.5"
+              stroke-dasharray="4 14" stroke-linejoin="round"/>
+  </svg>
+  <div class="heart" style="left:${dyn[0] - 550}px; top:${dyn[1] - 550}px;"></div>
+  ${ISLANDS.map((i) => `
+    <img class="isl" src="data:image/png;base64,${b64(`${SCRATCH}/launch-${i.d}.png`)}"
+         style="left:${i.cx - CAP_W / 2}px; top:${i.cy - CAP_H / 2}px; transform: scale(${i.s});">
+  `).join('')}
+  <div class="mark"><h1>AMPERIA</h1><p>ONE CITY IN THE DARK</p></div>
 </body></html>`;
-writeFileSync(`${SCRATCH}/poster.html`, html);
-const pp = await browser.newPage({ viewport: { width: 2560, height: 1440 } });
-await pp.goto(`file://${SCRATCH}/poster.html`);
-await sleep(1200);
-mkdirSync('/home/user/Amperia/docs/marketing', { recursive: true });
-await pp.screenshot({ path: '/home/user/Amperia/docs/marketing/world-poster.png' });
-console.log('world-poster.png ✓');
+writeFileSync(`${SCRATCH}/launch-poster.html`, html);
+mkdirSync(OUT, { recursive: true });
+const pp = await browser.newPage({ viewport: { width: M_W, height: M_H } });
+await pp.goto(`file://${SCRATCH}/launch-poster.html`);
+await sleep(1800);
+await pp.screenshot({ path: `${OUT}/world-poster.png` });
+console.log('world-poster.png (4096×2304) ✓');
+
+// ── 3. Crops: X banner 1500×500 + square 1:1 ────────────────────────────
+const master = b64(`${OUT}/world-poster.png`);
+const bannerScale = 1500 / M_W;
+const bandTop = Math.max(0, Math.min(M_H * bannerScale - 500, dyn[1] * bannerScale - 250));
+writeFileSync(`${SCRATCH}/banner.html`, `<!doctype html><html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; } body { width:1500px; height:500px; overflow:hidden; background:#07050E; position:relative; }
+  img { position:absolute; left:0; top:${-bandTop}px; width:1500px; }
+</style></head><body><img src="data:image/png;base64,${master}"></body></html>`);
+const bp = await browser.newPage({ viewport: { width: 1500, height: 500 } });
+await bp.goto(`file://${SCRATCH}/banner.html`);
+await sleep(900);
+await bp.screenshot({ path: `${OUT}/world-banner-x.png` });
+console.log('world-banner-x.png (1500×500) ✓');
+
+// Square: the full panorama letterboxed on black — clean for 1:1 posts.
+const sqScale = 2048 / M_W;
+const sqTop = Math.round((2048 - M_H * sqScale) / 2);
+writeFileSync(`${SCRATCH}/square.html`, `<!doctype html><html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; } body { width:2048px; height:2048px; overflow:hidden; background:#07050E; position:relative; }
+  img { position:absolute; left:0; top:${sqTop}px; width:2048px; }
+</style></head><body><img src="data:image/png;base64,${master}"></body></html>`);
+const sp = await browser.newPage({ viewport: { width: 2048, height: 2048 } });
+await sp.goto(`file://${SCRATCH}/square.html`);
+await sleep(900);
+await sp.screenshot({ path: `${OUT}/world-square.png` });
+console.log('world-square.png (2048×2048) ✓');
 await browser.close();
 process.exit(0);
