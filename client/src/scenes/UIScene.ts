@@ -14,6 +14,7 @@ import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { ChargePanel } from '../ui/ChargePanel';
 import { ShopPanel } from '../ui/ShopPanel';
+import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
 import { TradePanel } from '../ui/TradePanel';
 
@@ -437,7 +438,7 @@ export class UIScene extends Phaser.Scene {
     if (stack === null || stack === undefined) return;
 
     const def = ITEMS[stack.itemId];
-    const ghost = this.add.image(pointer.x, pointer.y, def.icon);
+    const ghost = this.add.image(pointer.x, pointer.y, itemThumbKey(def));
     if (def.iconTint !== undefined) ghost.setTint(PALETTE_INT[def.iconTint as PaletteKey]);
     ghost.setDisplaySize(44, 44);
     ghost.setAlpha(0.85);

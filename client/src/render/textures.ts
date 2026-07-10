@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { mixPalette, PALETTE_INT } from '@shared/palette';
+import { PALETTE_INT } from '@shared/palette';
 
 /**
  * Procedural palette placeholders, generated once at boot. Everything is
@@ -11,38 +11,6 @@ function g2(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
   return scene.make.graphics({ x: 0, y: 0 }, false);
 }
 
-/** Inventory icons for M0 items (drawn, palette-only). */
-export function makeItemIconTextures(scene: Phaser.Scene): void {
-  const S = 56;
-  // Salvage: a plate with a big bolt.
-  let g = g2(scene);
-  g.fillStyle(mixPalette('groundAccent', 'structureMid', 0.25));
-  g.fillRoundedRect(8, 14, 34, 30, 6);
-  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.35));
-  g.fillRoundedRect(12, 18, 26, 22, 4);
-  g.fillStyle(mixPalette('structureMid', 'ink', 0.15));
-  g.fillCircle(38, 38, 11);
-  g.fillStyle(mixPalette('groundAccent', 'warmGlow', 0.5));
-  g.fillCircle(38, 38, 7);
-  g.fillStyle(mixPalette('structureMid', 'ink', 0.35));
-  g.fillRect(35, 36.5, 6, 3);
-  g.generateTexture('icon-salvage', S, S);
-  g.destroy();
-  // Gilded Scrap: the same plate, gone gold.
-  g = g2(scene);
-  g.fillStyle(mixPalette('neonAmber', 'ink', 0.35));
-  g.fillRoundedRect(8, 14, 34, 30, 6);
-  g.fillStyle(PALETTE_INT.neonAmber);
-  g.fillRoundedRect(12, 18, 26, 22, 4);
-  g.fillStyle(PALETTE_INT.warmGlow);
-  g.fillCircle(38, 38, 10);
-  g.fillStyle(PALETTE_INT.neonAmber);
-  g.fillCircle(38, 38, 6);
-  g.fillStyle(PALETTE_INT.warmGlow, 0.9);
-  g.fillTriangle(16, 10, 20, 18, 12, 18);
-  g.generateTexture('icon-gilded-scrap', S, S);
-  g.destroy();
-}
 
 /** Contact shadow for walking entities (tight core, soft fringe). */
 export function makeShadowTextures(scene: Phaser.Scene): void {

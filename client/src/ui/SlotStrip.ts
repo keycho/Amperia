@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
-import { ITEMS } from '@shared/items';
-import { mixPalette, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
+import { ITEMS, type ItemDef } from '@shared/items';
+import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { Inventory } from '@shared/inventory';
+import { itemThumbKey } from '../render/itemThumbs';
 
 export const SLOT_SIZE = 52;
 export const SLOT_GAP = 7;
@@ -15,17 +16,28 @@ export interface SlotStripOptions {
   panel?: boolean;
 }
 
+/** Rarity edge-glow color for a filled slot (I4): Manifest rares amber,
+ *  Brassbound warm ochre, Coilworked teal, plain gear none. */
+function rarityGlow(def: ItemDef): number | null {
+  if (def.rare === true) return PALETTE_INT.neonAmber;
+  if (def.tier === 3) return PALETTE_INT.neonTeal;
+  if (def.tier === 2) return mixPalette('neonAmber', 'groundAccent', 0.35);
+  return null;
+}
+
 /**
- * A grid of item slots (inventory panel or hotbar) rendered warm-and-minimal:
- * structureMid panel, ink slots, neonAmber active highlight. Pure view — the
- * scene owns drag logic and calls refresh() with current inventory data.
+ * A grid of item slots (inventory panel or hotbar): Kenney 9-slice chrome
+ * re-tinted to the palette (never stock-colored), voxel-baked thumbnails on
+ * plum cards, empty slots as dim insets, rarity edge-glow on filled ones.
+ * Pure view — the scene owns drag logic and calls refresh() with data.
  */
 export class SlotStrip {
   readonly container: Phaser.GameObjects.Container;
   readonly source: 'inventory' | 'hotbar';
   private readonly opts: SlotStripOptions;
-  private readonly bg: Phaser.GameObjects.Graphics;
+  private bg!: Phaser.GameObjects.Graphics;
   private readonly hitZone: Phaser.GameObjects.Zone;
+  private readonly insets: Phaser.GameObjects.NineSlice[] = [];
   private readonly icons: Phaser.GameObjects.Image[] = [];
   private readonly counts: Phaser.GameObjects.Text[] = [];
   private activeSlot = -1;
@@ -43,10 +55,50 @@ export class SlotStrip {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(source === 'hotbar' ? 1000 : 1100);
 
+    const { w, h } = this.pixelSize();
+    // Panel chrome: Kenney 9-slice, ALWAYS re-tinted to the plum family.
+    if (opts.panel === true) {
+      const headroom = opts.title !== undefined ? 36 : 0;
+      const chrome = scene.add.nineslice(
+        0,
+        -headroom,
+        'ui-panel-screws',
+        undefined,
+        w,
+        h + headroom,
+        16,
+        16,
+        16,
+        16,
+      );
+      chrome.setOrigin(0, 0);
+      chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
+      chrome.setAlpha(0.97);
+      this.container.add(chrome);
+    }
+    // Slot insets (dim when empty, lit when filled/active).
+    const cellSize = SLOT_SIZE + SLOT_GAP;
+    for (let i = 0; i < this.slotCount; i++) {
+      const inset = scene.add.nineslice(
+        SLOT_GAP + (i % opts.cols) * cellSize,
+        SLOT_GAP + Math.floor(i / opts.cols) * cellSize,
+        'ui-slot-inset',
+        undefined,
+        SLOT_SIZE,
+        SLOT_SIZE,
+        10,
+        10,
+        10,
+        10,
+      );
+      inset.setOrigin(0, 0);
+      this.container.add(inset);
+      this.insets.push(inset);
+    }
+
     this.bg = scene.add.graphics();
     this.container.add(this.bg);
 
-    const { w, h } = this.pixelSize();
     this.hitZone = scene.add.zone(0, 0, w, h);
     this.hitZone.setOrigin(0, 0);
     this.hitZone.setInteractive();
@@ -60,7 +112,7 @@ export class SlotStrip {
     this.container.add(this.hitZone);
 
     for (let i = 0; i < this.slotCount; i++) {
-      const icon = scene.add.image(0, 0, 'icon-salvage');
+      const icon = scene.add.image(0, 0, 'thumb:icon-salvage');
       icon.setVisible(false);
       const count = scene.add.text(0, 0, '', {
         fontFamily: 'monospace',
@@ -150,43 +202,49 @@ export class SlotStrip {
     this.activeSlot = idx;
   }
 
-  /** Redraw panel + slots and populate icons/counts from inventory data. */
+  /** Redraw slot states and populate thumbnails/counts from inventory. */
   refresh(inv: Inventory, hiddenSlot: number | null = null): void {
     const g = this.bg;
-    const { w, h } = this.pixelSize();
     g.clear();
-    if (this.opts.panel === true) {
-      g.fillStyle(PALETTE_INT.structureMid, 0.94);
-      g.fillRoundedRect(0, this.opts.title !== undefined ? -36 : 0, w, h + (this.opts.title !== undefined ? 36 : 0), 12);
-      g.lineStyle(2, PALETTE_INT.ink, 1);
-      g.strokeRoundedRect(0, this.opts.title !== undefined ? -36 : 0, w, h + (this.opts.title !== undefined ? 36 : 0), 12);
-    }
     const cell = SLOT_SIZE + SLOT_GAP;
     for (let i = 0; i < this.slotCount; i++) {
       const cx = SLOT_GAP + (i % this.opts.cols) * cell;
       const cy = SLOT_GAP + Math.floor(i / this.opts.cols) * cell;
-      g.fillStyle(mixPalette('ink', 'structureMid', 0.35), 0.9);
-      g.fillRoundedRect(cx, cy, SLOT_SIZE, SLOT_SIZE, 8);
+      const stack = inv.slots[i];
+      const filled = stack !== null && stack !== undefined && i !== hiddenSlot;
+      // Slot states (I4): EMPTY = dim inset · FILLED = lit card + glow.
+      const inset = this.insets[i];
+      if (inset !== undefined) {
+        inset.setTint(
+          i === this.activeSlot
+            ? mixPalette('neonAmber', 'structureMid', 0.45)
+            : mixPalette('ink', 'structureMid', 0.55),
+        );
+        inset.setAlpha(filled ? 1 : 0.5);
+      }
       if (i === this.activeSlot) {
         g.lineStyle(2.5, PALETTE_INT.neonAmber, 1);
         g.strokeRoundedRect(cx - 1, cy - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, 9);
-      } else {
-        g.lineStyle(1.5, mixPalette('ink', 'structureMid', 0.7), 0.8);
-        g.strokeRoundedRect(cx, cy, SLOT_SIZE, SLOT_SIZE, 8);
       }
 
       const icon = this.icons[i];
       const count = this.counts[i];
       if (icon === undefined || count === undefined) continue;
-      const stack = inv.slots[i];
-      if (stack !== null && stack !== undefined && i !== hiddenSlot) {
+      if (filled) {
         const def = ITEMS[stack.itemId];
-        icon.setTexture(def.icon);
-        if (def.iconTint !== undefined) icon.setTint(PALETTE_INT[def.iconTint as PaletteKey]);
-        else icon.clearTint();
+        // Voxel-baked thumbnail on its plum card (never a tint wash).
+        icon.setTexture(itemThumbKey(def));
         icon.setPosition(cx + SLOT_SIZE / 2, cy + SLOT_SIZE / 2);
-        icon.setDisplaySize(SLOT_SIZE - 12, SLOT_SIZE - 12);
+        icon.setDisplaySize(SLOT_SIZE - 8, SLOT_SIZE - 8);
         icon.setVisible(true);
+        // Rarity edge-glow.
+        const glow = rarityGlow(def);
+        if (glow !== null) {
+          g.lineStyle(4, glow, 0.22);
+          g.strokeRoundedRect(cx + 1, cy + 1, SLOT_SIZE - 2, SLOT_SIZE - 2, 9);
+          g.lineStyle(1.5, glow, 0.85);
+          g.strokeRoundedRect(cx + 2.5, cy + 2.5, SLOT_SIZE - 5, SLOT_SIZE - 5, 8);
+        }
         count.setPosition(cx + SLOT_SIZE - 4, cy + SLOT_SIZE - 2);
         count.setText(stack.qty > 1 ? String(stack.qty) : '');
         count.setVisible(true);

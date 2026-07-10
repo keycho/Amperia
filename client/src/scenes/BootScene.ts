@@ -2,11 +2,11 @@ import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
 import { makeAtmosphereTextures } from '../render/atmosphere';
 import { bakeFloorTiles } from '../render/floorTiles';
+import { bakeItemThumbs } from '../render/itemThumbs';
 import { bakeSparkModels } from '../render/sparkModel';
 import { bakeCoreVoxelModels } from '../render/voxelModels';
 import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
 import {
-  makeItemIconTextures,
   makeKoiTextures,
   makeShadowTextures,
   makeTileMarkerTextures,
@@ -29,7 +29,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     makeTileMarkerTextures(this);
-    makeItemIconTextures(this);
+    bakeItemThumbs(this);
     makeKoiTextures(this);
     makeShadowTextures(this);
     makeAtmosphereTextures(this);

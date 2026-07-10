@@ -80,6 +80,7 @@ import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
+import { itemThumbKey } from '../render/itemThumbs';
 import {
   addBadFlicker,
   addFilmGrain,
@@ -1396,7 +1397,7 @@ export class WorldScene extends Phaser.Scene {
     goods.slice(0, 3).forEach((itemId, i) => {
       const def = ITEMS[itemId as keyof typeof ITEMS];
       if (def === undefined) return;
-      const icon = this.add.image(x - 16 + i * 16, y - 40, def.icon);
+      const icon = this.add.image(x - 16 + i * 16, y - 40, itemThumbKey(def));
       icon.setDisplaySize(14, 14);
       if (def.iconTint !== undefined) icon.setTint(PALETTE_INT[def.iconTint as keyof typeof PALETTE_INT]);
       icon.setDepth(depthForWorldY(y) + 2);
