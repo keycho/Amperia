@@ -57,4 +57,6 @@ export const SessionEvents = {
   rested: 'rested',
   /** Ledgerhouse vault state (S5): payload BankSync. */
   bank: 'bank',
+  /** H1: a brand-new Spark finished the creator — show the intro cards. */
+  howToPlay: 'howToPlay',
 } as const;

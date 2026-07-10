@@ -121,6 +121,8 @@ export class WorldScene extends Phaser.Scene {
   private gatherView!: GatherView;
   /** Creator overlay handle + latest identity snapshot (own Spark). */
   private creator: CreatorHandle | null = null;
+  /** Which door the creator opened through (H1 gates the intro on 'first'). */
+  private creatorMode: 'first' | 'wardrobe' | null = null;
   private identity: IdentityEvent | null = null;
   /** Last-inspected Spark: their nameplate never fades (S0). */
   private inspectTarget: string | null = null;
@@ -756,6 +758,9 @@ export class WorldScene extends Phaser.Scene {
       } else if (e.chosen && this.creator !== null) {
         this.creator.close();
         this.creator = null;
+        // H1: a brand-new Spark steps out of the creator into the intro.
+        if (this.creatorMode === 'first') session.events.emit(SessionEvents.howToPlay);
+        this.creatorMode = null;
       }
     });
     room.onMessage(MSG.inspectInfo, (e: InspectInfoEvent) =>
@@ -1181,6 +1186,7 @@ export class WorldScene extends Phaser.Scene {
     const identity = this.identity;
     if (identity === null || this.room === null) return;
     const room = this.room;
+    this.creatorMode = mode;
     this.creator = showCreatorOverlay({
       scene: this,
       mode,

@@ -1285,8 +1285,13 @@ export class FilamentRoom extends Room<FilamentState> {
         }
       })();
     } else if (cmd === '/help') {
+      // H1: /help speaks the four intro cards, compressed.
       client.send(MSG.notice, {
-        text: `Commands: /near /wave /trade <name> /charge /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
+        text:
+          'The city in four breaths — 1) Click to walk; click a glowing node to work it; watch for the glint. ' +
+          '2) Right tool in hand (1–6); Mastery levels as you work; the Tinkerbench crafts and mends. ' +
+          '3) Goals G · Manifest M · skills K · map TAB · bank at the Ledgerhouse · the Coil spins free daily. ' +
+          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /trade <name> /charge /pod /haul <berth> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });

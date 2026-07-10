@@ -20,6 +20,7 @@ import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
 import { BankPanel } from '../ui/BankPanel';
 import { GoalPanel } from '../ui/GoalPanel';
+import { HowToPlayPanel } from '../ui/HowToPlayPanel';
 import { WorldMapPanel } from '../ui/WorldMapPanel';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
@@ -53,6 +54,7 @@ export class UIScene extends Phaser.Scene {
   private goalPanel!: GoalPanel;
   private bankPanel!: BankPanel;
   private worldMapPanel!: WorldMapPanel;
+  private howToPlayPanel!: HowToPlayPanel;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
@@ -160,6 +162,9 @@ export class UIScene extends Phaser.Scene {
     this.goalPanel = new GoalPanel(this);
     this.bankPanel = new BankPanel(this);
     this.worldMapPanel = new WorldMapPanel(this);
+    this.howToPlayPanel = new HowToPlayPanel(this);
+    // H1: brand-new Sparks get the intro right after the creator (once).
+    session.events.on(SessionEvents.howToPlay, () => this.howToPlayPanel.maybeShowFirstTime());
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
     this.restedText = this.add.text(12, 58, '', {
@@ -332,6 +337,29 @@ export class UIScene extends Phaser.Scene {
     placeGear();
     this.scale.on('resize', placeGear);
 
+    // H1: the [?] button under the gear — how the city works, on demand.
+    const help = this.add.text(0, 0, '?', {
+      fontFamily: 'monospace',
+      fontSize: '17px',
+      fontStyle: 'bold',
+      color: PALETTE.warmGlow,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    help.setOrigin(0.5);
+    help.setAlpha(0.85);
+    help.setDepth(902);
+    help.setInteractive({ useHandCursor: true });
+    help.on('pointerover', () => help.setAlpha(1));
+    help.on('pointerout', () => help.setAlpha(0.85));
+    help.on('pointerdown', () => {
+      sound.uiClick();
+      this.howToPlayPanel.toggle();
+    });
+    const placeHelp = () => help.setPosition(this.scale.width - 22, 74);
+    placeHelp();
+    this.scale.on('resize', placeHelp);
+
     const panel = this.add.container(0, 0);
     panel.setDepth(950);
     panel.setVisible(false);
@@ -474,6 +502,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
       else if (this.worldMapPanel.visible) this.worldMapPanel.setVisible(false);
+      else if (this.howToPlayPanel.visible) this.howToPlayPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;
