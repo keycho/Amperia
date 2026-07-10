@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@shared/map';
-import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
   CacheStateShape,
@@ -40,6 +40,7 @@ import type {
   PlayerStateShape,
   ShopSyncEvent,
   StallStateShape,
+  LoftpodStateShape,
   TradeAskEvent,
   TradeEndEvent,
   TradeSyncEvent,
@@ -145,6 +146,8 @@ export class WorldScene extends Phaser.Scene {
   private stallsWorld = { x: 0, y: 0 };
   /** Shop-stall presence layers (shingle + counter goods), by stall id. */
   private stallFronts = new Map<number, { destroy(): void }>();
+  /** D2b: rendered Loftpods keyed by berth id. */
+  private loftpodViews = new Map<string, Phaser.GameObjects.GameObject[]>();
   /** String-light bulb glows — the Citywide Charge scales their density. */
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
   private chargeLightingTier = 0;
@@ -186,6 +189,7 @@ export class WorldScene extends Phaser.Scene {
     makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
+    this.placeLoftBerths();
     placeAmbientNpcs(this, this.map.district);
     this.placeRopes();
     this.placeAntennaCables();
@@ -549,6 +553,10 @@ export class WorldScene extends Phaser.Scene {
       stalls: {
         onAdd(cb: (s: StallStateShape, id: string) => void): void;
       };
+      loftpods: {
+        onAdd(cb: (p: LoftpodStateShape, id: string) => void): void;
+        onRemove(cb: (p: LoftpodStateShape, id: string) => void): void;
+      };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
     const $state = proxy(room.state) as unknown as StateProxy;
@@ -674,6 +682,13 @@ export class WorldScene extends Phaser.Scene {
       this.renderStallFront(Number(id), s);
       proxy(s).onChange(() => this.renderStallFront(Number(id), s));
     });
+
+    // D2b Loftpods: homes on their berths, displays live-updating.
+    $state.loftpods.onAdd((p2: LoftpodStateShape, id: string) => {
+      this.renderLoftpod(id, p2);
+      proxy(p2).onChange(() => this.renderLoftpod(id, p2));
+    });
+    $state.loftpods.onRemove((_p2: LoftpodStateShape, id: string) => this.removeLoftpod(id));
 
     // The Citywide Charge: lighting density tracks the meter's tier, and
     // the UI scene shows the weekend-buff banner.
@@ -2668,6 +2683,125 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  /**
+   * D2b: berth pads — dashed pad outlines with their number, clickable to
+   * place your Loftpod (the server checks Bolts + proximity + occupancy).
+   */
+  private placeLoftBerths(): void {
+    if (this.map.loftberths.length === 0) return;
+    const g = this.add.graphics();
+    g.setDepth(DEPTH_FLOOR + 2);
+    this.map.loftberths.forEach((b, i) => {
+      const nw = tileToWorld(b.x, b.y);
+      const se = tileToWorld(b.x + 2, b.y + 2);
+      const cx2 = (nw.x + se.x) / 2;
+      const cy2 = (nw.y + se.y) / 2 + TILE_H / 2;
+      g.lineStyle(1.5, mixPalette('solarGreen', 'structureMid', 0.4), 0.55);
+      // The pad: a diamond outline around the 3×3, corner studs.
+      const rx = TILE_W * 1.5;
+      const ry = TILE_H * 1.5;
+      g.strokePoints(
+        [
+          new Phaser.Math.Vector2(cx2, cy2 - ry),
+          new Phaser.Math.Vector2(cx2 + rx, cy2),
+          new Phaser.Math.Vector2(cx2, cy2 + ry),
+          new Phaser.Math.Vector2(cx2 - rx, cy2),
+        ],
+        true,
+      );
+      const label = this.add.text(cx2, cy2 - 6, `berth ${i}`, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: PALETTE.groundAccent,
+      });
+      label.setOrigin(0.5);
+      label.setAlpha(0.8);
+      label.setDepth(DEPTH_FLOOR + 3);
+      const zone = this.add.zone(cx2, cy2, TILE_W * 3, TILE_H * 3);
+      zone.setInteractive({ useHandCursor: true });
+      zone.on('pointerdown', () => {
+        if (this.loftpodViews.has(String(i))) return; // pod handles its own clicks
+        if (this.room !== null) this.room.send(MSG.loftpod, { action: 'place', berth: i });
+      });
+    });
+  }
+
+  /** D2b: a pod + its owner's display (shingle, trophy title, banner). */
+  private renderLoftpod(id: string, p: LoftpodStateShape): void {
+    this.removeLoftpod(id);
+    const b = this.map.loftberths[p.berth];
+    if (b === undefined) return;
+    const nw = tileToWorld(b.x, b.y);
+    const se = tileToWorld(b.x + 2, b.y + 2);
+    const x = (nw.x + se.x) / 2;
+    const y = (se.y + TILE_H / 2) - TILE_H;
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const img = addVoxelSprite(this, `loftpod-${Math.min(3, Math.max(1, p.tier))}-${p.dye}`, x, y);
+    const wt = worldSpriteTint();
+    if (wt !== null) img.setTint(wt);
+    img.setDepth(depthForWorldY(y));
+    img.setInteractive({ useHandCursor: true });
+    img.on('pointerdown', (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+      ev.stopPropagation();
+      const lines = [`${p.ownerName}'s Loftpod — tier ${p.tier}`];
+      if (p.trophyTitle !== '') lines.push(`“${p.trophyTitle}”`);
+      if (p.trophySkill !== '') lines.push(`${p.trophySkill} banner`);
+      floatText(this, x, y - 60, lines.join(' · '), PALETTE.warmGlow);
+    });
+    parts.push(img);
+    // The shingle: whose home this is (world flavor, not a nameplate).
+    const shingle = this.add.text(x, y - 52, p.ownerName, {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: UI_TEXT_WARM,
+      backgroundColor: '#1E1930CC',
+      padding: { x: 4, y: 2 },
+    });
+    shingle.setOrigin(0.5, 1);
+    shingle.setDepth(depthForWorldY(y) + 2);
+    parts.push(shingle);
+    if (p.trophyTitle !== '') {
+      const title = this.add.text(x, y - 40, `“${p.trophyTitle}”`, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: PALETTE.neonAmber,
+      });
+      title.setOrigin(0.5, 1);
+      title.setDepth(depthForWorldY(y) + 2);
+      parts.push(title);
+    }
+    if (p.trophySkill !== '') {
+      // The Mastery banner: a small colored pennant on the trophy hooks.
+      const hues = [
+        PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.neonTeal,
+        PALETTE_INT.neonCyan, PALETTE_INT.violetNeon, PALETTE_INT.emberOrange,
+      ];
+      const idx = Math.abs([...p.trophySkill].reduce((a, c) => a * 31 + c.charCodeAt(0), 0)) % hues.length;
+      const flag = this.add.graphics();
+      flag.fillStyle(hues[idx] as number, 0.9);
+      flag.fillTriangle(x + 26, y - 44, x + 26, y - 32, x + 40, y - 38);
+      flag.lineStyle(1, PALETTE_INT.ink, 0.8);
+      flag.lineBetween(x + 26, y - 46, x + 26, y - 26);
+      flag.setDepth(depthForWorldY(y) + 2);
+      parts.push(flag);
+    }
+    // Home light: the round window spills warm.
+    const glow = this.add.image(x - 14, y - 14, 'fx-glow');
+    glow.setTint(PALETTE_INT.warmGlow);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    glow.setScale(0.07);
+    glow.setAlpha(bloom(0.4));
+    glow.setDepth(depthForWorldY(y) + 1);
+    addFlicker(this, glow, bloom(0.4), 0.07);
+    parts.push(glow);
+    this.loftpodViews.set(id, parts);
+  }
+
+  private removeLoftpod(id: string): void {
+    for (const obj of this.loftpodViews.get(id) ?? []) obj.destroy();
+    this.loftpodViews.delete(id);
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   removeItem,
   transfer,
   type Inventory,
+  countItem,
 } from '@shared/inventory';
 import { ITEMS, type ItemId } from '@shared/items';
 import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
@@ -75,6 +76,8 @@ import {
   type GlintClickIntent,
   type GoalClaimIntent,
   type BankIntent,
+  type LoftpodIntent,
+  type LoftpodSync,
   type BankSync,
   type CoilResultEvent,
   type CoilShowEvent,
@@ -120,6 +123,7 @@ import { merchant } from '../services/merchant.js';
 import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
 import { loadBank, nextExpansionCost, saveBank, type BankState } from '../services/bank.js';
+import { loftpods, type PodView } from '../services/loftpods.js';
 import { coilSpunToday, spinCoil } from '../services/coil.js';
 import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
@@ -132,6 +136,7 @@ import {
   NodeState,
   PlayerState,
   StallState,
+  LoftpodState,
 } from './state.js';
 
 type Session =
@@ -368,6 +373,11 @@ export class FilamentRoom extends Room<FilamentState> {
         console.error('[bank] action failed', err),
       );
     });
+    this.onMessage<LoftpodIntent>(MSG.loftpod, (client, msg) => {
+      void this.handleLoftpod(client, msg).catch((err) =>
+        console.error('[loftpod] action failed', err),
+      );
+    });
     this.onMessage<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
       void this.handleCoilSpin(client, msg).catch((err) => {
         // The no-currency assert tripping is an anomaly worth remembering.
@@ -394,6 +404,12 @@ export class FilamentRoom extends Room<FilamentState> {
       void this.replyChargeInfo(client);
     });
     if (this.map.shopStalls.length > 0) void this.loadStalls();
+    if (this.districtId === 'terrarium') {
+      void loftpods
+        .getAll()
+        .then((pods) => pods.forEach((pod) => this.refreshLoftpodState(pod)))
+        .catch((err) => console.error('[loftpod] boot load failed', err));
+    }
     void this.refreshCharge(true);
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
@@ -1181,6 +1197,60 @@ export class FilamentRoom extends Room<FilamentState> {
         return;
       }
       this.requestTrade(client, rt, targetSid);
+    } else if (cmd === '/pod') {
+      const rest = text.slice(cmd.length).trim();
+      const [sub, ...args] = rest.split(/\s+/);
+      void (async () => {
+        try {
+          if (sub === 'upgrade') {
+            await this.handleLoftpod(client, { action: 'upgrade' });
+          } else if (sub === 'dye') {
+            await this.handleLoftpod(client, { action: 'dye', dye: (args[0] ?? '').toLowerCase() });
+          } else if (sub === 'trophy') {
+            const want = args.join(' ').toLowerCase();
+            const title = rt.titles.find((t) => t.toLowerCase() === want) ?? (want === 'off' ? '' : undefined);
+            if (title === undefined) {
+              client.send(MSG.notice, {
+                text: rt.titles.length > 0
+                  ? `Your titles: ${rt.titles.join(', ')} (or "/pod trophy off").`
+                  : 'No titles earned yet — the Manifest pages award them.',
+              });
+              return;
+            }
+            await this.handleLoftpod(client, { action: 'trophy', title });
+          } else if (sub === 'banner') {
+            const skill = (args[0] ?? '') === 'off' ? '' : (args[0] ?? '').toLowerCase();
+            await this.handleLoftpod(client, { action: 'trophy', skill });
+          } else {
+            const mine = await loftpods.getMine(rt.accountId);
+            const taken = new Set<number>();
+            for (const [, st] of this.state.loftpods) taken.add(st.berth);
+            const free = this.map.loftberths.map((_, i) => i).filter((i) => !taken.has(i));
+            const cfg = CONFIG.loftpods;
+            client.send(MSG.notice, {
+              text:
+                mine === null
+                  ? `No home yet — click a berth pad to place a Loftpod (${cfg.placeCostBolts} Bolts). Free berths: ${free.join(', ') || 'none'}.`
+                  : `Your Loftpod: berth ${mine.berth}, tier ${mine.tier}, ${mine.dye}. ` +
+                    `Commands: /pod upgrade · /pod dye <${cfg.dyes.join('|')}> (${cfg.dyeCostBolts}) · ` +
+                    `/pod trophy <title|off> · /pod banner <skill|off> · /haul <berth> (${cfg.haulCostBolts}). ` +
+                    `Free berths: ${free.join(', ') || 'none'}.`,
+            });
+            await this.sendLoftpodSync(client, rt);
+          }
+        } catch (err) {
+          console.error('[loftpod] /pod failed', err);
+        }
+      })();
+    } else if (cmd === '/haul') {
+      const berth = Number.parseInt(text.slice(cmd.length).trim(), 10);
+      if (Number.isNaN(berth)) {
+        client.send(MSG.notice, { text: 'Usage: /haul <berth number> — stand by the pad.' });
+        return;
+      }
+      void this.handleLoftpod(client, { action: 'haul', berth }).catch((err) =>
+        console.error('[loftpod] haul failed', err),
+      );
     } else if (cmd === '/charge') {
       void (async () => {
         try {
@@ -2823,6 +2893,228 @@ export class FilamentRoom extends Room<FilamentState> {
     if (this.districtId === 'stacks') return CONFIG.travel.stacksSpawn;
     if (this.districtId === 'terrarium') return CONFIG.travel.terrariumSpawn;
     return fallback;
+  }
+
+
+  // ── LOFTPODS (D2b): housing as identity — display + sinks only ─────────
+
+  private refreshLoftpodState(pod: PodView): void {
+    // A pod that hauled leaves its old berth behind: drop stale entries.
+    for (const [key, st] of this.state.loftpods) {
+      if (st.ownerName === pod.ownerName && Number(key) !== pod.berth) {
+        this.state.loftpods.delete(key);
+      }
+    }
+    let st = this.state.loftpods.get(String(pod.berth));
+    if (st === undefined) {
+      st = new LoftpodState();
+      this.state.loftpods.set(String(pod.berth), st);
+    }
+    st.berth = pod.berth;
+    st.tier = pod.tier;
+    st.dye = pod.dye;
+    st.ownerName = pod.ownerName;
+    st.trophyTitle = pod.trophyTitle;
+    st.trophySkill = pod.trophySkill;
+  }
+
+  private async sendLoftpodSync(client: Client, rt: PlayerRuntime): Promise<void> {
+    const mine = await loftpods.getMine(rt.accountId);
+    const taken = new Set<number>();
+    for (const [, st] of this.state.loftpods) taken.add(st.berth);
+    const freeBerths = this.map.loftberths
+      .map((_, i) => i)
+      .filter((i) => !taken.has(i) || mine?.berth === i);
+    const cfg = CONFIG.loftpods;
+    const nextUpgrade =
+      mine !== null && mine.tier - 1 < cfg.upgrades.length
+        ? (cfg.upgrades[mine.tier - 1] as { bolts: number; materials: Record<string, number> })
+        : null;
+    const sync: LoftpodSync = {
+      pod:
+        mine === null
+          ? null
+          : {
+              berth: mine.berth,
+              tier: mine.tier,
+              dye: mine.dye,
+              trophyTitle: mine.trophyTitle,
+              trophySkill: mine.trophySkill,
+            },
+      freeBerths,
+      nextUpgrade,
+      placeCostBolts: cfg.placeCostBolts,
+      haulCostBolts: cfg.haulCostBolts,
+      dyeCostBolts: cfg.dyeCostBolts,
+      dyes: [...cfg.dyes],
+      titles: [...rt.titles],
+    };
+    client.send(MSG.loftpodSync, sync);
+  }
+
+  private nearBerth(rt: PlayerRuntime, berth: number): boolean {
+    const b = this.map.loftberths[berth];
+    if (b === undefined) return false;
+    const t = rt.move.tile;
+    return Math.max(Math.abs(t.x - (b.x + 1)), Math.abs(t.y - (b.y + 1))) <= 4;
+  }
+
+  private async handleLoftpod(client: Client, msg: LoftpodIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (this.districtId !== 'terrarium') {
+      client.send(MSG.notice, { text: 'Loftpods berth in the Terrarium.' });
+      return;
+    }
+    const notice = (text: string) => client.send(MSG.notice, { text });
+    const cfg = CONFIG.loftpods;
+
+    switch (msg.action) {
+      case 'place':
+      case 'haul': {
+        const berth = Math.floor(Number(msg.berth));
+        if (this.map.loftberths[berth] === undefined) return;
+        if (!this.nearBerth(rt, berth)) {
+          notice('Step up to the berth pad first.');
+          return;
+        }
+        const cost = msg.action === 'place' ? cfg.placeCostBolts : cfg.haulCostBolts;
+        if (rt.bolts < cost) {
+          notice(`That takes ${cost} Bolts.`);
+          return;
+        }
+        const before = await loftpods.getMine(rt.accountId);
+        if (msg.action === 'place' && before !== null) {
+          notice('You already have a home — /haul moves it.');
+          return;
+        }
+        if (msg.action === 'haul' && before === null) {
+          notice('No pod to haul yet — place one first.');
+          return;
+        }
+        const result =
+          msg.action === 'place'
+            ? await loftpods.place(rt.accountId, berth)
+            : await loftpods.haul(rt.accountId, berth);
+        if (typeof result === 'string') {
+          notice(result);
+          return;
+        }
+        rt.bolts -= cost;
+        ledger.log({
+          type: 'spend',
+          account: rt.accountId,
+          data: { sink: msg.action === 'place' ? 'loftpodPlace' : 'loftpodHaul', bolts: cost, berth },
+        });
+        this.refreshLoftpodState(result);
+        client.send(MSG.inventory, this.inventorySync(rt));
+        notice(msg.action === 'place' ? 'Home. The berth is yours.' : 'Hauled — new view, same kettle.');
+        await this.sendLoftpodSync(client, rt);
+        return;
+      }
+
+      case 'upgrade': {
+        const mine = await loftpods.getMine(rt.accountId);
+        if (mine === null) {
+          notice('No pod to upgrade yet.');
+          return;
+        }
+        if (!this.nearBerth(rt, mine.berth)) {
+          notice('Stand by your pod to work on it.');
+          return;
+        }
+        const up = cfg.upgrades[mine.tier - 1];
+        if (up === undefined) {
+          notice('Your Loftpod is already at full stretch.');
+          return;
+        }
+        if (rt.bolts < up.bolts) {
+          notice(`The next tier takes ${up.bolts} Bolts and materials.`);
+          return;
+        }
+        for (const [itemId, qty] of Object.entries(up.materials)) {
+          if (countItem(rt.pack, itemId as ItemId) < qty) {
+            notice(`You still need ${qty} ${itemId} for the next tier.`);
+            return;
+          }
+        }
+        const result = await loftpods.upgrade(rt.accountId, mine.tier + 1);
+        if (typeof result === 'string') {
+          notice(result);
+          return;
+        }
+        rt.bolts -= up.bolts;
+        for (const [itemId, qty] of Object.entries(up.materials)) {
+          rt.pack = removeItem(rt.pack, itemId as ItemId, qty).inv;
+        }
+        ledger.log({
+          type: 'spend',
+          account: rt.accountId,
+          data: { sink: 'loftpodUpgrade', bolts: up.bolts, materials: up.materials, tier: result.tier },
+        });
+        this.refreshLoftpodState(result);
+        client.send(MSG.inventory, this.inventorySync(rt));
+        notice(`Tier ${result.tier} — the neighbours noticed.`);
+        await this.sendLoftpodSync(client, rt);
+        return;
+      }
+
+      case 'dye': {
+        const mine = await loftpods.getMine(rt.accountId);
+        if (mine === null || !this.nearBerth(rt, mine.berth)) {
+          notice('Stand by your pod to repaint it.');
+          return;
+        }
+        const dye = String(msg.dye);
+        if (!(cfg.dyes as readonly string[]).includes(dye)) return;
+        if (rt.bolts < cfg.dyeCostBolts) {
+          notice(`A repaint takes ${cfg.dyeCostBolts} Bolts.`);
+          return;
+        }
+        const result = await loftpods.decorate(rt.accountId, { dye });
+        if (typeof result === 'string') {
+          notice(result);
+          return;
+        }
+        rt.bolts -= cfg.dyeCostBolts;
+        ledger.log({
+          type: 'spend',
+          account: rt.accountId,
+          data: { sink: 'loftpodDye', bolts: cfg.dyeCostBolts, dye },
+        });
+        this.refreshLoftpodState(result);
+        client.send(MSG.inventory, this.inventorySync(rt));
+        await this.sendLoftpodSync(client, rt);
+        return;
+      }
+
+      case 'trophy': {
+        const mine = await loftpods.getMine(rt.accountId);
+        if (mine === null || !this.nearBerth(rt, mine.berth)) {
+          notice('Stand by your pod to hang trophies.');
+          return;
+        }
+        const title = typeof msg.title === 'string' ? msg.title : mine.trophyTitle;
+        const skill = typeof msg.skill === 'string' ? msg.skill : mine.trophySkill;
+        // Only YOUR earned titles hang on YOUR hooks (display integrity).
+        if (title !== '' && !rt.titles.includes(title)) {
+          notice('That title is not yours to hang.');
+          return;
+        }
+        if (skill !== '' && !(SKILLS as readonly string[]).includes(skill)) return;
+        const result = await loftpods.decorate(rt.accountId, {
+          trophyTitle: title,
+          trophySkill: skill,
+        });
+        if (typeof result === 'string') {
+          notice(result);
+          return;
+        }
+        this.refreshLoftpodState(result);
+        await this.sendLoftpodSync(client, rt);
+        return;
+      }
+    }
   }
 
   private spawnMobs(): void {

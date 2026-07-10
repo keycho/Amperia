@@ -84,6 +84,27 @@ export class StallState extends Schema {
 defineTypes(StallState, { ownerName: 'string', goods: 'string' });
 
 /**
+ * A Loftpod on its Terrarium berth (D2b) — display facts only: the tier,
+ * the dye, whose home it is, and what they hang on the trophy hooks.
+ */
+export class LoftpodState extends Schema {
+  berth = 0;
+  tier = 1;
+  dye = 'plum';
+  ownerName = '';
+  trophyTitle = '';
+  trophySkill = '';
+}
+defineTypes(LoftpodState, {
+  berth: 'int8',
+  tier: 'uint8',
+  dye: 'string',
+  ownerName: 'string',
+  trophyTitle: 'string',
+  trophySkill: 'string',
+});
+
+/**
  * The Citywide Charge meter as the whole room sees it: total, tier and the
  * three thresholds (for meter rendering + lighting density), plus whether
  * the weekend buff is glowing. Leaderboard detail goes per-client.
@@ -121,6 +142,8 @@ export class FilamentState extends Schema {
   stalls = new MapSchema<StallState>();
   /** The Citywide Charge meter (shared across districts). */
   charge = new ChargeState();
+  /** Keyed by berth index (Terrarium Loftpods, D2b). */
+  loftpods = new MapSchema<LoftpodState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
@@ -130,4 +153,5 @@ defineTypes(FilamentState, {
   caches: { map: CacheState },
   stalls: { map: StallState },
   charge: ChargeState,
+  loftpods: { map: LoftpodState },
 });

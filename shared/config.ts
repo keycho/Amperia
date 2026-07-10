@@ -414,6 +414,24 @@ export const CONFIG = {
     berthSize: 3,
   },
 
+  /**
+   * LOFTPODS (D2b): housing as identity — every cost is a Bolts/resource
+   * SINK (golden rule 9), every knob is display-only. One pod per Spark.
+   */
+  loftpods: {
+    placeCostBolts: 250,
+    /** /haul — moving house is a recurring sink. */
+    haulCostBolts: 60,
+    /** Tier 1 → 2 → 3 (index 0 buys tier 2). Bolts + resources burn. */
+    upgrades: [
+      { bolts: 800, materials: { salvage: 60, brass: 30 } },
+      { bolts: 2400, materials: { brass: 60, amperite: 30, signal: 12 } },
+    ],
+    /** Exterior dyes — sanctioned palette blends, crafted-tier (free). */
+    dyes: ['plum', 'teal', 'ochre', 'rose'],
+    dyeCostBolts: 40,
+  },
+
   /** THE STACKS — the vertical quarter (districts block D1, §12B brief). */
   stacks: {
     /** Dense alley junk (scattered only in the canyon alleys). */

@@ -43,6 +43,8 @@ export const MSG = {
   goalClaim: 'goalClaim',
   coilSpin: 'coilSpin',
   bank: 'bank',
+  loftpod: 'loftpod',
+  loftpodSync: 'loftpodSync',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -323,6 +325,16 @@ export interface StallStateShape {
   goods: string;
 }
 
+/** Synced Loftpod display facts (D2b) as the client reads them. */
+export interface LoftpodStateShape {
+  berth: number;
+  tier: number;
+  dye: string;
+  ownerName: string;
+  trophyTitle: string;
+  trophySkill: string;
+}
+
 /**
  * Server → the asking client: the Citywide Charge in detail (the warden's
  * panel / the /charge command). The always-synced ChargeState carries the
@@ -452,6 +464,33 @@ export interface BankSync {
   slotCount: number;
   /** Bolts price of the next +8 expansion, or null at the cap. */
   nextCost: number | null;
+}
+
+/**
+ * Client → server (D2b): Loftpod actions — Terrarium only, one pod per
+ * Spark, everything display + sinks. /haul also routes here via chat.
+ */
+export type LoftpodIntent =
+  | { action: 'place'; berth: number }
+  | { action: 'haul'; berth: number }
+  | { action: 'upgrade' }
+  | { action: 'dye'; dye: string }
+  | { action: 'trophy'; title?: string; skill?: string };
+
+/** Server → client (D2b): your pod + what the next steps cost. */
+export interface LoftpodSync {
+  /** Your pod, or null if you haven't placed one. */
+  pod: { berth: number; tier: number; dye: string; trophyTitle: string; trophySkill: string } | null;
+  /** Berth indexes currently free (for place/haul pickers). */
+  freeBerths: number[];
+  /** Next upgrade cost, or null at tier cap. */
+  nextUpgrade: { bolts: number; materials: Record<string, number> } | null;
+  placeCostBolts: number;
+  haulCostBolts: number;
+  dyeCostBolts: number;
+  dyes: string[];
+  /** Titles you own (trophy picker) — server-validated on set. */
+  titles: string[];
 }
 
 /**

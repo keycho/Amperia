@@ -2003,6 +2003,67 @@ function toolshedModel(variant: number): Voxel[] {
   return v;
 }
 
+/** Loftpod dye palette (D2b): sanctioned paints keyed by dye id. */
+export const LOFTPOD_DYES = ['plum', 'teal', 'ochre', 'rose'] as const;
+
+/**
+ * A LOFTPOD (D2b): the small personal home on a Terrarium berth. Three
+ * tiers, four dyes — every step reads across the terrace (§10.8: housing
+ * is a cosmetic canvas; the showroom district gets real silhouettes).
+ */
+function loftpodModel(tier: number, dye: string): Voxel[] {
+  const skin =
+    dye === 'teal'
+      ? MATERIALS.paintTeal
+      : dye === 'ochre'
+        ? MATERIALS.paintOchre
+        : dye === 'rose'
+          ? MATERIALS.paintRose
+          : { ...MATERIALS.concrete, base: mixPalette('duskSky', 'structureMid', 0.5) };
+  const glass = mixPalette('warmGlow', 'neonAmber', 0.3);
+  const v: Voxel[] = [];
+  // Skids + the capsule body (corner-cut for the rounded read).
+  v.push(...mbox(2, 3, 0, 10, 1, 2, MATERIALS.gunmetalDeep));
+  v.push(...mbox(2, 10, 0, 10, 1, 2, MATERIALS.gunmetalDeep));
+  for (const vox of mbox(1, 2, 2, 12, 10, 8, skin as Material)) {
+    const corner =
+      (vox.x <= 1 || vox.x >= 12) && (vox.y <= 2 || vox.y >= 11) && (vox.z <= 3 || vox.z >= 8);
+    if (!corner) v.push(vox);
+  }
+  // The round window (lit — somebody's home) + the door + trophy board.
+  for (const [wx, wz] of [
+    [4, 6], [5, 6], [4, 5], [5, 5],
+  ] as const) {
+    v.push({ x: wx, y: 11, z: wz, c: glass });
+  }
+  v.push(...mbox(8, 11, 2, 3, 1, 5, MATERIALS.woodDeep)); // door
+  v.push(...box(12, 11, 4, 1, 1, 2, mixPalette('ink', 'structureMid', 0.25))); // trophy board
+  // Stove pipe.
+  v.push(...mbox(3, 4, 10, 1, 1, 3, MATERIALS.gunmetal));
+
+  if (tier >= 2) {
+    // The porch: wood deck + striped awning + a planter box.
+    v.push(...mbox(1, 12, 0, 12, 3, 2, MATERIALS.wood));
+    const hot = mixPalette('neonRose', 'structureMid', 0.2);
+    const pale = mixPalette('warmGlow', 'groundAccent', 0.25);
+    for (let ax = 6; ax < 13; ax++) v.push({ x: ax, y: 12, z: 8, c: ax % 2 === 0 ? hot : pale });
+    v.push(...mbox(1, 12, 2, 3, 2, 2, MATERIALS.wood)); // planter
+    v.push({ x: 2, y: 12, z: 4, c: PALETTE_INT.solarGreen });
+    v.push({ x: 1, y: 13, z: 4, c: mixPalette('solarGreen', 'ink', 0.3) });
+  }
+  if (tier >= 3) {
+    // The upper bubble: a set-back second level with a skylight + whip.
+    for (const vox of mbox(3, 4, 10, 8, 6, 5, skin as Material)) {
+      const corner = (vox.x <= 3 || vox.x >= 10) && (vox.y <= 4 || vox.y >= 9) && vox.z >= 13;
+      if (!corner) v.push(vox);
+    }
+    v.push(...box(5, 6, 15, 3, 2, 1, glass)); // skylight
+    v.push(...mbox(11, 5, 15, 1, 1, 5, MATERIALS.gunmetal)); // whip
+    v.push({ x: 11, y: 5, z: 20, c: PALETTE_INT.warmGlow }); // its bulb
+  }
+  return v;
+}
+
 /** A compost heap — the Terrarium's peaceful scavenge node look. */
 function compostHeapModel(depleted: boolean): Voxel[] {
   const leafA = PALETTE_INT.solarGreen;
@@ -2123,6 +2184,12 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'toolshed-1', voxels: toolshedModel(1) });
   bakeVoxelModel(scene, { name: 'junk-heap-c', voxels: compostHeapModel(false) });
   bakeVoxelModel(scene, { name: 'junk-heap-c-depleted', voxels: compostHeapModel(true) });
+  // D2b Loftpods: three tiers × four dyes (housing reads across terraces).
+  for (const tier of [1, 2, 3]) {
+    for (const dye of LOFTPOD_DYES) {
+      bakeVoxelModel(scene, { name: `loftpod-${tier}-${dye}`, voxels: loftpodModel(tier, dye) });
+    }
+  }
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

@@ -22,6 +22,7 @@ model Account {
   character     Character?
   ledgerEvents  LedgerEvent[]
   manifest      ManifestEntry[]
+  loftpod       Loftpod?
 }
 
 model Character {
@@ -199,4 +200,19 @@ model LedgerEvent {
 
   @@index([accountId, ts])
   @@index([type, ts])
+}
+
+/// A Spark's home (districts block D2b): ONE Loftpod per account, parked
+/// on a Terrarium berth. Tier/dye/trophies are pure display + Bolts sinks.
+model Loftpod {
+  id          String   @id @default(cuid())
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId   String   @unique
+  /// Index into the Terrarium map's loftberths (server-managed slots).
+  berth       Int      @unique
+  tier        Int      @default(1)
+  dye         String   @default("plum")
+  trophyTitle String   @default("")
+  trophySkill String   @default("")
+  updatedAt   DateTime @updatedAt
 }
