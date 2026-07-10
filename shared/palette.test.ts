@@ -15,6 +15,9 @@ describe('locked palette', () => {
       neonTeal: '#2FD3B8',
       neonCyan: '#5BC0FF',
       solarGreen: '#7BC59A',
+      emberOrange: '#FF8C42',
+      signalRed: '#C0392B',
+      violetNeon: '#B266FF',
     });
   });
 

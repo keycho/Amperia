@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE_INT } from '@shared/palette';
+import { PALETTE_INT, sat, splitTone } from '@shared/palette';
 import { DEPTH_SHADOW } from '../iso/project';
 import { voxelHash, type Material } from './materials';
 
@@ -196,9 +196,12 @@ function drawCube(
   color: number | null,
   alpha = 1,
 ): void {
-  const top = color === null ? PALETTE_INT.ink : shade(color, RAMP_TOP);
-  const left = color === null ? PALETTE_INT.ink : color;
-  const right = color === null ? PALETTE_INT.ink : shade(color, RAMP_RIGHT);
+  // Plain voxels (neons, accents, characters): full ramp + split-tone,
+  // no material saturation games — they are already the HIGH-sat tier.
+  const top = color === null ? PALETTE_INT.ink : splitTone(shade(color, RAMP_TOP));
+  const left = color === null ? PALETTE_INT.ink : splitTone(color);
+  const right =
+    color === null ? PALETTE_INT.ink : splitTone(sat(shade(color, RAMP_RIGHT), -0.18));
   // Top diamond.
   g.fillStyle(top, alpha);
   g.beginPath();
@@ -274,9 +277,16 @@ function drawMatCube(
   if (ctx.has(v.x + 1, v.y, v.z + 1)) aoRight += 0.12;
   if (ctx.has(v.x + 1, v.y, v.z - 1)) aoRight += 0.07;
 
-  const top = shade(baseColor, RAMP_TOP - aoTop + faceNoise(3));
-  const left = shade(baseColor, -aoLeft + faceNoise(5));
-  const right = shade(baseColor, RAMP_RIGHT - aoRight + faceNoise(7));
+  // Color grade (R3a/d + addendum c): lit faces run the material at FULL
+  // saturation (rust goes richer orange, paint goes truer), shadow faces
+  // desaturate — then the split-tone curve leans darks cool, lights warm.
+  const top = splitTone(
+    sat(shade(baseColor, RAMP_TOP - aoTop + faceNoise(3)), mat.litSat),
+  );
+  const left = splitTone(sat(shade(baseColor, -aoLeft + faceNoise(5)), mat.litSat * 0.3));
+  const right = splitTone(
+    sat(shade(baseColor, RAMP_RIGHT - aoRight + faceNoise(7)), -0.28),
+  );
   // Faces.
   g.fillStyle(top, 1);
   g.beginPath();

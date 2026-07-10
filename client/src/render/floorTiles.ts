@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { MATERIAL_INT, PALETTE_INT } from '@shared/palette';
+import { MATERIAL_INT, PALETTE_INT, sat, splitTone } from '@shared/palette';
 import { voxelHash } from './materials';
 import { shade } from './voxel';
 
@@ -44,7 +44,9 @@ export function floorTileKey(kind: FloorKind, seed: number): string {
   return `ftile-${kind}-${v}`;
 }
 
-/** Night-air mix — a light touch now (§2: cut the purple wash ~70%). */
+/** Night-air mix — a light touch now (§2: cut the purple wash ~70%).
+ *  The ground is the LOW saturation tier (R3b): desaturated a step and
+ *  split-toned so it sits back behind props and light sources. */
 function night(base: number, t: number): number {
   const dusk = PALETTE_INT.duskSky;
   const clamp = Math.max(0, Math.min(1, t));
@@ -52,7 +54,7 @@ function night(base: number, t: number): number {
   const r = mix((base >> 16) & 0xff, (dusk >> 16) & 0xff);
   const g = mix((base >> 8) & 0xff, (dusk >> 8) & 0xff);
   const b = mix(base & 0xff, dusk & 0xff);
-  return (r << 16) | (g << 8) | b;
+  return splitTone(sat((r << 16) | (g << 8) | b, -0.14));
 }
 
 interface KindSpec {

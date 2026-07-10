@@ -60,13 +60,15 @@ function planterModel(): Voxel[] {
 }
 
 function stallModel(variant: number): Voxel[] {
+  // Awnings run VIVID (addendum c): the market's color lives here, so the
+  // stripes barely lean grey — the face ramp supplies the shading.
   const stripeHot = [
-    mixPalette('neonRose', 'structureMid', 0.3),
-    mixPalette('neonAmber', 'structureMid', 0.25),
-    mixPalette('neonTeal', 'structureMid', 0.4),
-    mixPalette('neonRose', 'structureMid', 0.3),
+    mixPalette('neonRose', 'structureMid', 0.1),
+    mixPalette('neonAmber', 'structureMid', 0.08),
+    mixPalette('neonTeal', 'structureMid', 0.16),
+    mixPalette('neonRose', 'structureMid', 0.1),
   ][variant % 4] as number;
-  const stripePale = mixPalette('warmGlow', 'groundAccent', 0.35);
+  const stripePale = mixPalette('warmGlow', 'groundAccent', 0.2);
   const v: Voxel[] = [];
   // Timber counter with a lighter worn top.
   v.push(...mbox(2, 1, 0, 8, 5, 7, MATERIALS.wood));

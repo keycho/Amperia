@@ -29,6 +29,16 @@ export const PALETTE = {
   neonCyan: '#5BC0FF',
   /** Potted plants, hanging gardens — greenery as decor, never terrain. */
   solarGreen: '#7BC59A',
+  /**
+   * RENDER-OVERHAUL ACCENTS (R3c) — new colors are ACCENTS with assigned
+   * meanings, never new fills:
+   */
+  /** Sparks, hazard stripes, heat — welding-hot orange. */
+  emberOrange: '#FF8C42',
+  /** Danger and one or two signs only — deep, SPARSE. */
+  signalRed: '#C0392B',
+  /** Rare premium-feeling signage — violet neon, rarer than rose. */
+  violetNeon: '#B266FF',
 } as const;
 
 export type PaletteKey = keyof typeof PALETTE;
@@ -116,3 +126,49 @@ export const MATERIAL_INT: Readonly<Record<MaterialColorKey, number>> = Object.f
     ]),
   ) as Record<MaterialColorKey, number>,
 );
+
+// ── color grade (R3) — sanctioned derivations, single audit point ─────────
+
+/** Perceived luminance 0-255. */
+function luma(color: number): number {
+  return (
+    0.299 * ((color >> 16) & 0xff) + 0.587 * ((color >> 8) & 0xff) + 0.114 * (color & 0xff)
+  );
+}
+
+function mixInt(a: number, b: number, t: number): number {
+  const clamp = Math.max(0, Math.min(1, t));
+  const mix = (sa: number, sb: number) => Math.round(sa + (sb - sa) * clamp);
+  return (
+    (mix((a >> 16) & 0xff, (b >> 16) & 0xff) << 16) |
+    (mix((a >> 8) & 0xff, (b >> 8) & 0xff) << 8) |
+    mix(a & 0xff, b & 0xff)
+  );
+}
+
+/**
+ * Saturation scale around luma: k > 0 pushes chroma out (richer color),
+ * k < 0 pulls toward grey. The saturation-hierarchy lever (R3b/addendum c):
+ * lit faces run at full material color, shadow faces desaturate.
+ */
+export function sat(color: number, k: number): number {
+  const L = luma(color);
+  const adj = (v: number) => Math.max(0, Math.min(255, Math.round(L + (v - L) * (1 + k))));
+  return (adj((color >> 16) & 0xff) << 16) | (adj((color >> 8) & 0xff) << 8) | adj(color & 0xff);
+}
+
+/** Split-tone poles: shadows pull cool teal-blue, lit areas pull amber. */
+const SPLIT_SHADOW = mixInt(PALETTE_INT.neonTeal, PALETTE_INT.ink, 0.68);
+const SPLIT_LIT = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, 0.45);
+
+/**
+ * Split-toning (R3a): a tone CURVE, not a wash — the darker a color, the
+ * more it leans cool teal; the lighter, the more it leans warm amber.
+ * Mids stay put. This is what makes "dark but colorful" hold together.
+ */
+export function splitTone(color: number, strength = 0.14): number {
+  const t = luma(color) / 255;
+  const wShadow = Math.pow(1 - t, 2.2) * strength;
+  const wLit = Math.pow(t, 1.9) * strength;
+  return mixInt(mixInt(color, SPLIT_SHADOW, wShadow), SPLIT_LIT, wLit);
+}

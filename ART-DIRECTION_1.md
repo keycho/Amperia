@@ -29,6 +29,9 @@ Warm-forward base so the world is comfortable for long sessions; saturated neon 
 | **Neon teal** *(primary cool)* | `#2FD3B8` | Interactables, UI highlights, screens |
 | **Neon cyan** *(secondary cool)* | `#5BC0FF` | Holo-signage, water/coolant glints |
 | **Solar green** *(muted)* | `#7BC59A` | Potted plants, hanging gardens — greenery as *decor*, never as terrain |
+| **Ember orange** *(accent — render overhaul R3c)* | `#FF8C42` | Sparks, hazard stripes, heat — welding-hot; never a fill |
+| **Signal red** *(deep, SPARSE)* | `#C0392B` | Danger and one or two signs per district at most |
+| **Violet neon** *(rare, premium)* | `#B266FF` | Premium-feeling signage — rarer than rose |
 
 **Palette rules:**
 - Big areas use the **warm mid-values** (`#6B5E70`, `#9A8574`, `#4E4560`). Pure saturated neon is an *accent*, not a fill — that's what keeps it cozy instead of loud.
