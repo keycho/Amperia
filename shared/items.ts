@@ -16,6 +16,9 @@ export type ItemId =
   | 'prismaticGlowkoi'
   | 'ghostFrequency'
   | 'dentedCrest'
+  | 'wispFilament'
+  | 'drayPlate'
+  | 'waxChit'
   | 'silverfern'
   | 'emberseed'
   | 'heatlamp'
@@ -153,6 +156,30 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     flavor: "A Scuttlebot's maker-mark, pried off mid-scuffle. The Manifest wants it.",
     icon: 'icon-gilded-scrap',
     iconTint: 'neonRose',
+    rare: true,
+  },
+  wispFilament: {
+    id: 'wispFilament',
+    name: 'Wisp Filament',
+    flavor: 'A hair of living charge, still warm. Popped from a Sparkwisp.',
+    icon: 'icon-gilded-scrap',
+    iconTint: 'neonTeal',
+    rare: true,
+  },
+  drayPlate: {
+    id: 'drayPlate',
+    name: 'Dray Plate',
+    flavor: "Armor off a rogue Draymule's flank. It took a crowd to earn the dent.",
+    icon: 'icon-gilded-scrap',
+    iconTint: 'emberOrange',
+    rare: true,
+  },
+  waxChit: {
+    id: 'waxChit',
+    name: 'Wax-Sealed Chit',
+    flavor: 'A courier tip, pressed in wax. Worth nothing. Kept forever.',
+    icon: 'icon-gilded-scrap',
+    iconTint: 'violetNeon',
     rare: true,
   },
   warmcup: {

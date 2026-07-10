@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Character" ADD COLUMN     "deliveryDayBolts" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "deliveryDayDate" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "tendDayCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "tendDayDate" TEXT NOT NULL DEFAULT '';

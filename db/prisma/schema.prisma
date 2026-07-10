@@ -62,6 +62,12 @@ model Character {
   /// Anti-Sybil throttle state: Bolts of NPC sales so far on dailySaleDate.
   dailySaleBolts Int    @default(0)
   dailySaleDate  String @default("")
+  /// U1a: delivery Bolts so far on deliveryDayDate (parity daily cap).
+  deliveryDayBolts Int    @default(0)
+  deliveryDayDate  String @default("")
+  /// U1b: Terrarium tends so far on tendDayDate (parity daily cap).
+  tendDayCount Int    @default(0)
+  tendDayDate  String @default("")
   /// Direct-trade guardrail state (E1c): per-UTC-day rollover counters.
   tradeDayDate       String @default("")
   tradeDayValueBolts Int    @default(0)

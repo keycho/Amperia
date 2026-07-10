@@ -19,6 +19,7 @@ export type PropKind =
   | 'planter'
   | 'shack'
   | 'tramgate'
+  | 'dispatchpost'
   | 'alleylamp'
   | 'ropepost'
   | 'dispatcher'
@@ -1250,6 +1251,8 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
   // ── the junction plaza: noodle cart + the district's one tree ──────────
   place('noodlecart', 11, 13, 2, 1);
   place('treeplanter', 15, 16, 2, 2);
+  // U1a: the dispatch post — parcel runs to the named towers start here.
+  place('dispatchpost', 12, 17, 1, 1);
 
   // ── Roofline furniture: market stalls, the shanty, the water tank ──────
   place('watertank', 17, 6, 2, 2);

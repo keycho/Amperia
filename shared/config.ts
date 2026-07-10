@@ -111,6 +111,10 @@ export const CONFIG = {
       { id: 'g-brawl', label: 'Put down 8 feral junkbots', kind: 'brawl', target: 8, bolts: 45 },
       // District goals (D3) — reasons to ride the line.
       { id: 'g-tram', label: 'Ride the tram 5 times', kind: 'travel', target: 5, bolts: 35 },
+      // Parity activities (U1) — one goal per new thing to do.
+      { id: 'g-deliver', label: 'Run 3 parcels up the Stacks', kind: 'deliver', target: 3, bolts: 40 },
+      { id: 'g-tend', label: 'Tend 5 Terrarium planters', kind: 'tend', target: 5, bolts: 40 },
+      { id: 'g-dray', label: 'Bring down a rogue Draymule', kind: 'hunt', target: 1, bolts: 60 },
       { id: 'g-stacks', label: 'Scavenge 60 Salvage in the Stacks alleys', kind: 'gather', itemId: 'salvage', district: 'stacks', target: 60, bolts: 45 },
       { id: 'g-roofline', label: 'Tune 8 Signal up on the Roofline', kind: 'gather', itemId: 'signal', district: 'stacks', target: 8, bolts: 50 },
       { id: 'g-compost', label: 'Turn 40 Salvage of Terrarium compost', kind: 'gather', itemId: 'salvage', district: 'terrarium', target: 40, bolts: 45 },
@@ -420,6 +424,48 @@ export const CONFIG = {
     terrariumSpawn: { x: 4, y: 20 },
   },
 
+  /**
+   * U1a THE STACKS — parcel runs from the junction dispatch post. Small
+   * Bolts under a daily cap (parity, not printing); the occasional rare
+   * tip is a Manifest chit, never currency.
+   */
+  deliveries: {
+    rewardBolts: 25,
+    dailyCapBolts: 150,
+    /** Chance the recipient tips the wax-sealed chit (Manifest rare). */
+    rareTipChance: 0.07,
+    /** Rotating destinations: named towers, their landing tile + level. */
+    destinations: [
+      { id: 'kestrel', tower: 'Tower Kestrel', landing: { x: 17, y: 11 }, level: 3, recipient: "Wickla's cousin", line: 'Fourth-floor landing, off the Roofline. Mind the laundry.' },
+      { id: 'marrow', tower: 'Tower Marrow', landing: { x: 2, y: 6 }, level: 0, recipient: 'Old Ferro', line: "He'll grumble. Leave it by the door anyway." },
+      { id: 'grist', tower: 'Tower Grist', landing: { x: 26, y: 7 }, level: 0, recipient: 'the antenna crew', line: 'They tip in static and good moods.' },
+      { id: 'anvil', tower: 'Tower Anvil', landing: { x: 36, y: 7 }, level: 0, recipient: "Marlow's welder", line: 'East rim, last door before the void.' },
+      { id: 'cinder', tower: 'Tower Cinder', landing: { x: 12, y: 23 }, level: 0, recipient: "the noodle cart's supplier", line: 'Smells like broth all the way up.' },
+      { id: 'lantern', tower: 'Tower Lantern', landing: { x: 11, y: 9 }, level: 0, recipient: 'the roof gardener', line: "The tower with the green crown. Can't miss it." },
+      { id: 'bellows', tower: 'Tower Bellows', landing: { x: 19, y: 28 }, level: 0, recipient: 'a night-shift tuner', line: 'Knock twice — she sleeps days.' },
+      { id: 'fathom', tower: 'Tower Fathom', landing: { x: 32, y: 33 }, level: 0, recipient: 'nobody asked who', line: "Far corner. No questions — it's paid for." },
+    ],
+  },
+
+  /**
+   * U1b THE TERRARIUM — tending the shared gardens. A short timing
+   * interaction; a clean cue-hit blooms brighter odds. Tends grant only
+   * RARE ROLLS (herb Manifest rares), never resource volume.
+   */
+  tending: {
+    seconds: 2.4,
+    /** The bloom cue lands somewhere in this window of the channel. */
+    cueEarliest: 0.9,
+    cueLatest: 1.7,
+    /** Click within this of the cue = a clean tend. */
+    cueWindowMs: 450,
+    dailyCapTends: 5,
+    /** Everyone sees a tended planter bloom for this long. */
+    bloomSeconds: 3600,
+    rareChanceGood: 0.22,
+    rareChancePlain: 0.09,
+  },
+
   /** THE TERRARIUM — the hanging-garden tier (districts block D2). */
   terrarium: {
     /** Compost heaps (the peaceful scavenge; Scavving tool rules apply). */
@@ -486,6 +532,54 @@ export const CONFIG = {
     xpBrawlingPerKill: 26,
     trophyChance: 0.03,
     homeBox: { x0: 14, y0: 14, x1: 25, y1: 25 },
+  },
+
+  /**
+   * U1a SPARKWISPS — drifting charge-critters in the Stacks alleys (bible
+   * B6). An ambient hazard, not a hunter: they never chase far, they zap
+   * whatever touches them, and they pop with a rare filament trophy.
+   */
+  sparkwisp: {
+    count: 4,
+    maxHp: 10,
+    contactDamage: 3,
+    moveSecondsPerTile: 0.55,
+    aggroRadiusTiles: 1,
+    leashRadiusTiles: 3,
+    windupSeconds: 0.35,
+    attackCooldownSeconds: 2.4,
+    respawnSeconds: 90,
+    xpBrawlingPerKill: 8,
+    trophyChance: 0.25,
+    /** Deep-south alleys — the dark end of the canyon. */
+    homeBox: { x0: 4, y0: 24, x1: 34, y1: 34 },
+  },
+
+  /**
+   * U1c THE ROGUE DRAYMULE — the Tangle's slow-clock mini-boss (bible
+   * B6): a tanky cargo bot worth calling friends for. GUARANTEED trophy
+   * + good salvage to everyone who landed a hit — goods, never Bolts.
+   */
+  draymule: {
+    maxHp: 420,
+    contactDamage: 9,
+    moveSecondsPerTile: 0.6,
+    aggroRadiusTiles: 2,
+    leashRadiusTiles: 30,
+    windupSeconds: 1.0,
+    attackCooldownSeconds: 2.2,
+    respawnSeconds: 0, // never respawns on the mob clock — the spawn timer owns it
+    xpBrawlingPerKill: 120,
+    trophyChance: 1,
+    homeBox: { x0: 10, y0: 10, x1: 30, y1: 30 },
+    /** Minutes between visits (uniform roll in the band). */
+    spawnMinutesMin: 18,
+    spawnMinutesMax: 35,
+    /** The cargo: salvage + brass to every Spark who landed a hit. */
+    salvageMin: 18,
+    salvageMax: 30,
+    brassMin: 4,
+    brassMax: 8,
   },
 
   /**

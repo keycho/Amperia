@@ -14,6 +14,12 @@ export interface CharacterSnapshot {
   bolts: number;
   dailySaleBolts: number;
   dailySaleDate: string;
+  /** U1a delivery daily cap counters (UTC-day rollover). */
+  deliveryDayBolts: number;
+  deliveryDayDate: string;
+  /** U1b tending daily cap counters (UTC-day rollover). */
+  tendDayCount: number;
+  tendDayDate: string;
   /** Direct-trade guardrail counters (E1c) — UTC-day rollover. */
   tradeDayDate: string;
   tradeDayValueBolts: number;
@@ -91,6 +97,10 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     bolts: c.bolts,
     dailySaleBolts: c.dailySaleBolts,
     dailySaleDate: c.dailySaleDate,
+    deliveryDayBolts: c.deliveryDayBolts,
+    deliveryDayDate: c.deliveryDayDate,
+    tendDayCount: c.tendDayCount,
+    tendDayDate: c.tendDayDate,
     tradeDayDate: c.tradeDayDate,
     tradeDayValueBolts: c.tradeDayValueBolts,
     tradeDayCount: c.tradeDayCount,
@@ -124,6 +134,10 @@ export async function persistCharacter(
     bolts: number;
     dailySaleBolts: number;
     dailySaleDate: string;
+    deliveryDayBolts: number;
+    deliveryDayDate: string;
+    tendDayCount: number;
+    tendDayDate: string;
     tradeDayDate: string;
     tradeDayValueBolts: number;
     tradeDayCount: number;
@@ -148,6 +162,10 @@ export async function persistCharacter(
         bolts: data.bolts,
         dailySaleBolts: data.dailySaleBolts,
         dailySaleDate: data.dailySaleDate,
+        deliveryDayBolts: data.deliveryDayBolts,
+        deliveryDayDate: data.deliveryDayDate,
+        tendDayCount: data.tendDayCount,
+        tendDayDate: data.tendDayDate,
         tradeDayDate: data.tradeDayDate,
         tradeDayValueBolts: data.tradeDayValueBolts,
         tradeDayCount: data.tradeDayCount,

@@ -20,7 +20,10 @@ export type GoalKind =
   | 'trade'
   | 'discover'
   | 'brawl'
-  | 'travel';
+  | 'travel'
+  | 'deliver'
+  | 'tend'
+  | 'hunt';
 
 export interface GoalDef {
   id: string;

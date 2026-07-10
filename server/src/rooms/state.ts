@@ -128,6 +128,12 @@ defineTypes(ChargeState, {
   buffPct: 'int8',
 });
 
+/** U1b: a tended planter blooms for everyone (keyed by gardenbed index). */
+export class BloomState extends Schema {
+  untilMs = 0;
+}
+defineTypes(BloomState, { untilMs: 'float64' });
+
 export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
   /** Keyed by node id (stringified). */
@@ -144,11 +150,14 @@ export class FilamentState extends Schema {
   charge = new ChargeState();
   /** Keyed by berth index (Terrarium Loftpods, D2b). */
   loftpods = new MapSchema<LoftpodState>();
+  /** Keyed by gardenbed prop index (Terrarium tending, U1b). */
+  blooms = new MapSchema<BloomState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
   nodes: { map: NodeState },
   mobs: { map: MobState },
+  blooms: { map: BloomState },
   lamps: { map: LampState },
   caches: { map: CacheState },
   stalls: { map: StallState },

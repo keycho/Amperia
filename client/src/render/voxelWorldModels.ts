@@ -2083,6 +2083,44 @@ function compostHeapModel(depleted: boolean): Voxel[] {
   return v;
 }
 
+// ── U1 PARITY — the dispatch post, Sparkwisps, the rogue Draymule ─────────
+
+/** The Stacks dispatch post: a parcel kiosk one tile square (U1a). */
+function dispatchpostModel(): Voxel[] {
+  const v: Voxel[] = [];
+  const W = MATERIALS.wood;
+  const G = MATERIALS.gunmetal;
+  v.push(...mbox(1, 1, 0, 6, 6, 1, G)); // base plate
+  v.push(...mbox(1, 1, 1, 6, 2, 4, W)); // parcel shelf back
+  // Pigeonholes: parcels in three paint tones.
+  v.push({ x: 2, y: 2, z: 3, c: MATERIAL_INT.paintOchre });
+  v.push({ x: 4, y: 2, z: 3, c: MATERIAL_INT.paintTeal });
+  v.push({ x: 6, y: 2, z: 3, c: MATERIAL_INT.paintRose });
+  v.push({ x: 3, y: 2, z: 2, c: MATERIAL_INT.paintRose });
+  v.push({ x: 5, y: 2, z: 2, c: MATERIAL_INT.wood });
+  v.push(...mbox(1, 1, 5, 6, 3, 1, W)); // awning
+  // Counter + the hanging sign post.
+  v.push(...mbox(2, 5, 1, 4, 2, 2, W));
+  v.push(...mbox(6, 6, 0, 1, 1, 7, G));
+  v.push({ x: 6, y: 6, z: 7, c: PALETTE_INT.neonAmber }); // lit sign
+  return v;
+}
+
+/** A Sparkwisp — living charge off its leash (U1a hazard). */
+function sparkwispModel(): Voxel[] {
+  const v: Voxel[] = [];
+  const core = PALETTE_INT.neonTeal;
+  const halo = blendInt(PALETTE_INT.neonTeal, PALETTE_INT.ink, 0.45);
+  // A floating puff: bright core, dim trailing motes below.
+  v.push(...box(2, 2, 3, 2, 2, 2, core));
+  v.push({ x: 1, y: 2, z: 4, c: halo });
+  v.push({ x: 4, y: 3, z: 4, c: halo });
+  v.push({ x: 2, y: 1, z: 5, c: halo });
+  v.push({ x: 3, y: 4, z: 2, c: halo });
+  v.push({ x: 2, y: 3, z: 1, c: blendInt(halo, PALETTE_INT.ink, 0.5) });
+  return v;
+}
+
 // ── G6b WORLD EDGES — the city ends on the plant's decking ────────────────
 
 /** Rim palette: deck metal stepping down into the dark below. The fade
@@ -2334,4 +2372,15 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `rimlip-${o}`, voxels: rimlipModel(alongY), ...rimOpts });
   }
   bakeVoxelModel(scene, { name: 'rimtruss', voxels: rimtrussModel(), ...rimOpts });
+  // U1 parity: the dispatch post, the wisp, and the Draymule-as-mob (the
+  // decor pose doubles as the walker — it reads as the same machine).
+  bakeVoxelModel(scene, { name: 'dispatchpost', voxels: dispatchpostModel() });
+  bakeVoxelModel(scene, {
+    name: 'sparkwisp',
+    voxels: sparkwispModel(),
+    outline: false,
+    shadow: false,
+    grounding: false,
+  });
+  bakeVoxelModel(scene, { name: 'draymule-mob', voxels: draymuleModel() });
 }

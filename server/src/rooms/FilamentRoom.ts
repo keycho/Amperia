@@ -106,6 +106,8 @@ import {
   type TradeIntent,
   type WardrobeIntent,
   type UseItemIntent,
+  type DeliveryIntent,
+  type TendIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { recipeById, repairQuote, toolSpeedMult, weaponDamageMult } from '@shared/crafting';
@@ -140,6 +142,7 @@ import {
   PlayerState,
   StallState,
   LoftpodState,
+  BloomState,
 } from './state.js';
 
 type Session =
@@ -248,6 +251,14 @@ interface PlayerRuntime {
   chatCooldownNoticed: boolean;
   /** H2 mutes: account ids this Spark has silenced (persisted). */
   mutes: Set<string>;
+  /** U1a: active parcel destination id (null = hands free). */
+  delivery: string | null;
+  deliveryDayBolts: number;
+  deliveryDayDate: string;
+  /** U1b: live tend channel, advanced in tick. */
+  tend: { bed: number; elapsed: number; cueAt: number; cueHit: boolean } | null;
+  tendDayCount: number;
+  tendDayDate: string;
   /** Cue reaction deltas (ms) — behavioral-entropy logging habit (C7). */
   glintReactionsMs: number[];
 }
@@ -270,7 +281,7 @@ interface PlayerTradeState {
   lastActivityMs: number;
 }
 
-type MobKind = 'scuttlebot' | 'junkhound';
+type MobKind = 'scuttlebot' | 'junkhound' | 'sparkwisp' | 'draymule';
 
 /** Server-side per-mob runtime (never synced). */
 interface MobRuntime {
@@ -289,6 +300,8 @@ interface MobRuntime {
   repathWait: number;
   /** Epoch ms to respawn at; null while alive. */
   respawnAtMs: number | null;
+  /** U1c: accountIds that landed a hit (Draymule pays the whole crowd). */
+  damagedBy?: Set<string>;
 }
 
 /**
@@ -352,6 +365,7 @@ export class FilamentRoom extends Room<FilamentState> {
       this.state.nodes.set(String(n.id), new NodeState());
     }
     this.spawnMobs();
+    this.scheduleDraymule();
 
     this.onMessage<MoveIntent>(MSG.move, (client, msg) => this.handleMove(client, msg));
     this.onMessage<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
@@ -432,6 +446,10 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
     this.onMessage<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
     this.onMessage<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
+    this.onMessage<DeliveryIntent>(MSG.delivery, (client, msg) =>
+      this.handleDelivery(client, msg),
+    );
+    this.onMessage<TendIntent>(MSG.tend, (client, msg) => this.handleTend(client, msg));
     this.onMessage<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
     void merchant.load();
 
@@ -523,6 +541,12 @@ export class FilamentRoom extends Room<FilamentState> {
       chatWindow: [],
       chatCooldownNoticed: false,
       mutes: await moderation.loadMutes(auth.accountId),
+      delivery: null,
+      deliveryDayBolts: character.deliveryDayBolts,
+      deliveryDayDate: character.deliveryDayDate,
+      tend: null,
+      tendDayCount: character.tendDayCount,
+      tendDayDate: character.tendDayDate,
       glintReactionsMs: [],
     };
     this.runtimes.set(client.sessionId, runtime);
@@ -1437,6 +1461,11 @@ export class FilamentRoom extends Room<FilamentState> {
           ps.tileY = rt.move.tile.y;
         }
       }
+      // U1b: advance a live tend channel.
+      if (rt.tend !== null) {
+        rt.tend.elapsed += dt;
+        if (rt.tend.elapsed >= CONFIG.tending.seconds) this.finishTend(sessionId, rt);
+      }
       // Start a pending gather once settled next to the node.
       if (rt.gatherTargetNode !== null && rt.session === null && rt.move.queue.length === 0) {
         this.beginGather(sessionId, rt);
@@ -1595,6 +1624,9 @@ export class FilamentRoom extends Room<FilamentState> {
     );
     if (wieldingWrench) this.wearActiveTool(client, rt);
 
+    if (m.kind === 'draymule') {
+      (m.damagedBy ??= new Set()).add(rt.accountId);
+    }
     m.hp = Math.max(0, m.hp - dmg);
     const ms = this.state.mobs.get(m.id);
     if (ms !== undefined) ms.hp = m.hp;
@@ -1622,28 +1654,123 @@ export class FilamentRoom extends Room<FilamentState> {
     this.grantXp(client, rt, 'brawling', this.mobCfg(m.kind).xpBrawlingPerKill);
 
     this.goalEvent(client, rt.accountId, { kind: 'brawl', qty: 1 });
-    // The ONLY drop of any kind: a rare Manifest trophy (server-rolled,
-    // ledger-logged). Mobs never print Bolts or resources (golden rule 9).
-    if (this.rng() < this.mobCfg(m.kind).trophyChance) {
-      const rr = addItem(rt.pack, 'dentedCrest', 1, CONFIG.inventory.stackMax);
-      if (rr.added > 0) {
-        rt.pack = rr.inv;
+    // Trophies per kind (server-rolled, ledger-logged). Mobs never print
+    // Bolts; the Draymule's cargo is the one design-briefed exception in
+    // GOODS (U1c) — rate-limited by its own slow spawn clock.
+    const TROPHY: Record<MobKind, ItemId> = {
+      scuttlebot: 'dentedCrest',
+      junkhound: 'dentedCrest',
+      sparkwisp: 'wispFilament',
+      draymule: 'drayPlate',
+    };
+    const trophy = TROPHY[m.kind];
+    const grantTrophy = (c: Client, r: PlayerRuntime): void => {
+      const rr = addItem(r.pack, trophy, 1, CONFIG.inventory.stackMax);
+      if (rr.added <= 0) return;
+      r.pack = rr.inv;
+      ledger.log({
+        type: 'trophy',
+        account: r.accountId,
+        data: { source: m.kind, itemId: trophy, qty: 1 },
+      });
+      c.send(MSG.loot, { nodeId: -1, itemId: trophy, qty: 0, rare: trophy, glintHit: false });
+      c.send(MSG.inventory, this.inventorySync(r));
+      this.recordManifest(c, r, trophy);
+    };
+    if (m.kind === 'draymule') {
+      // U1c: everyone who landed a hit gets the trophy AND the cargo.
+      const crowd = m.damagedBy ?? new Set([rt.accountId]);
+      const dm = CONFIG.draymule;
+      for (const c of this.clients) {
+        const r = this.runtimes.get(c.sessionId);
+        if (r === undefined || !crowd.has(r.accountId)) continue;
+        grantTrophy(c, r);
+        const salvage =
+          dm.salvageMin + Math.floor(this.rng() * (dm.salvageMax - dm.salvageMin + 1));
+        const brass = dm.brassMin + Math.floor(this.rng() * (dm.brassMax - dm.brassMin + 1));
+        r.pack = addItem(r.pack, 'salvage', salvage, CONFIG.inventory.stackMax).inv;
+        r.pack = addItem(r.pack, 'brass', brass, CONFIG.inventory.stackMax).inv;
         ledger.log({
-          type: 'trophy',
-          account: rt.accountId,
-          data: { source: 'scuttlebot', itemId: 'dentedCrest', qty: 1 },
+          type: 'gather',
+          account: r.accountId,
+          data: { kind: 'draymule', itemId: 'salvage', qty: salvage, brass },
         });
-        client.send(MSG.loot, {
-          nodeId: -1,
-          itemId: 'dentedCrest',
-          qty: 0,
-          rare: 'dentedCrest',
-          glintHit: false,
+        c.send(MSG.notice, {
+          text: `The Draymule's cargo spills: ${salvage} Salvage, ${brass} Brass.`,
         });
-        client.send(MSG.inventory, this.inventorySync(rt));
-        this.recordManifest(client, rt, 'dentedCrest');
+        c.send(MSG.inventory, this.inventorySync(r));
+        this.goalEvent(c, r.accountId, { kind: 'hunt', qty: 1 });
+      }
+      this.broadcast(MSG.notice, { text: 'The rogue Draymule folds with a groan of plate.' });
+      this.scheduleDraymule();
+      return;
+    }
+    if (this.rng() < this.mobCfg(m.kind).trophyChance) grantTrophy(client, rt);
+  }
+
+  /** U1c: the Tangle's slow clock — a rogue Draymule visits, eventually. */
+  private scheduleDraymule(): void {
+    if (this.districtId !== 'tangle') return;
+    const dm = CONFIG.draymule;
+    // DRAYMULE_TEST_MINUTES: dev knob so probes don't wait half an hour.
+    const minutes =
+      process.env.DRAYMULE_TEST_MINUTES !== undefined
+        ? Number(process.env.DRAYMULE_TEST_MINUTES)
+        : dm.spawnMinutesMin + this.rng() * (dm.spawnMinutesMax - dm.spawnMinutesMin);
+    this.clock.setTimeout(() => this.spawnDraymule(), minutes * 60 * 1000);
+  }
+
+  private spawnDraymule(): void {
+    // One at a time — if the last one still walks, check back later.
+    for (const m of this.mobs.values()) {
+      if (m.kind === 'draymule' && m.respawnAtMs === null) {
+        this.scheduleDraymule();
+        return;
       }
     }
+    const dm = CONFIG.draymule;
+    const seat = this.findMobSeat(dm.homeBox);
+    if (seat === null) {
+      this.scheduleDraymule();
+      return;
+    }
+    const id = `draymule-${Date.now() % 100000}`;
+    const mob: MobRuntime = {
+      id,
+      kind: 'draymule',
+      home: seat,
+      move: makeMoveState(seat),
+      hp: dm.maxHp,
+      ai: 'idle',
+      targetSessionId: null,
+      windupElapsed: 0,
+      cooldownRemaining: 0,
+      wanderWait: 1,
+      repathWait: 0,
+      respawnAtMs: null,
+      damagedBy: new Set(),
+    };
+    this.mobs.set(id, mob);
+    const ms = new MobState();
+    ms.kind = 'draymule';
+    ms.tileX = seat.x;
+    ms.tileY = seat.y;
+    ms.hp = dm.maxHp;
+    ms.maxHp = dm.maxHp;
+    this.state.mobs.set(id, ms);
+    this.broadcast(MSG.notice, {
+      text: 'Heavy plate clatters in the maze — a rogue Draymule is loose in the Tangle.',
+    });
+  }
+
+  /** First open walkable seat in a box (draymule placement). */
+  private findMobSeat(box: { x0: number; y0: number; x1: number; y1: number }): TilePoint | null {
+    for (let tries = 0; tries < 60; tries++) {
+      const x = box.x0 + Math.floor(this.rng() * (box.x1 - box.x0 + 1));
+      const y = box.y0 + Math.floor(this.rng() * (box.y1 - box.y0 + 1));
+      if (this.map.walkable[y]?.[x] === true) return { x, y };
+    }
+    return null;
   }
 
   /**
@@ -2886,6 +3013,189 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
+  /** U1a parcel runs: take at the dispatch post, drop at the landing. */
+  private handleDelivery(client: Client, msg: DeliveryIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || this.districtId !== 'stacks') return;
+    const cfg = CONFIG.deliveries;
+    const dests = cfg.destinations;
+    if (msg.action === 'take') {
+      if (!this.nearProp(rt, 'dispatchpost', 3)) {
+        client.send(MSG.notice, { text: 'Parcels are posted at the dispatch post.' });
+        return;
+      }
+      if (rt.delivery !== null) {
+        const d = dests.find((dd) => dd.id === rt.delivery);
+        client.send(MSG.notice, {
+          text: `Hands full — ${d?.tower ?? 'a tower'} is still waiting on you.`,
+        });
+        return;
+      }
+      const d = dests[Math.floor(this.rng() * dests.length)];
+      if (d === undefined) return;
+      rt.delivery = d.id;
+      client.send(MSG.deliverySync, {
+        active: true,
+        destId: d.id,
+        tower: d.tower,
+        recipient: d.recipient,
+        line: d.line,
+        landing: d.landing,
+      });
+      client.send(MSG.notice, {
+        text: `Parcel for ${d.recipient} — ${d.tower}. ${d.line}`,
+      });
+      return;
+    }
+    // drop
+    if (rt.delivery === null) return;
+    const d = dests.find((dd) => dd.id === rt.delivery);
+    if (d === undefined) {
+      rt.delivery = null;
+      return;
+    }
+    const me = rt.move.tile;
+    const level = this.map.elevation[me.y]?.[me.x] ?? 0;
+    if (chebyshev(me, d.landing) > 1 || level !== d.level) {
+      client.send(MSG.notice, { text: `${d.tower}'s landing is marked — get to it.` });
+      return;
+    }
+    rt.delivery = null;
+    // Daily cap: the parity purse never prints past it.
+    const today = new Date().toISOString().slice(0, 10);
+    if (rt.deliveryDayDate !== today) {
+      rt.deliveryDayDate = today;
+      rt.deliveryDayBolts = 0;
+    }
+    const room = Math.max(0, cfg.dailyCapBolts - rt.deliveryDayBolts);
+    const paid = Math.min(cfg.rewardBolts, room);
+    if (paid > 0) {
+      rt.bolts += paid;
+      rt.deliveryDayBolts += paid;
+      ledger.log({
+        type: 'quest',
+        account: rt.accountId,
+        data: { questId: 'delivery', bolts: paid, dest: d.id },
+      });
+    }
+    // The occasional tip: a Manifest keepsake, never currency.
+    let tipped = false;
+    if (this.rng() < cfg.rareTipChance) {
+      const rr = addItem(rt.pack, 'waxChit', 1, CONFIG.inventory.stackMax);
+      if (rr.added > 0) {
+        rt.pack = rr.inv;
+        tipped = true;
+        ledger.log({
+          type: 'trophy',
+          account: rt.accountId,
+          data: { source: 'delivery', itemId: 'waxChit', qty: 1 },
+        });
+        this.recordManifest(client, rt, 'waxChit');
+      }
+    }
+    client.send(MSG.deliverySync, { active: false });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, {
+      text:
+        paid > 0
+          ? `${d.recipient} signs for it. +${paid} Bolts${tipped ? ' — and a wax-sealed something.' : '.'}`
+          : `${d.recipient} signs for it. The day's purse is flat — the thanks are real though.`,
+    });
+    this.goalEvent(client, rt.accountId, { kind: 'deliver', qty: 1 });
+  }
+
+  /** U1b: the channel ran its course — bloom for everyone, roll the herb. */
+  private finishTend(sessionId: string, rt: PlayerRuntime): void {
+    const t = rt.tend;
+    rt.tend = null;
+    if (t === null) return;
+    const client = this.clients.find((c) => c.sessionId === sessionId);
+    if (client === undefined) return;
+    const cfg = CONFIG.tending;
+    const bloom = new BloomState();
+    bloom.untilMs = Date.now() + cfg.bloomSeconds * 1000;
+    this.state.blooms.set(String(t.bed), bloom);
+    this.clock.setTimeout(
+      () => this.state.blooms.delete(String(t.bed)),
+      cfg.bloomSeconds * 1000,
+    );
+    rt.tendDayCount += 1;
+    const chance = t.cueHit ? cfg.rareChanceGood : cfg.rareChancePlain;
+    let rare: ItemId | null = null;
+    if (this.rng() < chance) {
+      const pool = CONFIG.terrarium.rares;
+      rare = pool[Math.floor(this.rng() * pool.length)] as ItemId;
+      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      if (rr.added > 0) {
+        rt.pack = rr.inv;
+        this.recordManifest(client, rt, rare);
+        client.send(MSG.loot, { nodeId: -1, itemId: rare, qty: 0, rare, glintHit: t.cueHit });
+        client.send(MSG.inventory, this.inventorySync(rt));
+      } else {
+        rare = null;
+      }
+    }
+    ledger.log({
+      type: 'gather',
+      account: rt.accountId,
+      data: { kind: 'tend', bed: t.bed, clean: t.cueHit, rare },
+    });
+    client.send(MSG.notice, {
+      text: t.cueHit
+        ? rare !== null
+          ? 'The planter drinks deep — and gives something back.'
+          : 'The planter drinks deep. It will bloom for hours.'
+        : rare !== null
+          ? 'Tended. Something glints under the leaves.'
+          : 'Tended. The beds remember their friends.',
+    });
+    this.goalEvent(client, rt.accountId, { kind: 'tend', qty: 1 });
+  }
+
+  /** U1b tending: a short channel with one bloom cue; clean hits bloom
+   *  brighter odds. Tends grant RARE ROLLS only — never resource volume. */
+  private handleTend(client: Client, msg: TendIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || this.districtId !== 'terrarium') return;
+    const cfg = CONFIG.tending;
+    if (msg.action === 'cue') {
+      const t = rt.tend;
+      if (t === null || t.cueHit) return;
+      if (Math.abs(t.elapsed - t.cueAt) * 1000 <= cfg.cueWindowMs) t.cueHit = true;
+      return;
+    }
+    // start
+    if (rt.tend !== null) return;
+    const beds = this.map.props.filter((p) => p.kind === 'gardenbed');
+    const bed = typeof msg.bed === 'number' ? beds[msg.bed] : undefined;
+    if (bed === undefined) return;
+    const me = rt.move.tile;
+    if (chebyshev(me, { x: bed.x, y: bed.y }) > 3) {
+      client.send(MSG.notice, { text: 'Step up to the planter first.' });
+      return;
+    }
+    if (this.state.blooms.get(String(msg.bed)) !== undefined) {
+      client.send(MSG.notice, { text: 'That planter is already blooming. Pick a thirsty one.' });
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (rt.tendDayDate !== today) {
+      rt.tendDayDate = today;
+      rt.tendDayCount = 0;
+    }
+    if (rt.tendDayCount >= cfg.dailyCapTends) {
+      client.send(MSG.notice, { text: 'The gardens have had all the care they need from you today.' });
+      return;
+    }
+    const cueAt = cfg.cueEarliest + this.rng() * (cfg.cueLatest - cfg.cueEarliest);
+    rt.tend = { bed: msg.bed as number, elapsed: 0, cueAt, cueHit: false };
+    client.send(MSG.tendState, {
+      bed: msg.bed,
+      seconds: cfg.seconds,
+      cueInMs: Math.round(cueAt * 1000),
+    });
+  }
+
   /** Tram travel between districts: a Bolts toll per hop, then a room hop. */
   private async handleTravel(client: Client, msg: TravelIntent): Promise<void> {
     const rt = this.runtimes.get(client.sessionId);
@@ -3015,6 +3325,12 @@ export class FilamentRoom extends Room<FilamentState> {
 
   /** Per-kind mob tuning (junkhounds share the scuttlebot brain). */
   private mobCfg(kind: MobKind): typeof CONFIG.combat.scuttlebot {
+    if (kind === 'sparkwisp') {
+      return CONFIG.sparkwisp as unknown as typeof CONFIG.combat.scuttlebot;
+    }
+    if (kind === 'draymule') {
+      return CONFIG.draymule as unknown as typeof CONFIG.combat.scuttlebot;
+    }
     return kind === 'junkhound'
       ? (CONFIG.junkhound as unknown as typeof CONFIG.combat.scuttlebot)
       : CONFIG.combat.scuttlebot;
@@ -3256,11 +3572,19 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private spawnMobs(): void {
-    // The Stacks and the Terrarium are where people LIVE — no ferals
-    // in the canyon, none in the gardens (D1/D2).
-    if (this.districtId === 'stacks' || this.districtId === 'terrarium') return;
+    // The Terrarium is where people rest — no ferals in the gardens (D2).
+    // The Stacks carries only Sparkwisps: an ambient hazard, not a hunt.
+    if (this.districtId === 'terrarium') return;
     const packs: Array<{ kind: MobKind; count: number; box: { x0: number; y0: number; x1: number; y1: number } }> =
-      this.districtId === 'tangle'
+      this.districtId === 'stacks'
+        ? [
+            {
+              kind: 'sparkwisp',
+              count: CONFIG.sparkwisp.count,
+              box: CONFIG.sparkwisp.homeBox,
+            },
+          ]
+        : this.districtId === 'tangle'
         ? [
             {
               kind: 'scuttlebot',
@@ -3987,6 +4311,10 @@ export class FilamentRoom extends Room<FilamentState> {
       bolts: rt.bolts,
       dailySaleBolts: rt.dailySaleBolts,
       dailySaleDate: rt.dailySaleDate,
+      deliveryDayBolts: rt.deliveryDayBolts,
+      deliveryDayDate: rt.deliveryDayDate,
+      tendDayCount: rt.tendDayCount,
+      tendDayDate: rt.tendDayDate,
       tradeDayDate: rt.tradeDayDate,
       tradeDayValueBolts: rt.tradeDayValueBolts,
       tradeDayCount: rt.tradeDayCount,

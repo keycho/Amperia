@@ -14,6 +14,7 @@ export type ManifestPageId =
   | 'tuning'
   | 'gardens'
   | 'mobs'
+  | 'errands'
   | 'wardrobe';
 
 export interface ManifestPageDef {
@@ -30,6 +31,7 @@ export const MANIFEST_PAGES: readonly ManifestPageDef[] = [
   { id: 'tuning', label: 'Tuning', blurb: 'What the static was saying.' },
   { id: 'gardens', label: 'Gardens', blurb: 'What the Terrarium let you keep.' },
   { id: 'mobs', label: 'Junkbots', blurb: 'What the ferals left behind.' },
+  { id: 'errands', label: 'Errands', blurb: 'What the city trusted you with.' },
   { id: 'wardrobe', label: 'Wardrobe', blurb: 'What the city put on your back.' },
 ];
 
@@ -72,6 +74,9 @@ export const MANIFEST_ENTRIES: readonly ManifestEntryDef[] = [
   E('emberseed', 'gardens', 'Emberseed', 'Sharp eyes on the garden glints.', 'item'),
   // Mob trophies.
   E('dentedCrest', 'mobs', 'Dented Crest', 'Feral Scuttlebots wear their history.', 'item'),
+  E('wispFilament', 'mobs', 'Wisp Filament', 'The Stacks alleys hum with loose charge.', 'item'),
+  E('drayPlate', 'mobs', 'Dray Plate', 'Something heavy walks the Tangle, sometimes.', 'item'),
+  E('waxChit', 'errands', 'Wax-Sealed Chit', 'Some recipients tip in keepsakes.', 'item'),
   // The wardrobe (cosmetics are Manifest entries too).
   E('bulbHat', 'wardrobe', 'The Bulb', 'Finish what the Dispatcher starts.', 'cosmetic'),
   E('alleyBeanie', 'wardrobe', 'Alley Beanie', 'Somewhere in the junk piles.', 'cosmetic'),
@@ -129,6 +134,7 @@ export const PAGE_AWARDS: readonly PageAward[] = [
   { page: 'tuning', title: 'Statictamer' },
   { page: 'gardens', title: 'Seedkeeper' },
   { page: 'mobs', title: 'Botbreaker' },
+  { page: 'errands', title: 'Runner' },
   { page: 'wardrobe', title: 'City-Dressed' },
 ];
 

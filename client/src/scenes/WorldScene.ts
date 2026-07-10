@@ -46,6 +46,8 @@ import type {
   TradeEndEvent,
   TradeSyncEvent,
   TravelGo,
+  DeliverySync,
+  TendStateEvent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
@@ -164,6 +166,13 @@ export class WorldScene extends Phaser.Scene {
   private chargeLightingTier = 0;
   /** The tramgate stop board (D3), open at most one at a time. */
   private tramBoard: Phaser.GameObjects.Container | null = null;
+  /** U1a: the active parcel run + its landing marker objects. */
+  private delivery: DeliverySync | null = null;
+  private deliveryMarker: Phaser.GameObjects.GameObject[] = [];
+  /** U1b: bloom overlays keyed by gardenbed index. */
+  private bloomViews = new Map<string, Phaser.GameObjects.GameObject[]>();
+  /** U1b: bed index of the live tend channel (cue clicks route to it). */
+  private tendingBed: number | null = null;
   /** Puddle-decal budget per map (R5b). */
   private puddleCount = 0;
   private spatialAt = 0;
@@ -195,6 +204,10 @@ export class WorldScene extends Phaser.Scene {
     this.chargeGardenGlows = [];
     this.chargeLightingTier = 0;
     this.tramBoard = null;
+    this.delivery = null;
+    this.deliveryMarker = [];
+    this.bloomViews = new Map();
+    this.tendingBed = null;
     this.puddleCount = 0;
   }
 
@@ -575,6 +588,10 @@ export class WorldScene extends Phaser.Scene {
         onAdd(cb: (p: LoftpodStateShape, id: string) => void): void;
         onRemove(cb: (p: LoftpodStateShape, id: string) => void): void;
       };
+      blooms: {
+        onAdd(cb: (b: { untilMs: number }, id: string) => void): void;
+        onRemove(cb: (b: { untilMs: number }, id: string) => void): void;
+      };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
     const $state = proxy(room.state) as unknown as StateProxy;
@@ -702,6 +719,10 @@ export class WorldScene extends Phaser.Scene {
     });
 
     // D2b Loftpods: homes on their berths, displays live-updating.
+    // U1b: tended planters bloom for everyone — render from synced state.
+    $state.blooms.onAdd((_b: { untilMs: number }, id: string) => this.renderBloom(id));
+    $state.blooms.onRemove((_b: { untilMs: number }, id: string) => this.removeBloom(id));
+
     $state.loftpods.onAdd((p2: LoftpodStateShape, id: string) => {
       this.renderLoftpod(id, p2);
       proxy(p2).onChange(() => this.renderLoftpod(id, p2));
@@ -721,6 +742,21 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
+    // U1a: your parcel run — marker at the landing, cleared on delivery.
+    room.onMessage(MSG.deliverySync, (e: DeliverySync) => {
+      this.clearDeliveryMarker();
+      if (e.active && e.landing !== undefined) {
+        this.delivery = e;
+        this.drawDeliveryMarker(e);
+      } else {
+        this.delivery = null;
+      }
+    });
+    // U1b: the tend channel began — pulse the bloom cue at the right beat.
+    room.onMessage(MSG.tendState, (e: TendStateEvent) => {
+      this.tendCue(e);
+    });
+
     room.onMessage(MSG.travelGo, (e: TravelGo) => {
       const to: DistrictId = (CONFIG.travel.line as readonly DistrictId[]).includes(e.to)
         ? e.to
@@ -2294,7 +2330,27 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'gardenbed': {
-          this.propSprite(`gardenbed-${p.variant % 3}`, x, y);
+          const img = this.propSprite(`gardenbed-${p.variant % 3}`, x, y);
+          // U1b: click to tend (start), click again on the pulse (cue).
+          const bedIdx = this.map.props.filter((pp) => pp.kind === 'gardenbed').indexOf(p);
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              if (this.tendingBed === bedIdx) {
+                this.room.send(MSG.tend, { action: 'cue' });
+                return;
+              }
+              this.room.send(MSG.tend, { action: 'start', bed: bedIdx });
+            },
+          );
           break;
         }
         case 'toolshed': {
@@ -2414,6 +2470,42 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'planter': {
           this.propSprite(`planter-${looks.pick('planter', p.x, p.y, 4)}`, x, y);
+          break;
+        }
+        case 'dispatchpost': {
+          const img = this.propSprite('dispatchpost', x, y);
+          // U1a: parcels post here. Click = take one (or hear your status).
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              if (this.delivery !== null) {
+                floatText(
+                  this,
+                  img.x,
+                  img.y - 70,
+                  `${this.delivery.tower}: ${this.delivery.line ?? ''}`,
+                  PALETTE.neonAmber,
+                );
+                return;
+              }
+              this.room.send(MSG.delivery, { action: 'take' });
+            },
+          );
+          const sign = this.add.image(x + 22, y - 58, 'fx-glow');
+          sign.setTint(PALETTE_INT.neonAmber);
+          sign.setBlendMode(Phaser.BlendModes.ADD);
+          sign.setScale(0.06);
+          sign.setAlpha(bloom(0.55));
+          sign.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, sign, bloom(0.55), 0.1);
           break;
         }
         case 'tramgate': {
@@ -2789,6 +2881,109 @@ export class WorldScene extends Phaser.Scene {
    * D2b: berth pads — dashed pad outlines with their number, clickable to
    * place your Loftpod (the server checks Bolts + proximity + occupancy).
    */
+  /** U1a: the landing marker — a pulsing beacon where the parcel goes. */
+  private drawDeliveryMarker(e: DeliverySync): void {
+    if (e.landing === undefined) return;
+    const w = tileToWorld(e.landing.x, e.landing.y);
+    const glow = addLayeredGlow(this, w.x, w.y - 10, PALETTE_INT.neonAmber, 0.5, depthForWorldY(w.y) + 2, 0.5);
+    this.tweens.add({
+      targets: [glow.core, glow.mid],
+      alpha: { from: 0.25, to: 0.8 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    const label = this.add.text(w.x, w.y - 46, `${e.tower ?? 'the landing'}`, {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: PALETTE.neonAmber,
+      backgroundColor: '#1E1930CC',
+      padding: { x: 4, y: 2 },
+    });
+    label.setOrigin(0.5, 1);
+    label.setDepth(depthForWorldY(w.y) + 3);
+    const zone = this.add.zone(w.x, w.y - 8, TILE_W * 1.6, TILE_H * 2.2);
+    zone.setInteractive({ useHandCursor: true });
+    zone.on('pointerdown', () => {
+      if (this.room !== null) this.room.send(MSG.delivery, { action: 'drop' });
+    });
+    this.deliveryMarker.push(glow.core, glow.mid, glow.outer, label, zone);
+  }
+
+  private clearDeliveryMarker(): void {
+    for (const o of this.deliveryMarker) o.destroy();
+    this.deliveryMarker = [];
+  }
+
+  /** U1b: everyone sees a tended planter bloom for the hour. */
+  private renderBloom(id: string): void {
+    this.removeBloom(id);
+    const beds = this.map.props.filter((pp) => pp.kind === 'gardenbed');
+    const bed = beds[Number(id)];
+    if (bed === undefined) return;
+    const w = tileToWorld(bed.x + bed.w / 2, bed.y + bed.h / 2);
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const hues = [PALETTE_INT.neonRose, PALETTE_INT.neonAmber, PALETTE_INT.solarGreen];
+    for (let i = 0; i < 5; i++) {
+      const petal = this.add.image(
+        w.x - 20 + ((i * 37) % 44),
+        w.y - 14 - ((i * 23) % 12),
+        'fx-glow',
+      );
+      petal.setTint(hues[i % hues.length] as number);
+      petal.setBlendMode(Phaser.BlendModes.ADD);
+      petal.setScale(0.028);
+      petal.setAlpha(bloom(0.5));
+      petal.setDepth(depthForWorldY(w.y) + 2);
+      this.tweens.add({
+        targets: petal,
+        alpha: { from: bloom(0.3), to: bloom(0.65) },
+        duration: 1600 + i * 300,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inout',
+      });
+      parts.push(petal);
+    }
+    this.bloomViews.set(id, parts);
+  }
+
+  private removeBloom(id: string): void {
+    const parts = this.bloomViews.get(id);
+    if (parts === undefined) return;
+    for (const o of parts) o.destroy();
+    this.bloomViews.delete(id);
+  }
+
+  /** U1b: the cue pulse — click the bed again right on the bright beat. */
+  private tendCue(e: TendStateEvent): void {
+    this.tendingBed = e.bed;
+    const beds = this.map.props.filter((pp) => pp.kind === 'gardenbed');
+    const bed = beds[e.bed];
+    if (bed !== undefined) {
+      const w = tileToWorld(bed.x + bed.w / 2, bed.y + bed.h / 2);
+      const pulse = this.add.image(w.x, w.y - 12, 'fx-glow');
+      pulse.setTint(PALETTE_INT.solarGreen);
+      pulse.setBlendMode(Phaser.BlendModes.ADD);
+      pulse.setScale(0.03);
+      pulse.setAlpha(0);
+      pulse.setDepth(depthForWorldY(w.y) + 3);
+      this.tweens.add({
+        targets: pulse,
+        alpha: { from: 0, to: 0.9 },
+        scale: { from: 0.03, to: 0.09 },
+        delay: e.cueInMs - 180,
+        duration: 360,
+        yoyo: true,
+        onComplete: () => pulse.destroy(),
+      });
+    }
+    this.time.delayedCall(e.seconds * 1000 + 200, () => {
+      if (this.tendingBed === e.bed) this.tendingBed = null;
+    });
+  }
+
   private placeLoftBerths(): void {
     if (this.map.loftberths.length === 0) return;
     const g = this.add.graphics();

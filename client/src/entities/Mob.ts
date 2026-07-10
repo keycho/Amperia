@@ -40,12 +40,23 @@ export class Mob {
     this.hp = hp;
     this.maxHp = maxHp;
     const { x, y } = tileToWorld(tile.x, tile.y);
-    this.image = addVoxelSprite(scene, kind === 'junkhound' ? 'junkhound' : 'scuttlebot-feral', x, y);
+    const TEX: Record<string, string> = {
+      junkhound: 'junkhound',
+      sparkwisp: 'sparkwisp',
+      draymule: 'draymule-mob',
+    };
+    this.image = addVoxelSprite(scene, TEX[kind] ?? 'scuttlebot-feral', x, y);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
     this.baseScaleY = this.image.scaleY;
     this.eye = scene.add.image(x + 5, y - 8, 'fx-glow');
-    this.eye.setTint(PALETTE_INT.neonRose);
+    this.eye.setTint(
+      kind === 'sparkwisp'
+        ? PALETTE_INT.neonTeal
+        : kind === 'draymule'
+          ? PALETTE_INT.neonAmber
+          : PALETTE_INT.neonRose,
+    );
     this.eye.setBlendMode(Phaser.BlendModes.ADD);
     this.eye.setScale(0.04);
     this.eye.setAlpha(0.6);

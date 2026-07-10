@@ -26,6 +26,10 @@ export const MSG = {
   donate: 'donate',
   travel: 'travel',
   travelGo: 'travelGo',
+  delivery: 'delivery',
+  deliverySync: 'deliverySync',
+  tend: 'tend',
+  tendState: 'tendState',
   reclaim: 'reclaim',
   ptrade: 'ptrade',
   tradeAsk: 'tradeAsk',
@@ -241,6 +245,34 @@ export interface TravelIntent {
 /** Server → player: leave this room and join the named district. */
 export interface TravelGo {
   to: DistrictId;
+}
+
+/** U1a player → server: take a parcel at the post / drop it at the landing. */
+export interface DeliveryIntent {
+  action: 'take' | 'drop';
+}
+
+/** U1a server → player: your active parcel run (null dest = none). */
+export interface DeliverySync {
+  active: boolean;
+  destId?: string;
+  tower?: string;
+  recipient?: string;
+  line?: string;
+  landing?: { x: number; y: number };
+}
+
+/** U1b player → server: start tending a planter / hit the bloom cue. */
+export interface TendIntent {
+  action: 'start' | 'cue';
+  bed?: number;
+}
+
+/** U1b server → player: the tend channel began (cue lands at cueInMs). */
+export interface TendStateEvent {
+  bed: number;
+  seconds: number;
+  cueInMs: number;
 }
 
 /** Player → server: reclaim your Scrapcache (owner-only, small fee). */
