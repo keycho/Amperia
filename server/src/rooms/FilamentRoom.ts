@@ -297,13 +297,19 @@ interface MobRuntime {
  * and node lifecycles. Clients send intents and render results.
  */
 export class FilamentRoom extends Room<FilamentState> {
-  maxClients = 40;
+  // H3: 40 measured comfortable on one instance (see PROGRESS load test);
+  // env override exists for load testing above the line.
+  maxClients = Number(process.env.ROOM_MAX_CLIENTS ?? 40);
 
   private map!: WorldMap;
   private grid!: PathGrid;
   private rng: Rng = makeRng(Date.now() >>> 0);
   private runtimes = new Map<string, PlayerRuntime>();
   private mobs = new Map<string, MobRuntime>();
+  // H3 perf: tick-duration ring + intent counter, flushed to one stats
+  // line every 15s ([perf] …) — the load test reads these.
+  private perfDur: number[] = [];
+  private perfMsgs = 0;
   private lamps = new Map<string, { tile: TilePoint; owner: string; expiresAtMs: number }>();
   private lampSeq = 0;
   protected districtId: DistrictId = 'filament';
@@ -429,7 +435,12 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
     void merchant.load();
 
-    this.setSimulationInterval((dt) => this.tick(dt), 50);
+    this.setSimulationInterval((dt) => {
+      const t0 = performance.now();
+      this.tick(dt);
+      this.perfDur.push(performance.now() - t0);
+    }, 50);
+    this.clock.setInterval(() => this.logPerf(), 15000);
   }
 
   async onJoin(client: Client, options: unknown): Promise<void> {
@@ -602,7 +613,28 @@ export class FilamentRoom extends Room<FilamentState> {
 
   // ── intents ────────────────────────────────────────────────────────────
 
+  /** H3: one stats line per 15s window — tick percentiles, intent rate,
+   *  memory. Grep `[perf]` during load tests; quiet rooms stay quiet. */
+  private logPerf(): void {
+    if (this.perfDur.length === 0 || this.clients.length === 0) {
+      this.perfDur = [];
+      this.perfMsgs = 0;
+      return;
+    }
+    const s = [...this.perfDur].sort((a, b) => a - b);
+    const q = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))] ?? 0;
+    const mem = process.memoryUsage();
+    console.log(
+      `[perf] ${this.districtId} clients=${this.clients.length} ticks=${s.length} ` +
+        `tick_p50=${q(0.5).toFixed(1)}ms p95=${q(0.95).toFixed(1)}ms max=${(s[s.length - 1] ?? 0).toFixed(1)}ms ` +
+        `intents/s=${(this.perfMsgs / 15).toFixed(1)} rss=${(mem.rss / 1048576).toFixed(0)}MB heap=${(mem.heapUsed / 1048576).toFixed(0)}MB`,
+    );
+    this.perfDur = [];
+    this.perfMsgs = 0;
+  }
+
   private handleMove(client: Client, msg: MoveIntent): void {
+    this.perfMsgs += 1;
     const rt = this.runtimes.get(client.sessionId);
     if (rt === undefined || !this.isValidTile(msg)) return;
     if (this.map.walkable[msg.y]?.[msg.x] !== true) return;
@@ -615,6 +647,7 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private handleGather(client: Client, msg: GatherIntent): void {
+    this.perfMsgs += 1;
     const rt = this.runtimes.get(client.sessionId);
     const node = this.map.nodes.find((n) => n.id === msg.nodeId);
     const nodeState = this.state.nodes.get(String(msg.nodeId));
@@ -1160,6 +1193,7 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {
+    this.perfMsgs += 1;
     const rt = this.runtimes.get(client.sessionId);
     if (rt === undefined || typeof msg.text !== 'string') return;
     const now = Date.now();
