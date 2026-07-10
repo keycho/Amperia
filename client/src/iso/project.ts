@@ -37,6 +37,15 @@ export function depthForWorldY(wy: number): number {
   return wy;
 }
 
+/**
+ * The floor plane's base depth — tiles at +0, curbs/lips +1, void +2,
+ * CAST SHADOWS +3, lamp pools +4. Every sprite (worldY depth) sorts far
+ * above all of it.
+ */
+export const DEPTH_FLOOR = -100000;
+/** Cast-shadow layer: above floor decor, below every sprite. */
+export const DEPTH_SHADOW = DEPTH_FLOOR + 3;
+
 /** World-space bounding box of the whole diamond map, for camera bounds. */
 export function mapWorldBounds(size: number): { x: number; y: number; w: number; h: number } {
   const minX = -((size - 1) * TILE_W) / 2 - TILE_W / 2;

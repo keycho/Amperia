@@ -6,6 +6,7 @@ import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
 import {
   makeItemIconTextures,
   makeKoiTextures,
+  makeShadowTextures,
   makeTileMarkerTextures,
 } from '../render/textures';
 
@@ -28,6 +29,7 @@ export class BootScene extends Phaser.Scene {
     makeTileMarkerTextures(this);
     makeItemIconTextures(this);
     makeKoiTextures(this);
+    makeShadowTextures(this);
     bakeCoreVoxelModels(this);
     bakeWorldVoxelModels(this);
     bakeFloorTiles(this);

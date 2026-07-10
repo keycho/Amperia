@@ -44,6 +44,19 @@ export function makeItemIconTextures(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** Contact shadow for walking entities (tight core, soft fringe). */
+export function makeShadowTextures(scene: Phaser.Scene): void {
+  const g = g2(scene);
+  g.fillStyle(PALETTE_INT.ink, 0.22);
+  g.fillEllipse(30, 15, 58, 28);
+  g.fillStyle(PALETTE_INT.ink, 0.38);
+  g.fillEllipse(28, 14, 40, 19);
+  g.fillStyle(PALETTE_INT.ink, 0.45);
+  g.fillEllipse(26, 13, 26, 12);
+  g.generateTexture('fx-contact-shadow', 60, 30);
+  g.destroy();
+}
+
 /** Koi shadow (soft dark ellipse) + a small splash ring. */
 export function makeKoiTextures(scene: Phaser.Scene): void {
   let g = g2(scene);

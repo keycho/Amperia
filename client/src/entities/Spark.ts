@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
-import { depthForWorldY, tileToWorld } from '../iso/project';
+import { DEPTH_SHADOW, depthForWorldY, tileToWorld } from '../iso/project';
 import { worldSpriteTint } from '../render/styleConfig';
 import { voxelSprite } from '../render/voxel';
 
@@ -29,6 +29,7 @@ export class Spark {
   private cosmetic = '';
   private trim = '';
   private lastFace: [number, number] = [1, 0];
+  private shadow: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -41,6 +42,11 @@ export class Spark {
     const wt = worldSpriteTint();
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
+    // Contact shadow (R1): a tight ground ellipse that walks with the Spark.
+    this.shadow = scene.add.image(x, y - 2, 'fx-contact-shadow');
+    this.shadow.setScale(0.62, 0.62);
+    this.shadow.setAlpha(0.75);
+    this.shadow.setDepth(DEPTH_SHADOW);
     if (name !== undefined) this.setNameLabel(name);
     // Breathing idle — feet-anchored, so the chest rises, not the boots.
     // Desynced per Spark so a crowd never bobs in unison.
@@ -133,6 +139,7 @@ export class Spark {
   }
 
   private syncLabel(): void {
+    this.shadow.setPosition(this.image.x, this.image.y - 2);
     if (this.label === null) return;
     this.label.setPosition(
       this.image.x,
@@ -277,6 +284,7 @@ export class Spark {
     this.scene.tweens.killTweensOf(this.labelRise);
     this.bubble?.destroy();
     this.label?.destroy();
+    this.shadow.destroy();
     this.image.destroy();
   }
 

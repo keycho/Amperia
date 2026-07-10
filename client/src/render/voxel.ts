@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE_INT } from '@shared/palette';
+import { DEPTH_SHADOW } from '../iso/project';
 import { voxelHash, type Material } from './materials';
 
 /**
@@ -44,7 +45,20 @@ export interface VoxelModel {
   warmRim?: boolean;
   /** Darken material voxels toward the base for grounding (default true). */
   grounding?: boolean;
+  /** Bake + auto-place a directional cast shadow (default true). */
+  shadow?: boolean;
 }
+
+/**
+ * Directional cast shadows (R1): the key light sits high top-LEFT of
+ * screen (matching the face ramp — left faces lit, right faces dark), so
+ * every shadow shears toward screen bottom-right. Tile-space shear per
+ * voxel of height: tall things throw LONG shadows across the ground.
+ */
+export const SHADOW_SHEAR_X = 0.95;
+export const SHADOW_SHEAR_Y = 0.3;
+/** Overall alpha the cast-shadow layer renders at. */
+export const SHADOW_ALPHA = 0.5;
 
 export interface BakedVoxelSprite {
   key: string;
@@ -294,6 +308,81 @@ function drawMatCube(
   }
 }
 
+/**
+ * Bake a model's directional cast shadow ('vox-<name>-shadow'): every
+ * voxel projects a ground diamond sheared by its height, plus a tight
+ * contact-AO ring from the base voxels. Two-alpha layering (fringe under
+ * core) keeps the edge soft; the image itself renders at SHADOW_ALPHA.
+ */
+function bakeShadow(
+  scene: Phaser.Scene,
+  name: string,
+  voxels: Voxel[],
+): BakedVoxelSprite {
+  const key = `vox-${name}-shadow`;
+  const regKey = `${name}@shadow`;
+  const existing = registry.get(regKey);
+  if (existing !== undefined && scene.textures.exists(key)) return existing;
+
+  // Shadow ground cells: (x + z·shearX, y + z·shearY) in tile-voxel space.
+  const cells = voxels.map((v) => ({
+    px: (v.x + v.z * SHADOW_SHEAR_X - (v.y + v.z * SHADOW_SHEAR_Y)) * HALF_W,
+    py: (v.x + v.z * SHADOW_SHEAR_X + (v.y + v.z * SHADOW_SHEAR_Y)) * HALF_H,
+    contact: v.z <= 1,
+  }));
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const c of cells) {
+    minX = Math.min(minX, c.px - HALF_W * 1.8);
+    maxX = Math.max(maxX, c.px + HALF_W * 1.8);
+    minY = Math.min(minY, c.py - HALF_H * 1.8);
+    maxY = Math.max(maxY, c.py + HALF_H * 1.8);
+  }
+  // Anchor: identical world point to the sprite bake (footprint center).
+  const xs = voxels.map((v) => v.x);
+  const ys = voxels.map((v) => v.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const anchorX = (cx - cy) * HALF_W;
+  const anchorY = (cx + cy) * HALF_H + HALF_H + SIDE_H;
+  const pad = 3;
+  const w = Math.ceil(maxX - minX) + pad * 2;
+  const h = Math.ceil(maxY - minY) + pad * 2 + SIDE_H;
+  const ox = pad - minX;
+  const oy = pad - minY;
+
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const diamond = (px: number, py: number, sx: number, sy: number, a: number) => {
+    g.fillStyle(PALETTE_INT.ink, a);
+    g.beginPath();
+    g.moveTo(px, py - HALF_H * sy);
+    g.lineTo(px + HALF_W * sx, py);
+    g.lineTo(px, py + HALF_H * sy);
+    g.lineTo(px - HALF_W * sx, py);
+    g.closePath();
+    g.fillPath();
+  };
+  // Fringe pass (soft edge), then core pass; contact cells darkest.
+  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.7, 1.7, 0.16);
+  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.05, 1.05, 0.4);
+  for (const c of cells) {
+    if (c.contact) diamond(c.px + ox, c.py + oy, 0.9, 0.9, 0.5);
+  }
+  g.generateTexture(key, w, h);
+  g.destroy();
+
+  const baked: BakedVoxelSprite = {
+    key,
+    originX: (anchorX + ox) / w,
+    originY: (anchorY + oy) / h,
+    scale: 0.5,
+  };
+  registry.set(regKey, baked);
+  return baked;
+}
+
 /** Bake a model to a texture ('vox-<name>') and register its anchor. */
 export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVoxelSprite {
   const key = `vox-${model.name}`;
@@ -373,7 +462,35 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
     scale: 0.5,
   };
   registry.set(model.name, baked);
+  if (model.shadow !== false) bakeShadow(scene, model.name, visible);
   return baked;
+}
+
+/** Per-scene list of (sprite, shadow) pairs kept in lockstep. */
+interface ShadowPair {
+  img: Phaser.GameObjects.Image;
+  shadow: Phaser.GameObjects.Image;
+}
+const shadowPairs = new WeakMap<Phaser.Scene, ShadowPair[]>();
+
+/**
+ * Keep every auto-placed shadow under its (possibly moving) sprite. Call
+ * once per frame from the world scene's update.
+ */
+export function syncVoxelShadows(scene: Phaser.Scene): void {
+  const pairs = shadowPairs.get(scene);
+  if (pairs === undefined) return;
+  for (let i = pairs.length - 1; i >= 0; i--) {
+    const p = pairs[i] as ShadowPair;
+    if (!p.img.active) {
+      pairs.splice(i, 1);
+      continue;
+    }
+    if (p.shadow.x !== p.img.x || p.shadow.y !== p.img.y) {
+      p.shadow.setPosition(p.img.x, p.img.y);
+    }
+    if (p.shadow.visible !== p.img.visible) p.shadow.setVisible(p.img.visible);
+  }
 }
 
 /** Convenience: add a baked voxel sprite anchored on a world point. */
@@ -387,16 +504,42 @@ export function addVoxelSprite(
   const img = scene.add.image(worldX, worldY, baked.key);
   img.setOrigin(baked.originX, baked.originY);
   img.setScale(baked.scale);
+  // Directional cast shadow (R1): baked alongside the model, laid on the
+  // shadow layer under every sprite, and kept in lockstep by the scene.
+  const shadowBaked = registry.get(`${name}@shadow`);
+  if (shadowBaked !== undefined) {
+    const shadow = scene.add.image(worldX, worldY, shadowBaked.key);
+    shadow.setOrigin(shadowBaked.originX, shadowBaked.originY);
+    shadow.setScale(shadowBaked.scale);
+    shadow.setAlpha(SHADOW_ALPHA);
+    shadow.setDepth(DEPTH_SHADOW);
+    img.setData('shadowImg', shadow);
+    img.once(Phaser.GameObjects.Events.DESTROY, () => shadow.destroy());
+    let pairs = shadowPairs.get(scene);
+    if (pairs === undefined) {
+      pairs = [];
+      shadowPairs.set(scene, pairs);
+    }
+    pairs.push({ img, shadow });
+  }
   return img;
 }
 
 /**
  * Swap an image to another baked model (e.g. depleted variants). Origin and
- * scale are re-applied because each bake has its own bounding box.
+ * scale are re-applied because each bake has its own bounding box; the
+ * attached cast shadow swaps with it.
  */
 export function applyVoxelTexture(img: Phaser.GameObjects.Image, name: string): void {
   const baked = voxelSprite(name);
   img.setTexture(baked.key);
   img.setOrigin(baked.originX, baked.originY);
   img.setScale(baked.scale);
+  const shadow = img.getData('shadowImg') as Phaser.GameObjects.Image | undefined;
+  const shadowBaked = registry.get(`${name}@shadow`);
+  if (shadow !== undefined && shadowBaked !== undefined) {
+    shadow.setTexture(shadowBaked.key);
+    shadow.setOrigin(shadowBaked.originX, shadowBaked.originY);
+    shadow.setScale(shadowBaked.scale);
+  }
 }

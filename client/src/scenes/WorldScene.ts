@@ -48,6 +48,8 @@ import {
 } from '../entities/nodes';
 import { Spark } from '../entities/Spark';
 import {
+  DEPTH_FLOOR,
+  DEPTH_SHADOW,
   depthForWorldY,
   mapWorldBounds,
   TILE_H,
@@ -71,14 +73,12 @@ import { floorTileKey, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
-import { addVoxelSprite } from '../render/voxel';
+import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
 
-/** Depth floor for the ground layer; entities use their anchor world-Y. */
-const DEPTH_FLOOR = -100000;
 
 /**
  * The Filament, rendered from server truth. The client sends intents (move,
@@ -177,6 +177,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateHoverMarker();
     this.gatherView.update();
     this.tuner.update();
+    syncVoxelShadows(this);
     for (const node of this.nodes.values()) {
       if (node instanceof KoiSpotNode) node.update();
     }
@@ -1059,6 +1060,11 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
+    // WALL SHADOWS (R1c): tiles butting a tall structure on the light-away
+    // side sit in its ambient shade, and corridor floors squeezed between
+    // two walls darken further — the crisp baked cast shadows layer on top.
+    this.drawWallShadows();
+
     // THE VOID (§B5): the map is an island of light — its last rows fade
     // into near-black so screenshot corners are dark, not plum.
     const voidG = this.add.graphics();
@@ -1073,6 +1079,69 @@ export class WorldScene extends Phaser.Scene {
         voidG.fillStyle(MATERIAL_INT.voidBlack, a);
         this.traceDiamond(voidG, x, y);
         voidG.fillPath();
+      }
+    }
+  }
+
+  /** Approximate structure heights (voxels) for the ambient shade pass. */
+  private static readonly PROP_HEIGHT_VOX: Partial<Record<Prop['kind'], number>> = {
+    dynamo: 52,
+    shack: 15,
+    stall: 14,
+    tramgate: 28,
+    block: 6,
+    crate: 4,
+    merchant: 10,
+    alleylamp: 8,
+  };
+
+  /**
+   * Ambient wall shade (R1c): the key light comes from screen top-left
+   * (tile −x-ish), so floor tiles with a tall neighbor on that side sit in
+   * shade; corridors walled on both sides pool extra darkness.
+   */
+  private drawWallShadows(): void {
+    const { size } = this.map;
+    const heights: number[][] = Array.from({ length: size }, () => Array<number>(size).fill(0));
+    const stamp = (x: number, y: number, w: number, h: number, hv: number) => {
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          const row = heights[y + dy];
+          if (row !== undefined && row[x + dx] !== undefined) {
+            row[x + dx] = Math.max(row[x + dx] as number, hv);
+          }
+        }
+      }
+    };
+    for (const p of this.map.props) {
+      const hv = WorldScene.PROP_HEIGHT_VOX[p.kind];
+      if (hv !== undefined) stamp(p.x, p.y, p.w, p.h, hv);
+    }
+    for (const n of this.map.nodes) {
+      if (n.kind === 'antenna') stamp(n.x, n.y, 1, 1, 28);
+    }
+
+    const tallAt = (tx: number, ty: number, min = 10): boolean =>
+      (heights[ty]?.[tx] ?? 0) >= min;
+    const g = this.add.graphics();
+    g.setDepth(DEPTH_SHADOW - 1);
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        if ((heights[ty]?.[tx] ?? 0) > 0) continue; // structures shade themselves
+        if (this.map.canal[ty]?.[tx] === true) continue;
+        let a = 0;
+        // Light-away side: a tall wall to the tile's −x (and the diagonal).
+        if (tallAt(tx - 1, ty)) a += 0.15;
+        else if (tallAt(tx - 2, ty)) a += 0.07;
+        if (tallAt(tx - 1, ty - 1)) a += 0.06;
+        // Corridor squeeze: walls on both flanks pool ambient darkness.
+        if (tallAt(tx - 1, ty, 6) && tallAt(tx + 1, ty, 6)) a += 0.09;
+        if (tallAt(tx, ty - 1, 6) && tallAt(tx, ty + 1, 6)) a += 0.09;
+        if (a <= 0) continue;
+        const { x, y } = tileToWorld(tx, ty);
+        g.fillStyle(PALETTE_INT.ink, Math.min(0.26, a));
+        this.traceDiamond(g, x, y);
+        g.fillPath();
       }
     }
   }
