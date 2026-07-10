@@ -10,32 +10,76 @@ import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
 // ── Junk heap ─────────────────────────────────────────────────────────────
 
-function junkHeapModel(depleted: boolean): Voxel[] {
+function junkHeapModel(depleted: boolean, variant: number): Voxel[] {
   // Rusted scrap through and through, with a gunmetal pipe poking out.
+  // V1 variants change the SILHOUETTE, not just the skin: 0 the classic
+  // mound · 1 low and spread, a plate leaning on it · 2 tall and spiky.
   const A = MATERIALS.rust;
   const B = MATERIALS.rustDeep;
   const C = MATERIALS.wood; // splintered pallet wood in the pile
   const v: Voxel[] = [];
-  const lumps: Array<[number, number, number, number, number, number, typeof A]> = depleted
-    ? [
-        [0, 2, 0, 4, 4, 2, B],
-        [3, 0, 0, 4, 4, 2, A],
-        [5, 3, 0, 3, 3, 1, C],
-      ]
-    : [
-        [0, 2, 0, 5, 5, 3, B],
-        [3, 0, 0, 5, 5, 4, A],
-        [5, 4, 0, 4, 4, 2, C],
-        [2, 3, 3, 3, 3, 2, A],
-        [4, 2, 4, 2, 2, 2, B],
-      ];
+  type Lump = [number, number, number, number, number, number, typeof A];
+  const full: Lump[][] = [
+    [
+      [0, 2, 0, 5, 5, 3, B],
+      [3, 0, 0, 5, 5, 4, A],
+      [5, 4, 0, 4, 4, 2, C],
+      [2, 3, 3, 3, 3, 2, A],
+      [4, 2, 4, 2, 2, 2, B],
+    ],
+    [
+      [0, 0, 0, 6, 4, 2, A],
+      [4, 3, 0, 5, 5, 3, B],
+      [0, 4, 0, 4, 4, 2, C],
+      [6, 1, 2, 3, 3, 1, A],
+      [1, 1, 2, 3, 2, 1, B],
+    ],
+    [
+      [1, 2, 0, 5, 5, 2, B],
+      [2, 1, 2, 4, 4, 3, A],
+      [3, 2, 5, 3, 3, 2, B],
+      [5, 5, 0, 3, 3, 3, C],
+      [0, 0, 0, 3, 3, 2, A],
+    ],
+  ];
+  const gone: Lump[][] = [
+    [
+      [0, 2, 0, 4, 4, 2, B],
+      [3, 0, 0, 4, 4, 2, A],
+      [5, 3, 0, 3, 3, 1, C],
+    ],
+    [
+      [0, 0, 0, 5, 3, 1, A],
+      [4, 3, 0, 4, 4, 2, B],
+      [1, 4, 0, 3, 3, 1, C],
+    ],
+    [
+      [1, 2, 0, 4, 4, 2, B],
+      [3, 2, 2, 2, 2, 1, A],
+      [5, 5, 0, 3, 2, 1, C],
+    ],
+  ];
+  const lumps = (depleted ? gone : full)[variant % 3] as Lump[];
   for (const [x, y, z, w, d, h, m] of lumps) v.push(...mbox(x, y, z, w, d, h, m));
   if (!depleted) {
-    // Sticking-out bits: a strut, a pipe, a plate — junk should bristle.
-    v.push(...mbox(1, 1, 3, 1, 1, 4, MATERIALS.rustDeep)); // strut
-    v.push(...mbox(6, 2, 2, 3, 1, 1, MATERIALS.gunmetal)); // pipe
-    v.push(...mbox(0, 5, 2, 2, 3, 1, MATERIALS.rust)); // plate
-    v.push({ x: 4, y: 1, z: 6, c: PALETTE_INT.neonAmber }); // sign chip accent
+    // Sticking-out bits: a strut, a pipe, a plate — junk should bristle
+    // (each variant bristles differently, so the skyline never repeats).
+    if (variant % 3 === 1) {
+      v.push(...mbox(7, 4, 3, 1, 1, 3, MATERIALS.gunmetal)); // bent rod
+      v.push(...mbox(0, 1, 2, 1, 3, 3, MATERIALS.rust)); // leaning plate
+      v.push(...mbox(3, 6, 2, 3, 1, 1, MATERIALS.gunmetalDeep)); // pipe
+      v.push({ x: 5, y: 4, z: 3, c: PALETTE_INT.neonAmber }); // sign chip accent
+    } else if (variant % 3 === 2) {
+      v.push(...mbox(4, 3, 7, 1, 1, 3, MATERIALS.rustDeep)); // tall strut
+      v.push(...mbox(3, 4, 6, 1, 2, 2, MATERIALS.gunmetal)); // fin plate
+      v.push(...mbox(0, 6, 1, 2, 2, 1, MATERIALS.rust)); // spilled scrap
+      v.push({ x: 4, y: 3, z: 10, c: PALETTE_INT.neonAmber }); // sign chip accent
+    } else {
+      v.push(...mbox(1, 1, 3, 1, 1, 4, MATERIALS.rustDeep)); // strut
+      v.push(...mbox(6, 2, 2, 3, 1, 1, MATERIALS.gunmetal)); // pipe
+      v.push(...mbox(0, 5, 2, 2, 3, 1, MATERIALS.rust)); // plate
+      v.push({ x: 4, y: 1, z: 6, c: PALETTE_INT.neonAmber }); // sign chip accent
+    }
   }
   return v;
 }
@@ -117,34 +161,56 @@ function antennaModel(): Voxel[] {
 
 // ── Containers & drums (the block replacements) ───────────────────────────
 
-function containerModel(variant: number): Voxel[] {
+function containerModel(variant: number, worn: boolean): Voxel[] {
   // Weathered painted-panel shipping boxes: teal-grey, ochre, dusty rose.
+  // The worn twin (V1) took its knocks: caved corner, rust bloom, doors ajar.
   const mat = [MATERIALS.paintTeal, MATERIALS.paintOchre, MATERIALS.paintRose][
     variant % 3
   ] as (typeof MATERIALS)['paintTeal'];
   const v: Voxel[] = [];
   for (const vox of mbox(0, 0, 0, 6, 4, 5, mat)) {
+    // Worn: the near top corner is caved clean in.
+    if (worn && vox.z >= 3 && vox.x >= 4 && vox.y >= 2) continue;
     // Corrugation: alternating darker columns on long faces.
     const ridged = vox.x % 2 === 1 && (vox.y === 0 || vox.y === 3);
-    v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
+    // Worn: rust blooming up from the skids on the low panels.
+    const rusted = worn && vox.z === 0 && vox.x <= 2 && (vox.x + vox.y) % 2 === 0;
+    if (rusted) v.push({ ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust });
+    else v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
   }
   // Rusted top rail + stencil chip accent.
-  for (const vox of mbox(0, 0, 4, 6, 1, 1, MATERIALS.rustDeep)) v.push(vox);
-  v.push({ x: 5, y: 2, z: 3, c: PALETTE_INT.neonAmber });
+  for (const vox of mbox(0, 0, 4, worn ? 4 : 6, 1, 1, MATERIALS.rustDeep)) v.push(vox);
+  if (worn) {
+    // The sprung door leaning off its hinge.
+    v.push(...mbox(6, 0, 0, 1, 1, 4, shadeMat(mat)));
+    v.push({ x: 0, y: 2, z: 2, c: PALETTE_INT.neonAmber });
+  } else {
+    v.push({ x: 5, y: 2, z: 3, c: PALETTE_INT.neonAmber });
+  }
   return v;
 }
 
+/** Worn-panel color helper: the door leans darker than the walls. */
+function shadeMat(mat: (typeof MATERIALS)['paintTeal']): (typeof MATERIALS)['paintTeal'] {
+  return { ...mat, base: shade(mat.base, -0.2) };
+}
+
 /** Weathered-steel container (the Tangle's rust/gunmetal family). */
-function containerRustModel(variant: number): Voxel[] {
+function containerRustModel(variant: number, worn: boolean): Voxel[] {
   const mat = [MATERIALS.rust, MATERIALS.gunmetalDeep, MATERIALS.rustDeep][
     variant % 3
   ] as (typeof MATERIALS)['rust'];
   const v: Voxel[] = [];
   for (const vox of mbox(0, 0, 0, 6, 4, 5, mat)) {
+    // Worn: a bite torn out of the far top corner + a salvaged repaint panel.
+    if (worn && vox.z >= 4 && vox.x <= 1 && vox.y <= 1) continue;
     const ridged = vox.x % 2 === 1 && (vox.y === 0 || vox.y === 3);
-    v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
+    const repaint = worn && vox.y === 3 && vox.x >= 3 && vox.x <= 4 && vox.z <= 2;
+    if (repaint) v.push({ ...vox, c: MATERIALS.paintOchre.base, mat: MATERIALS.paintOchre });
+    else v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
   }
-  for (const vox of mbox(0, 0, 4, 6, 1, 1, MATERIALS.gunmetalDeep)) v.push(vox);
+  for (const vox of mbox(worn ? 2 : 0, 0, 4, worn ? 4 : 6, 1, 1, MATERIALS.gunmetalDeep)) v.push(vox);
+  if (worn) v.push(...mbox(0, 0, 0, 1, 1, 2, MATERIALS.rustDeep)); // fallen scrap at the torn corner
   return v;
 }
 
@@ -153,13 +219,15 @@ function containerRustModel(variant: number): Voxel[] {
  * with per-level jitter and material drift; one level in three carries
  * ember-orange hazard stripes — the sanctioned accent, never a fill.
  */
-function stackModel(levels: number, striped: boolean): Voxel[] {
+function stackModel(levels: number, striped: boolean, alt: boolean): Voxel[] {
   const mats = [MATERIALS.rust, MATERIALS.gunmetalDeep, MATERIALS.rustDeep, MATERIALS.gunmetal];
   const v: Voxel[] = [];
   for (let level = 0; level < levels; level++) {
-    const mat = mats[(level * 2 + levels) % mats.length] as (typeof MATERIALS)['rust'];
-    const ox = (level * 3 + levels) % 2; // slight overhang jitter
-    const oy = (level * 5 + levels * 3) % 2;
+    // The alt twin (V1) shifts the material rotation and jitter phase so
+    // two same-height wall segments never read as clones side by side.
+    const mat = mats[(level * 2 + levels + (alt ? 1 : 0)) % mats.length] as (typeof MATERIALS)['rust'];
+    const ox = (level * 3 + levels + (alt ? 1 : 0)) % 2; // slight overhang jitter
+    const oy = (level * 5 + levels * 3 + (alt ? 1 : 0)) % 2;
     const z0 = level * 5;
     for (const vox of mbox(ox, oy, z0, 6, 4, 5, mat)) {
       const ridged = vox.x % 2 === 1 && (vox.y === oy || vox.y === oy + 3);
@@ -266,8 +334,9 @@ function pylonModel(): Voxel[] {
   return v;
 }
 
-function drumsModel(): Voxel[] {
+function drumsModel(variant: number): Voxel[] {
   // Rusted fuel drums with gunmetal bands; one repainted ochre.
+  // V1 variant 1: one drum tipped on its side, lid rolled loose.
   const v: Voxel[] = [];
   const drum = (x: number, y: number, mat: (typeof MATERIALS)['rust']) => {
     for (const vox of mbox(x, y, 0, 3, 3, 5, mat)) {
@@ -278,6 +347,17 @@ function drumsModel(): Voxel[] {
       }
     }
   };
+  if (variant % 2 === 1) {
+    drum(0, 0, MATERIALS.rustDeep);
+    drum(2, 3, MATERIALS.paintOchre);
+    // The tipped one: lying along x, band running vertically now.
+    for (const vox of mbox(3, 0, 0, 5, 3, 3, MATERIALS.rust)) {
+      if (vox.x === 5) v.push({ ...vox, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+      else v.push(vox);
+    }
+    v.push({ x: 8, y: 1, z: 0, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep }); // the loose lid
+    return v;
+  }
   drum(0, 0, MATERIALS.rust);
   drum(3, 2, MATERIALS.paintOchre);
   drum(1, 3, MATERIALS.rustDeep);
@@ -791,26 +871,35 @@ function toolrackModel(): Voxel[] {
 
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
-  bakeVoxelModel(scene, { name: 'junk-heap', voxels: junkHeapModel(false) });
-  bakeVoxelModel(scene, { name: 'junk-heap-depleted', voxels: junkHeapModel(true) });
+  // V1 repetition breaking: the common props each bake a pool of looks;
+  // VariantPicker (position hash + adjacency guard) chooses at placement.
+  for (let i = 0; i < 3; i++) {
+    bakeVoxelModel(scene, { name: `junk-heap-${i}`, voxels: junkHeapModel(false, i) });
+    bakeVoxelModel(scene, { name: `junk-heap-${i}-depleted`, voxels: junkHeapModel(true, i) });
+  }
   bakeVoxelModel(scene, { name: 'brass-node', voxels: brassNodeModel(false) });
   bakeVoxelModel(scene, { name: 'brass-node-depleted', voxels: brassNodeModel(true) });
   bakeVoxelModel(scene, { name: 'amperite-node', voxels: amperiteNodeModel(false) });
   bakeVoxelModel(scene, { name: 'amperite-node-depleted', voxels: amperiteNodeModel(true) });
   bakeVoxelModel(scene, { name: 'antenna', voxels: antennaModel() });
   for (let i = 0; i < 3; i++) {
-    bakeVoxelModel(scene, { name: `container-${i}`, voxels: containerModel(i) });
-    bakeVoxelModel(scene, { name: `container-r${i}`, voxels: containerRustModel(i) });
+    bakeVoxelModel(scene, { name: `container-${i}`, voxels: containerModel(i, false) });
+    bakeVoxelModel(scene, { name: `container-d${i}`, voxels: containerModel(i, true) });
+    bakeVoxelModel(scene, { name: `container-r${i}`, voxels: containerRustModel(i, false) });
+    bakeVoxelModel(scene, { name: `container-rd${i}`, voxels: containerRustModel(i, true) });
     bakeVoxelModel(scene, { name: `shack-${i}`, voxels: shackModel(i) });
     bakeVoxelModel(scene, { name: `deadmachine-${i}`, voxels: deadMachineModel(i) });
   }
   for (const h of [2, 3, 4]) {
-    bakeVoxelModel(scene, { name: `stack-${h}`, voxels: stackModel(h, false) });
-    bakeVoxelModel(scene, { name: `stack-${h}s`, voxels: stackModel(h, true) });
+    bakeVoxelModel(scene, { name: `stack-${h}`, voxels: stackModel(h, false, false) });
+    bakeVoxelModel(scene, { name: `stack-${h}s`, voxels: stackModel(h, true, false) });
+    bakeVoxelModel(scene, { name: `stack-${h}b`, voxels: stackModel(h, false, true) });
+    bakeVoxelModel(scene, { name: `stack-${h}sb`, voxels: stackModel(h, true, true) });
   }
   bakeVoxelModel(scene, { name: 'cranehulk', voxels: craneHulkModel() });
   bakeVoxelModel(scene, { name: 'pylon', voxels: pylonModel() });
-  bakeVoxelModel(scene, { name: 'drums', voxels: drumsModel() });
+  bakeVoxelModel(scene, { name: 'drums-0', voxels: drumsModel(0) });
+  bakeVoxelModel(scene, { name: 'drums-1', voxels: drumsModel(1) });
   bakeVoxelModel(scene, { name: 'dynamo', voxels: dynamoModel() });
   bakeVoxelModel(scene, { name: 'scuttlebot', voxels: scuttlebotModel(PALETTE_INT.neonTeal) });
   bakeVoxelModel(scene, {

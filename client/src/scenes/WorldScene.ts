@@ -87,6 +87,7 @@ import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
+import { VariantPicker } from '../render/propVariants';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
 import { itemThumbKey } from '../render/itemThumbs';
@@ -1648,6 +1649,9 @@ export class WorldScene extends Phaser.Scene {
 
   private placeProps(): void {
     let stallSeq = 0;
+    // V1: the common props pick their look per position — hash-seeded,
+    // adjacency-guarded, so no two identical models sit next to each other.
+    const looks = new VariantPicker();
     for (const p of this.map.props) {
       const { x, y } = this.propAnchor(p);
       switch (p.kind) {
@@ -1832,7 +1836,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'crate': {
-          const img = addVoxelSprite(this, 'crate', x, y);
+          const img = addVoxelSprite(this, `crate-${looks.pick('crate', p.x, p.y, 4)}`, x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
@@ -1899,14 +1903,19 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'block': {
-          // Variants: 0-2 painted (Filament), 3 drums, 4-6 the Tangle's
-          // rust/gunmetal family (§12B accent discipline — no confetti).
-          const name =
-            p.variant === 3
-              ? 'drums'
-              : p.variant >= 4
-                ? `container-r${(p.variant - 4) % 3}`
-                : `container-${p.variant % 3}`;
+          // Map variant sets the FAMILY (0-2 painted Filament, 3 drums,
+          // 4-6 the Tangle's rust/gunmetal — §12B accent discipline); the
+          // picker chooses color + wear within it, no identical adjacents.
+          let name: string;
+          if (p.variant === 3) {
+            name = `drums-${looks.pick('drums', p.x, p.y, 2)}`;
+          } else if (p.variant >= 4) {
+            const look = looks.pick('block-rust', p.x, p.y, 6);
+            name = look < 3 ? `container-r${look}` : `container-rd${look - 3}`;
+          } else {
+            const look = looks.pick('block-paint', p.x, p.y, 6);
+            name = look < 3 ? `container-${look}` : `container-d${look - 3}`;
+          }
           const img = addVoxelSprite(this, name, x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
@@ -1915,8 +1924,12 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'stack': {
           // Variant: height 2-4, +10 = the occasional hazard-striped one.
-          const h = Math.min(4, Math.max(2, p.variant >= 10 ? p.variant - 10 : p.variant));
-          const img = addVoxelSprite(this, `stack-${h}${p.variant >= 10 ? 's' : ''}`, x, y);
+          // The picker breaks same-height runs with the alt-jitter twin
+          // (reach 1 — canyon walls sit shoulder to shoulder by design).
+          const striped = p.variant >= 10;
+          const h = Math.min(4, Math.max(2, striped ? p.variant - 10 : p.variant));
+          const alt = looks.pick(`stack-${h}${striped ? 's' : ''}`, p.x, p.y, 2, 1) === 1;
+          const img = addVoxelSprite(this, `stack-${h}${striped ? 's' : ''}${alt ? 'b' : ''}`, x, y);
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
@@ -1963,7 +1976,7 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         case 'planter': {
-          const img = addVoxelSprite(this, 'planter', x, y);
+          const img = addVoxelSprite(this, `planter-${looks.pick('planter', p.x, p.y, 4)}`, x, y);
           const pt = worldSpriteTint();
           if (pt !== null) img.setTint(pt);
           img.setDepth(depthForWorldY(y));

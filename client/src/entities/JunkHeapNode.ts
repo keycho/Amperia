@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { PALETTE_INT } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
+import { voxelHash } from '../render/materials';
 import { worldSpriteTint } from '../render/styleConfig';
 import { addVoxelSprite, applyVoxelTexture } from '../render/voxel';
 
@@ -18,6 +19,8 @@ export class JunkHeapNode {
   readonly glintImage: Phaser.GameObjects.Image;
   private readonly glintHalo: Phaser.GameObjects.Image;
   private readonly scene: Phaser.Scene;
+  /** V1: which of the three baked silhouettes this heap wears (by tile hash). */
+  private readonly look: number;
   depleted = false;
   private glintTween: Phaser.Tweens.Tween | null = null;
 
@@ -25,10 +28,11 @@ export class JunkHeapNode {
     this.scene = scene;
     this.id = id;
     this.tile = { x: tx, y: ty };
+    this.look = Math.floor(voxelHash(tx, ty, 0, 97) * 3);
     const { x, y } = tileToWorld(tx, ty);
     const anchorY = y + TILE_H / 2;
 
-    this.image = addVoxelSprite(scene, 'junk-heap', x, anchorY);
+    this.image = addVoxelSprite(scene, `junk-heap-${this.look}`, x, anchorY);
     const wt = worldSpriteTint();
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(anchorY));
@@ -105,7 +109,7 @@ export class JunkHeapNode {
 
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
-    applyVoxelTexture(this.image, depleted ? 'junk-heap-depleted' : 'junk-heap');
+    applyVoxelTexture(this.image, depleted ? `junk-heap-${this.look}-depleted` : `junk-heap-${this.look}`);
     if (depleted) {
       this.hideGlint();
       this.image.disableInteractive();
