@@ -182,6 +182,13 @@ function project(voxels: Voxel[]): {
   return { points: pts, minX, minY, maxX, maxY, anchorX, anchorY };
 }
 
+/**
+ * The face ramp (R2a): top +30% light · left base · right −35% dark.
+ * The old ±20% spread was why blocks read soft — this is the crisp read.
+ */
+export const RAMP_TOP = 0.3;
+export const RAMP_RIGHT = -0.35;
+
 function drawCube(
   g: Phaser.GameObjects.Graphics,
   px: number,
@@ -189,9 +196,9 @@ function drawCube(
   color: number | null,
   alpha = 1,
 ): void {
-  const top = color === null ? PALETTE_INT.ink : shade(color, 0.2);
+  const top = color === null ? PALETTE_INT.ink : shade(color, RAMP_TOP);
   const left = color === null ? PALETTE_INT.ink : color;
-  const right = color === null ? PALETTE_INT.ink : shade(color, -0.2);
+  const right = color === null ? PALETTE_INT.ink : shade(color, RAMP_RIGHT);
   // Top diamond.
   g.fillStyle(top, alpha);
   g.beginPath();
@@ -227,9 +234,17 @@ interface Exposure {
   right: boolean;
 }
 
+/** Neighbor lookups for bevels, seams and baked AO (R2b/c/d). */
+interface CubeCtx {
+  has(x: number, y: number, z: number): boolean;
+  sameMat(x: number, y: number, z: number, mat: Material): boolean;
+}
+
 /**
  * Material-aware cube: per-face value noise, chipped top edges on worn
- * materials, and stain streaks down exposed faces. Every face gets quiet
+ * materials, stain streaks down exposed faces — and the R2 crisp set:
+ * top-edge highlight bevels, same-material voxel seams on large surfaces,
+ * and baked AO in crevices/under overhangs. Every face gets quiet
  * variation — no large flat single-color fills (materials pass §A2).
  */
 function drawMatCube(
@@ -239,13 +254,29 @@ function drawMatCube(
   v: Voxel,
   baseColor: number,
   exp: Exposure,
+  ctx: CubeCtx,
 ): void {
   const mat = v.mat as Material;
   const faceNoise = (salt: number) =>
     (voxelHash(v.x, v.y, v.z, salt) - 0.5) * 2 * mat.noise;
-  const top = shade(baseColor, 0.2 + faceNoise(3));
-  const left = shade(baseColor, faceNoise(5));
-  const right = shade(baseColor, -0.2 + faceNoise(7));
+
+  // Baked AO (R2d): tops at the base of a step darken; side faces darken
+  // under an overhang or down in a crevice against a lower neighbor.
+  let aoTop = 0;
+  if (ctx.has(v.x - 1, v.y, v.z + 1)) aoTop += 0.09;
+  if (ctx.has(v.x, v.y - 1, v.z + 1)) aoTop += 0.09;
+  if (ctx.has(v.x + 1, v.y, v.z + 1)) aoTop += 0.05;
+  if (ctx.has(v.x, v.y + 1, v.z + 1)) aoTop += 0.05;
+  let aoLeft = 0;
+  if (ctx.has(v.x, v.y + 1, v.z + 1)) aoLeft += 0.12;
+  if (ctx.has(v.x, v.y + 1, v.z - 1)) aoLeft += 0.07;
+  let aoRight = 0;
+  if (ctx.has(v.x + 1, v.y, v.z + 1)) aoRight += 0.12;
+  if (ctx.has(v.x + 1, v.y, v.z - 1)) aoRight += 0.07;
+
+  const top = shade(baseColor, RAMP_TOP - aoTop + faceNoise(3));
+  const left = shade(baseColor, -aoLeft + faceNoise(5));
+  const right = shade(baseColor, RAMP_RIGHT - aoRight + faceNoise(7));
   // Faces.
   g.fillStyle(top, 1);
   g.beginPath();
@@ -271,6 +302,66 @@ function drawMatCube(
   g.lineTo(px + HALF_W, py + SIDE_H);
   g.closePath();
   g.fillPath();
+  // Top-edge highlight bevel (R2b): a 1px lighter line where the top face
+  // meets a visible side face or an open back edge — the "crisp" detail.
+  if (exp.top) {
+    const bevel = shade(top, 0.45);
+    const line = (x1: number, y1: number, x2: number, y2: number, a: number) => {
+      g.lineStyle(1, bevel, a);
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x2, y2);
+      g.strokePath();
+    };
+    // Front rim above the exposed side faces.
+    if (exp.left) line(px - HALF_W, py, px, py + HALF_H, 0.85);
+    if (exp.right) line(px, py + HALF_H, px + HALF_W, py, 0.85);
+    // Back rim on open edges (no same-height neighbor behind).
+    if (!ctx.has(v.x - 1, v.y, v.z)) line(px - HALF_W, py, px, py - HALF_H, 0.6);
+    if (!ctx.has(v.x, v.y - 1, v.z)) line(px, py - HALF_H, px + HALF_W, py, 0.6);
+  }
+
+  // Voxel seams (R2c): a whisper-dark line between adjacent voxels of the
+  // SAME material, so big surfaces read as BUILT from blocks.
+  {
+    const seamTop = shade(top, -0.22);
+    const seamSide = shade(left, -0.22);
+    const seam = (
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number,
+      color: number,
+      a: number,
+    ) => {
+      g.lineStyle(1, color, a);
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x2, y2);
+      g.strokePath();
+    };
+    if (exp.top) {
+      if (ctx.sameMat(v.x - 1, v.y, v.z, mat) && !ctx.has(v.x - 1, v.y, v.z + 1)) {
+        seam(px - HALF_W, py, px, py - HALF_H, seamTop, 0.28);
+      }
+      if (ctx.sameMat(v.x, v.y - 1, v.z, mat) && !ctx.has(v.x, v.y - 1, v.z + 1)) {
+        seam(px, py - HALF_H, px + HALF_W, py, seamTop, 0.28);
+      }
+    }
+    if (exp.left && ctx.sameMat(v.x, v.y, v.z - 1, mat)) {
+      seam(px - HALF_W, py + SIDE_H, px, py + HALF_H + SIDE_H, seamSide, 0.22);
+    }
+    if (exp.right && ctx.sameMat(v.x, v.y, v.z - 1, mat)) {
+      seam(px, py + HALF_H + SIDE_H, px + HALF_W, py + SIDE_H, seamSide, 0.22);
+    }
+    if (exp.left && ctx.sameMat(v.x - 1, v.y, v.z, mat)) {
+      seam(px - HALF_W, py, px - HALF_W, py + SIDE_H, seamSide, 0.2);
+    }
+    if (exp.right && ctx.sameMat(v.x, v.y - 1, v.z, mat)) {
+      seam(px + HALF_W, py, px + HALF_W, py + SIDE_H, seamSide, 0.2);
+    }
+  }
+
   // Edge wear: a light chipped line along an exposed top edge.
   if (exp.top && voxelHash(v.x, v.y, v.z, 13) < mat.wearChance) {
     const chipLeft = voxelHash(v.x, v.y, v.z, 17) < 0.5;
@@ -436,6 +527,13 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
   // Neon/accent voxels are light, not material — they never darken.
   const zMax = Math.max(1, ...model.voxels.map((v) => v.z));
   const grounding = model.grounding !== false;
+  const matByKey = new Map<string, Material | undefined>(
+    model.voxels.map((v) => [`${v.x},${v.y},${v.z}`, v.mat]),
+  );
+  const ctx: CubeCtx = {
+    has: (x, y, z) => occupied.has(`${x},${y},${z}`),
+    sameMat: (x, y, z, mat) => matByKey.get(`${x},${y},${z}`) === mat,
+  };
   for (const p of proj.points) {
     const v = p.v;
     if (v.mat !== undefined) {
@@ -446,7 +544,7 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
         left: !occupied.has(`${v.x},${v.y + 1},${v.z}`),
         right: !occupied.has(`${v.x + 1},${v.y},${v.z}`),
       };
-      drawMatCube(g, p.px + ox, p.py + oy, v, base, exp);
+      drawMatCube(g, p.px + ox, p.py + oy, v, base, exp, ctx);
     } else {
       drawCube(g, p.px + ox, p.py + oy, v.c);
     }
