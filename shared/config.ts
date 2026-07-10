@@ -44,6 +44,19 @@ export const CONFIG = {
     spawn: { x: 35, y: 20 },
   },
 
+  /** Nameplate proximity fading (S0) — crowds must not become text piles.
+   *  Presentation only; the last-inspected Spark stays readable. */
+  nameplates: {
+    /** Full-alpha names within this chebyshev tile distance. */
+    fullTiles: 8,
+    /** Hidden beyond this distance (lerp between the two). */
+    hideTiles: 13,
+    /** Alpha at the far edge of the fade band. */
+    fadedAlpha: 0.25,
+    /** With this many Sparks in the room or fewer, names are always on. */
+    alwaysOnAtOrBelow: 4,
+  },
+
   gathering: {
     /** Junk heaps → Salvage (Scavving) — glint-spot active layer. */
     junkHeap: {

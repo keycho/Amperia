@@ -187,6 +187,13 @@ export class Spark {
     }
   }
 
+  /** Proximity fade (S0): scales the nameplate without touching bubbles. */
+  setNameFade(alpha: number): void {
+    if (this.label === null) return;
+    this.label.setAlpha(alpha);
+    this.label.setVisible(alpha > 0.02);
+  }
+
   setNameLabel(name: string): void {
     this.label?.destroy();
     this.label = this.scene.add.text(this.image.x, this.image.y, name, {

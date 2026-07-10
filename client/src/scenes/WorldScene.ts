@@ -108,6 +108,9 @@ export class WorldScene extends Phaser.Scene {
   /** Creator overlay handle + latest identity snapshot (own Spark). */
   private creator: CreatorHandle | null = null;
   private identity: IdentityEvent | null = null;
+  /** Last-inspected Spark: their nameplate never fades (S0). */
+  private inspectTarget: string | null = null;
+  private nameFadeAcc = 0;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
@@ -235,6 +238,38 @@ export class WorldScene extends Phaser.Scene {
     this.gatherView.update();
     this.tuner.update();
     syncVoxelShadows(this);
+    // Nameplate proximity fade (S0), throttled to ~6Hz.
+    this.nameFadeAcc += deltaMs;
+    if (this.nameFadeAcc >= 160) {
+      this.nameFadeAcc = 0;
+      const cfg = CONFIG.nameplates;
+      const room = this.room;
+      const me = room !== null ? this.sparks.get(room.sessionId) : undefined;
+      const alwaysOn = this.sparks.size <= cfg.alwaysOnAtOrBelow || me === undefined;
+      for (const [sid, spark] of this.sparks) {
+        if (me !== undefined && sid === room?.sessionId) {
+          spark.setNameFade(1);
+          continue;
+        }
+        if (alwaysOn || sid === this.inspectTarget) {
+          spark.setNameFade(1);
+          continue;
+        }
+        const d = Math.max(
+          Math.abs(spark.settledTile.x - (me as Spark).settledTile.x),
+          Math.abs(spark.settledTile.y - (me as Spark).settledTile.y),
+        );
+        const t =
+          d <= cfg.fullTiles
+            ? 1
+            : d >= cfg.hideTiles
+              ? 0
+              : cfg.fadedAlpha +
+                (1 - cfg.fadedAlpha) *
+                  (1 - (d - cfg.fullTiles) / (cfg.hideTiles - cfg.fullTiles));
+        spark.setNameFade(t);
+      }
+    }
     for (const node of this.nodes.values()) {
       if (node instanceof KoiSpotNode) node.update();
     }
@@ -361,6 +396,7 @@ export class WorldScene extends Phaser.Scene {
           ) => {
             if (!pointer.leftButtonDown() || this.room === null) return;
             ev.stopPropagation();
+            this.inspectTarget = sessionId;
             send.inspect(this.room, { sessionId });
           },
         );
