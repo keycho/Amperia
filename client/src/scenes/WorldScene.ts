@@ -48,7 +48,7 @@ import {
 } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { floatText } from '../render/effects';
-import { addSteamVent } from '../render/life';
+import { addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
@@ -722,6 +722,7 @@ export class WorldScene extends Phaser.Scene {
           lantern.setScale(0.14);
           lantern.setBlendMode(Phaser.BlendModes.ADD);
           lantern.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, lantern, bloom(0.88), 0.1);
           // Sign glyph glow (left of center, under the awning).
           const sign = this.add.image(x - 6, y - 62, 'fx-glow');
           sign.setTint(PALETTE_INT.neonAmber);
@@ -729,6 +730,7 @@ export class WorldScene extends Phaser.Scene {
           sign.setScale(0.07);
           sign.setBlendMode(Phaser.BlendModes.ADD);
           sign.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, sign, bloom(0.55), 0.07);
           this.addGroundPool(x + 10, y - 4, PALETTE_INT.neonAmber, 0.38);
           // A kettle steaming on the counter — night-market food smell.
           addSteamVent(this, x - 8, y - 34, depthForWorldY(y) + 2, {
@@ -773,12 +775,14 @@ export class WorldScene extends Phaser.Scene {
           sign.setAlpha(bloom(0.66));
           sign.setScale(0.1);
           sign.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, sign, bloom(0.66), 0.12);
           const win = this.add.image(x + 20, y - 24, 'fx-glow');
           win.setTint(PALETTE_INT.warmGlow);
           win.setBlendMode(Phaser.BlendModes.ADD);
           win.setAlpha(bloom(0.42));
           win.setScale(0.09);
           win.setDepth(depthForWorldY(y) + 1);
+          addFlicker(this, win, bloom(0.42), 0.05);
           this.addGroundPool(x - 12, y - 2, signTint, 0.5);
           this.addGroundPool(x + 16, y - 2, PALETTE_INT.warmGlow, 0.34);
           break;
@@ -846,6 +850,8 @@ export class WorldScene extends Phaser.Scene {
         glow.setScale(0.062);
         glow.setAlpha(bloom(0.85));
         glow.setDepth(1e5 + 1);
+        // Every third bulb wavers a touch — strings feel strung, not printed.
+        if (i % 3 === 0) addFlicker(this, glow, bloom(0.85), 0.09);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
       }
     }

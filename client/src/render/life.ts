@@ -48,3 +48,55 @@ export function addSteamVent(
     },
   });
 }
+
+interface FlickerEntry {
+  img: Phaser.GameObjects.Image;
+  base: number;
+  amp: number;
+  p1: number;
+  p2: number;
+  phase: number;
+}
+
+const flickerPools = new WeakMap<Phaser.Scene, FlickerEntry[]>();
+
+/**
+ * Organic glow flicker: a slow wandering alpha wobble layered from two
+ * incommensurate sine periods per light — visible life, never a strobe.
+ * All lights in a scene share one 12 Hz driver.
+ */
+export function addFlicker(
+  scene: Phaser.Scene,
+  img: Phaser.GameObjects.Image,
+  baseAlpha: number,
+  amplitude: number,
+): void {
+  let pool = flickerPools.get(scene);
+  if (pool === undefined) {
+    pool = [];
+    flickerPools.set(scene, pool);
+    const entries = pool;
+    scene.time.addEvent({
+      delay: 84,
+      loop: true,
+      callback: () => {
+        const t = scene.time.now;
+        for (const e of entries) {
+          if (!e.img.active) continue;
+          const wobble =
+            Math.sin((t / e.p1) * Math.PI * 2 + e.phase) * 0.7 +
+            Math.sin((t / e.p2) * Math.PI * 2 + e.phase * 1.7) * 0.3;
+          e.img.setAlpha(Math.max(0.04, e.base + wobble * e.amp));
+        }
+      },
+    });
+  }
+  pool.push({
+    img,
+    base: baseAlpha,
+    amp: amplitude,
+    p1: Phaser.Math.Between(2400, 3800),
+    p2: Phaser.Math.Between(680, 1150),
+    phase: Math.random() * Math.PI * 2,
+  });
+}
