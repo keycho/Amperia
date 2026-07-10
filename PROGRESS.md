@@ -1,5 +1,94 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 FLOOR-FIX → ART FREEZE → CORE LOOP run (P1 + C1–C5)
+
+The city got its final art fix and then its ECONOMY. Part 1 rebuilt the
+ground as per-tile baked voxel diamonds (dark asphalt streets, concrete
+pavers with a subtle plaza checker, riveted plating on the industrial
+fringe, tan lane/boardwalk decking, rugs under the stalls — grid readable
+through texture change alone, zero drawn gridlines, zero seams) and killed
+the global purple wash: night now lives in dark materials and the void
+gradient, purple only in shadows/sky. Check shots
+`docs/screenshots/floor-fix-lane.png` + `floor-fix-plaza.png`. **ART
+FREEZE is in effect** — no visual work beyond what features inherently
+need.
+
+Part 2 wired the core loop end-to-end, all server-authoritative and
+ledger-logged:
+
+- **C1 · Bolts + the Nightstalls merchant** — dynamic buy prices inside
+  published floor/ceiling bands (`shared/economy.ts`, pure + unit-tested):
+  sale volume slides the unit price down mid-transaction
+  (path-independent), prices recover lazily per hour from persisted
+  `MerchantState`; quote-then-commit so a refused sale never moves the
+  band. Sells Warmcups/Cellwax/basic tools at fixed prices. Per-account
+  **daily NPC-sale cap** (UTC rollover) — the anti-Sybil throttle.
+- **C2 · Tinkerbench** — config recipes (Bolts + resources → tools/
+  weapons across Tinker → Brassbound → Coilworked only), tier multipliers
+  on gather speed/weapon damage, durability that wears per use, **zero =
+  broken, never lost**, repair for Bolts + a config fraction of craft
+  materials (`shared/crafting.ts`, pure + tested). Crafts refund inputs if
+  the pack can't hold the output.
+- **C3 · Quests** — config-schema quests, server-tracked
+  (`shared/quests.ts` state machine, tested): the Dispatcher by the
+  Tramgate runs the 5-step tutorial (gather → sell → craft → two more
+  skills → donate 5 Amperite to the Charge Warden, the Citywide Charge
+  stub) ending in the **Dispatch Scarf** — first cosmetic, worn on the
+  Spark, never gameplay. Two repeatable dailies under a config daily
+  turn-in cap. All copy says *reward*, never "earn".
+- **C4 · The Tangle** — second Colyseus room (subclass + district flag,
+  one shared codebase): wire-maze container corridors, four alleylamps,
+  denser junk/brass/amperite, two antennas, no canal/plaza/Dynamo;
+  junkhounds join feral scuttlebots (PvE only). Tram travel both ways for
+  a Bolts toll (ledger sink) — charged exactly once per crossing even if
+  a client joins the room directly (district-mismatch joins pay too;
+  `handleTravel` persists the destination before the go-ahead). Arrivals
+  step off at the gate. **Tangle death drops carried resources + Bolts
+  into a Scrapcache** — owner reclaims within a config window for a small
+  fee, expiry sinks the contents, equipped hotbar gear NEVER drops;
+  Filament death stays free. Auth responses now carry the persisted
+  district so relog rejoins where the Spark left off. Shots:
+  `docs/screenshots/tangle-arrival.png` + `tangle-maze.png`.
+- **C5 · Session quality** — `probe-session.ts` proves relog and
+  cross-district travel preserve Bolts, pack, tool durability, quest
+  state+progress, Mastery XP, and the standing tile, with tolls charged
+  exactly once. Live e2e probes all PASSED against the running server:
+  `probe-merchant` (band slide + cap), `probe-craft` (craft → wear →
+  break → repair), `probe-quests` (full tutorial chain to the scarf),
+  `probe-travel` (toll → Tangle → death → Scrapcache → reclaim → home),
+  `probe-session`, plus the earlier `probe-combat`/`probe-heal`.
+
+### Balance readout (measured from the economy ledger)
+
+`server/scripts/measure-economy.ts` classifies every Bolts movement in
+`LedgerEvent` (player↔cache moves are conservation, excluded):
+
+```
+FAUCETS 725 B  = npcSale 300 · tutorial quest rewards 425 (one-time)
+SINKS   160 B  = craft 90 · tramToll 35 · scrapcacheFee 20 · wareBuy 12 · repair 3
+sink/faucet ratio: 0.221 overall · 0.53 steady-state (excluding one-time tutorials)
+```
+
+Against the target ("30 min of normal play roughly covers repair + toll
+with modest surplus"): a normal half-hour (mixed gathering/questing, one
+Tangle round trip) wears ~60–120 durability ≈ **12–24 B repair** + **10 B
+tolls**, while selling its salvage yields **60–150 B** (band 1–3) plus
+early quest rewards — costs comfortably covered, surplus funds the next
+craft tier (Brassbound wrench = 90 B ≈ one focused session). Early-game
+generosity is intentional; the deep sinks are the Coilworked recipes
+(180–240 B). **Tuning notes:** if surplus runs hot once tutorials are
+spent, the pre-committed levers are salvage band ceiling 3→2,
+slidePerUnit 0.004→0.008, and repair boltsPer100 20→30; next recurring
+sinks queued for M3 are stall rents, Bolts-paid Fortune Coil spins, and
+structure upkeep. The daily NPC-sale cap (1500 B) and the band slide
+already make farm loops self-depressing.
+
+### Tests
+
+103 green (client+shared 98 — economy/crafting/quests/tangle-map suites
+included — server 5). Both districts compile strict; probes run against
+the live server.
+
 ## Status after the 2026-07-10 MATERIALS + COMPOSITION pass
 
 The "too purple" world is gone. Every voxel asset is now built from real
@@ -140,19 +229,27 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
 
 ## Known issues / backlog
 
+- A same-instant relog could race the previous session's onLeave persist
+  (the probe pauses ~0.8 s like a human would; the travel path is
+  race-free since it persists before travelGo). Hardening: serialize
+  join-vs-pending-persist per character.
+- The remembered district lives in localStorage on top of the auth
+  response; cross-device relog after traveling elsewhere falls back via
+  the client's ride-home path. Canonical fix: a `/auth/whoami` endpoint.
 - Headless-browser verification runs at throttled frame rates — poll
   conditions, never fixed waits (harness notes in scratchpad scripts).
 - Remote refuses tag pushes (integration token) — `m0-complete` and
   `run-20260709-autonomous` exist locally; recreate from the commit log if
   needed.
-- Spark sprite still the M0 capsule (no walk frames); node silhouettes could
-  pop more; no vending machines/graffiti yet; UI reskin partial (login/panels
-  warm, but stock browser scrollbars etc. untouched). P3 e–h remainders.
+- Spark sprite still the M0 capsule (no walk frames); UI reskin partial.
+  ART FREEZE: none of this moves until the freeze lifts.
 - Amperite has no Manifest rare (the bible names none for it) — flagged for
   a design pass.
 - Colyseus schema v3 gotchas documented in server/src/rooms/state.ts
   (defineTypes + useDefineForClassFields:false).
 - Old dev accounts created before the starter-hotbar fix have empty hotbars.
+- The Tangle's Scrapcache marker uses the standard rose beacon — reads
+  fine, but a distinct silhouette at distance would help (post-freeze).
 
 ## NEEDS RUSTY (deploy + accounts)
 
@@ -161,16 +258,18 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   tightened to the Vercel domain and JWT_SECRET set to a real secret.
 - Git tags (`m0-complete`, `run-20260709-autonomous`) exist locally only —
   the remote refuses tag pushes from this session.
+- A second district doubles room count per instance — no action needed
+  now, but pick the Fly VM size with both rooms + headroom in mind.
 - Nothing else is blocked on accounts; no token/chain code exists (M4 gate).
 
 ## Next up
 
-1. Owner-queued MATERIALS + COMPOSITION pass: material system in the voxel
-   pipeline (rusted steel / gunmetal / wood / painted panel / concrete;
-   purple only in shadows), per-block wear/noise, then the market-district
-   rebuild (void edges, tramgate→lane→plaza structure, density gradient,
-   vignettes, light discipline, ground patchwork, themed node spots).
-2. M1-in-M2 continuation: crafting/durability at the Tinkerbench, Bolts +
-   merchant price bands + quests (server-side, ledger-logged), Griddling.
-3. M3 retention layer per the bible (Manifest panel, weekly goals, Rested
-   Charge) — still NO token code before M4's gate.
+1. Balance watch: re-run `server/scripts/measure-economy.ts` after real
+   playtests; pull the pre-committed levers (band ceiling / slide / repair
+   rate) only if steady-state surplus runs hot. Add M3's recurring sinks
+   (stall rents, Bolts-paid Fortune Coil spins, structure upkeep).
+2. M3 retention layer per the bible: Manifest panel, weekly goals, Rested
+   Charge, Griddling — still NO token code before M4's gate (D7/D30
+   targets must be hit with the token off).
+3. Post-freeze art batch (walk frames, node silhouette pops, UI reskin
+   remainder) once the owner lifts the ART FREEZE.
