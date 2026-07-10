@@ -1,5 +1,56 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 WORLD VARIETY pass (V1–V6)
+
+Killed the "everything is a box" monotony — shape language and content
+variety per §12A, all client/shared presentation (no server-value code
+touched). Shots: `v1-variants-{filament,tangle}.png` ·
+`v2-shapes-{dock,south,tangle}.png` · `v3-buildings-{north,west}.png` ·
+`v4-{griddle-corner,tramcar,fountain,draymule,spill}.png` ·
+`v5-{footbridge,walkway,overlook}.png` ·
+`v6-{griddle-cook,angler,mechanic}.png` ·
+`accept-{filament,tangle}-{1..4}.png` · `accept-passing-lane.png`.
+
+- **V1 repetition breaking** — every common prop carries a pool of baked
+  looks (crates ×4, planters ×4, junk-heap silhouettes ×3 with their own
+  depleted forms, painted/rust containers ×6 each, drums ×2, canyon-stack
+  alt twins); `VariantPicker` chooses per position hash with an adjacency
+  guard — **two identical models never sit orthogonally adjacent** even
+  packed solid (unit-tested, 7 tests).
+- **V2 shape vocabulary** — 8 new prop kinds across four families: fabric
+  (canopy, banner, laundry line), organic (wildbush ×3, vine-eaten
+  trellis), tall/thin (signpost, stovepipe with live steam), round-ish
+  (the water tank). Placed in both districts behind full guards
+  (footprint-walkable, node-access preserved, rect flood-fill seal check).
+- **V3 building variety** — the single shack became EIGHT designs (classic
+  parapet / two-storey + rain barrel + whip / L-shape + skylight annex /
+  quonset vault / lean-to + clerestory / stacked setback + terrace / watch
+  kiosk + weather vane / gabled cottage + dormer). **No bare roofs** —
+  rooftops are 40% of a building's read in iso, so every one carries
+  furniture. Picker reach 6 keeps whole streets varied.
+- **V4 unique set pieces** — Filament: the Griddle noodle corner (pot
+  steams, lanterns spill), a retired tram car on its siding, the scrap
+  fountain trickling coolant-teal. Tangle: a Draymule up on blocks under
+  a work lamp, the container spill across the south corridor.
+- **V5 elevation in use** — a railed canal footbridge (deck +1 over the
+  coolant, koi kept off its row), a raised north walkway whose row is
+  CHOSEN at build time (longest clean run after scatter — a hard-coded
+  row sealed six tiles; the search keeps reachability), and the Tangle's
+  SW terrace dressed as an overlook (rim guardrails, stash, lamp).
+- **V6 ambient life** — six idle citizens (client-only, no nameplates:
+  the Griddle cook, a canal angler mid-skim, a dock loafer, a stalls
+  browser, a mechanic riveting at the Draymule, a scavver on the spill),
+  chimney steam on every flued building design, ember motes around the
+  junction lamps.
+- **§12B(e) added to ART-DIRECTION** (binding): boxes ≤ 60% of objects per
+  screenful; common props ship 3–4 looks with adjacency-guarded picks.
+- **Acceptance**: 4 spread screenfuls per district + the passing lane all
+  verified — each contains a non-box silhouette, a unique thing, and no
+  identical adjacent props. Tests 165 green (was 160; +7 picker −2 merged
+  map asserts +5 V5 invariants). Note from the pass: the "solid pink
+  spark" seen in Tangle shots is `flashHurt()`'s 90 ms rose tint-fill
+  catching bots mid-fight — verified not a render bug.
+
 ## FEATURE-COMPLETE FOR PUBLIC PLAYTEST (2026-07-10, after the RETENTION SPINE)
 
 With the retention spine in, the game now has its full pre-token loop:

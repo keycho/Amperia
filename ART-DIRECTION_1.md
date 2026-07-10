@@ -148,6 +148,14 @@ same-sized props in ANY district. The brief defines:
   section.
 - **(d) A light plan:** source types, density (pool spacing), and the
   district's darkness level relative to the Filament.
+- **(e) The shape mix** *(added with the world-variety pass)*: **boxes may
+  be at most 60% of the objects in any screenful.** The rest must draw on
+  the other silhouette families — fabric (canopies, banners, wash lines),
+  organic (bushes, vines), tall/thin (posts, pipes, masts), round-ish
+  (barrels, spools, tanks, pots), and the district's unique set pieces.
+  Common props ship 3–4 baked looks with position-hashed, adjacency-guarded
+  picks — **two identical models never sit next to each other**, and no
+  screenful should read as "a field of the same box."
 
 ### The Tangle — district brief (first under this rule)
 
