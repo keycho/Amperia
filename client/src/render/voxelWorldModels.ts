@@ -301,4 +301,8 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'drums', voxels: drumsModel() });
   bakeVoxelModel(scene, { name: 'dynamo', voxels: dynamoModel() });
   bakeVoxelModel(scene, { name: 'scuttlebot', voxels: scuttlebotModel(PALETTE_INT.neonTeal) });
+  bakeVoxelModel(scene, {
+    name: 'scuttlebot-feral',
+    voxels: scuttlebotModel(PALETTE_INT.neonRose),
+  });
 }

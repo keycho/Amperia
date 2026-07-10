@@ -17,4 +17,6 @@ export const SessionEvents = {
   chat: 'chat',
   presence: 'presence',
   notice: 'notice',
+  /** Own Spark's HP changed: payload { hp, maxHp }. */
+  hp: 'hp',
 } as const;

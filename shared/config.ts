@@ -188,6 +188,43 @@ export const CONFIG = {
     nearRadiusTiles: 8,
   },
 
+  /**
+   * First combat slice (Game Bible B6/B7): feral Scuttlebots in the SE
+   * scrap fringe. Weak, mischievous, telegraphed. Mobs drop NO Bolts and
+   * NO stack loot — only the rare Manifest trophy roll below.
+   */
+  combat: {
+    player: {
+      maxHp: 30,
+      attackDamage: 4,
+      /** Chebyshev melee reach. */
+      attackRangeTiles: 1,
+      attackCooldownSeconds: 0.7,
+      /** Regen inside the Great Dynamo's warmth (tiles from plaza center). */
+      dynamoHealRadiusTiles: 5,
+      dynamoHealPerSecond: 2.5,
+    },
+    scuttlebot: {
+      count: 4,
+      maxHp: 12,
+      contactDamage: 2,
+      moveSecondsPerTile: 0.34,
+      /** Aggro when a Spark comes this close (chebyshev tiles). */
+      aggroRadiusTiles: 3,
+      /** Give up beyond this distance from home; trot back and reset. */
+      leashRadiusTiles: 7,
+      /** Wind-up telegraph before a bite lands. */
+      windupSeconds: 0.6,
+      attackCooldownSeconds: 1.5,
+      respawnSeconds: 22,
+      xpBrawlingPerKill: 14,
+      /** Rare Manifest trophy roll per kill — the ONLY drop of any kind. */
+      trophyChance: 0.04,
+      /** Home range: the SE scrap fringe among the amperite spoil. */
+      homeBox: { x0: 29, y0: 30, x1: 37, y1: 37 },
+    },
+  },
+
   /** Skill Mastery 1-50 (Game Bible B3): fast early, long-horizon late. */
   mastery: {
     maxLevel: 50,

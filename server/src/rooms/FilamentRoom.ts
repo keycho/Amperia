@@ -27,6 +27,7 @@ import {
   type SkillId,
   type SkillXp,
 } from '@shared/mastery';
+import { chebyshev, nextMobState, type MobAiState } from '@shared/mobs';
 import { advanceMovement, makeMoveState, setPath, type MoveState } from '@shared/movement';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
 import {
@@ -47,7 +48,7 @@ import { makeRng, type Rng } from '@shared/rng';
 import { ledger } from '../services/ledger.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
-import { FilamentState, NodeState, PlayerState } from './state.js';
+import { FilamentState, MobState, NodeState, PlayerState } from './state.js';
 
 type Session =
   | {
@@ -107,6 +108,7 @@ interface PlayerRuntime {
   hotbar: Inventory;
   activeSlot: number;
   skills: SkillXp;
+  hp: number;
   gatherTargetNode: number | null;
   session: Session | null;
   lastChatAtMs: number;
@@ -114,10 +116,28 @@ interface PlayerRuntime {
   glintReactionsMs: number[];
 }
 
+/** Server-side per-mob runtime (never synced). */
+interface MobRuntime {
+  id: string;
+  home: TilePoint;
+  move: MoveState;
+  hp: number;
+  ai: MobAiState;
+  targetSessionId: string | null;
+  windupElapsed: number;
+  cooldownRemaining: number;
+  /** Seconds until the next wander leg while idling. */
+  wanderWait: number;
+  /** Throttles chase repathing. */
+  repathWait: number;
+  /** Epoch ms to respawn at; null while alive. */
+  respawnAtMs: number | null;
+}
+
 /**
  * The Filament — hub district room. One room instance per ~40 Sparks; the
- * server owns movement, gathering (all five resources), inventories, and
- * node lifecycles. Clients send intents and render results.
+ * server owns movement, gathering (all five resources), inventories, mobs,
+ * and node lifecycles. Clients send intents and render results.
  */
 export class FilamentRoom extends Room<FilamentState> {
   maxClients = 40;
@@ -126,6 +146,7 @@ export class FilamentRoom extends Room<FilamentState> {
   private grid!: PathGrid;
   private rng: Rng = makeRng(Date.now() >>> 0);
   private runtimes = new Map<string, PlayerRuntime>();
+  private mobs = new Map<string, MobRuntime>();
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
 
@@ -136,6 +157,7 @@ export class FilamentRoom extends Room<FilamentState> {
     for (const n of this.map.nodes) {
       this.state.nodes.set(String(n.id), new NodeState());
     }
+    this.spawnMobs();
 
     this.onMessage<MoveIntent>(MSG.move, (client, msg) => this.handleMove(client, msg));
     this.onMessage<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
@@ -186,6 +208,7 @@ export class FilamentRoom extends Room<FilamentState> {
       hotbar: character.hotbar ?? makeStarterHotbar(),
       activeSlot: 0,
       skills: character.skills,
+      hp: CONFIG.combat.player.maxHp,
       gatherTargetNode: null,
       session: null,
       lastChatAtMs: 0,
@@ -197,6 +220,8 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.sparkName = character.sparkName;
     ps.tileX = spawn.x;
     ps.tileY = spawn.y;
+    ps.hp = runtime.hp;
+    ps.maxHp = CONFIG.combat.player.maxHp;
     this.state.players.set(client.sessionId, ps);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
@@ -472,12 +497,240 @@ export class FilamentRoom extends Room<FilamentState> {
       if (rt.session !== null) this.advanceSession(sessionId, rt, dt);
     }
 
+    this.tickMobs(dt);
+
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
     if (this.persistTicker >= 30_000) {
       this.persistTicker = 0;
       for (const rt of this.runtimes.values()) void this.persist(rt);
     }
+  }
+
+  // ── mobs ────────────────────────────────────────────────────────────────
+
+  /** Deterministic spawn seats: spaced walkable tiles in the home box. */
+  private spawnMobs(): void {
+    const cfg = CONFIG.combat.scuttlebot;
+    const seats: TilePoint[] = [];
+    for (let y = cfg.homeBox.y0; y <= cfg.homeBox.y1 && seats.length < cfg.count; y += 1) {
+      for (let x = cfg.homeBox.x0; x <= cfg.homeBox.x1 && seats.length < cfg.count; x += 1) {
+        if (this.map.walkable[y]?.[x] !== true) continue;
+        if (seats.some((s) => chebyshev(s, { x, y }) < 3)) continue;
+        seats.push({ x, y });
+      }
+    }
+    seats.forEach((seat, i) => {
+      const id = `mob-${i}`;
+      this.mobs.set(id, {
+        id,
+        home: { ...seat },
+        move: makeMoveState(seat),
+        hp: cfg.maxHp,
+        ai: 'idle',
+        targetSessionId: null,
+        windupElapsed: 0,
+        cooldownRemaining: 0,
+        wanderWait: 1 + (i % 3),
+        repathWait: 0,
+        respawnAtMs: null,
+      });
+      this.state.mobs.set(id, this.makeMobState(seat, cfg.maxHp));
+    });
+  }
+
+  private makeMobState(tile: TilePoint, hp: number): MobState {
+    const ms = new MobState();
+    ms.kind = 'scuttlebot';
+    ms.tileX = tile.x;
+    ms.tileY = tile.y;
+    ms.hp = hp;
+    ms.maxHp = CONFIG.combat.scuttlebot.maxHp;
+    ms.ai = 'idle';
+    return ms;
+  }
+
+  private tickMobs(dt: number): void {
+    const cfg = CONFIG.combat.scuttlebot;
+    const now = Date.now();
+    for (const m of this.mobs.values()) {
+      // Dead: wait out the respawn clock, then pop back at home.
+      if (m.respawnAtMs !== null) {
+        if (now >= m.respawnAtMs) {
+          m.respawnAtMs = null;
+          m.hp = cfg.maxHp;
+          m.ai = 'idle';
+          m.move = makeMoveState(m.home);
+          m.targetSessionId = null;
+          m.cooldownRemaining = 0;
+          this.state.mobs.set(m.id, this.makeMobState(m.home, m.hp));
+        }
+        continue;
+      }
+
+      m.cooldownRemaining = Math.max(0, m.cooldownRemaining - dt);
+      m.repathWait = Math.max(0, m.repathWait - dt);
+
+      // Nearest living Spark (and its distance from this mob's home).
+      let target: { sid: string; dist: number; distHome: number; tile: TilePoint } | null = null;
+      for (const [sid, rt] of this.runtimes) {
+        if (rt.hp <= 0) continue;
+        const dist = chebyshev(rt.move.tile, m.move.tile);
+        if (target === null || dist < target.dist) {
+          target = {
+            sid,
+            dist,
+            distHome: chebyshev(rt.move.tile, m.home),
+            tile: rt.move.tile,
+          };
+        }
+      }
+
+      const before = m.ai;
+      const decision = nextMobState(
+        {
+          state: m.ai,
+          mobTile: m.move.tile,
+          homeTile: m.home,
+          targetDist: target?.dist ?? null,
+          targetDistFromHome: target?.distHome ?? null,
+          windupElapsed: m.windupElapsed,
+          onCooldown: m.cooldownRemaining > 0,
+        },
+        cfg,
+      );
+      m.ai = decision.state;
+
+      if (decision.bite && target !== null) this.applyBite(m, target.sid);
+
+      // Transition side effects.
+      if (before !== 'windup' && m.ai === 'windup') {
+        m.windupElapsed = 0;
+        m.move = setPath(m.move, []); // plant feet for the telegraph
+      }
+      if (before === 'windup' && m.ai !== 'windup') {
+        m.cooldownRemaining = cfg.attackCooldownSeconds;
+      }
+      if (before !== 'chase' && m.ai === 'chase') m.repathWait = 0;
+
+      // State behavior.
+      switch (m.ai) {
+        case 'idle': {
+          m.wanderWait -= dt;
+          if (m.wanderWait <= 0) {
+            const leg = this.pickWanderLeg(m);
+            if (leg !== null) {
+              m.move = setPath(m.move, leg);
+              m.ai = 'wander';
+            } else {
+              m.wanderWait = 1.5;
+            }
+          }
+          break;
+        }
+        case 'wander': {
+          if (m.move.queue.length === 0) {
+            m.ai = 'idle';
+            m.wanderWait = 1.2 + ((now / 997) % 2.6); // cheap desync, not value RNG
+          }
+          break;
+        }
+        case 'chase': {
+          m.targetSessionId = target?.sid ?? null;
+          if (target !== null && m.repathWait <= 0) {
+            m.repathWait = 0.35;
+            const path = findPathAdjacent(this.grid, m.move.tile, {
+              x: target.tile.x,
+              y: target.tile.y,
+              w: 1,
+              h: 1,
+            });
+            if (path !== null) m.move = setPath(m.move, path);
+          }
+          break;
+        }
+        case 'windup': {
+          m.windupElapsed += dt;
+          break;
+        }
+        case 'return': {
+          m.targetSessionId = null;
+          if (m.move.queue.length === 0) {
+            const path = findPath(this.grid, m.move.tile, m.home);
+            if (path !== null) m.move = setPath(m.move, path);
+          }
+          if (chebyshev(m.move.tile, m.home) <= 1) m.hp = cfg.maxHp; // shakes it off
+          break;
+        }
+      }
+
+      // Advance movement (windup stands still by construction).
+      if (m.move.queue.length > 0) {
+        m.move = advanceMovement(m.move, dt, cfg.moveSecondsPerTile);
+      }
+
+      // Sync.
+      const ms = this.state.mobs.get(m.id);
+      if (ms !== undefined) {
+        ms.tileX = m.move.tile.x;
+        ms.tileY = m.move.tile.y;
+        ms.hp = m.hp;
+        ms.ai = m.ai;
+      }
+    }
+  }
+
+  /** Short random walk near home (movement flavor only — not value RNG). */
+  private pickWanderLeg(m: MobRuntime): TilePoint[] | null {
+    for (let tries = 0; tries < 6; tries++) {
+      const dx = Math.floor(this.rng() * 7) - 3;
+      const dy = Math.floor(this.rng() * 7) - 3;
+      const t = { x: m.home.x + dx, y: m.home.y + dy };
+      if (t.x === m.move.tile.x && t.y === m.move.tile.y) continue;
+      if (this.map.walkable[t.y]?.[t.x] !== true) continue;
+      const path = findPath(this.grid, m.move.tile, t);
+      if (path !== null && path.length <= 8) return path;
+    }
+    return null;
+  }
+
+  private applyBite(m: MobRuntime, sessionId: string): void {
+    const rt = this.runtimes.get(sessionId);
+    const ps = this.state.players.get(sessionId);
+    if (rt === undefined || ps === undefined || rt.hp <= 0) return;
+    const dmg = CONFIG.combat.scuttlebot.contactDamage;
+    rt.hp = Math.max(0, rt.hp - dmg);
+    ps.hp = rt.hp;
+    this.broadcast(MSG.combat, {
+      type: 'mobBite',
+      mobId: m.id,
+      sessionId,
+      damage: dmg,
+      hp: rt.hp,
+    });
+    if (rt.hp <= 0) this.downPlayer(sessionId, rt, ps);
+  }
+
+  /**
+   * A downed Spark is hauled back to the Dynamo's warmth: full heal, NO item
+   * loss (Game Bible B7 — cozy death). Any active gather is cancelled with
+   * its usual partial payout.
+   */
+  private downPlayer(sessionId: string, rt: PlayerRuntime, ps: PlayerState): void {
+    const client = this.clients.find((c) => c.sessionId === sessionId);
+    if (client !== undefined) this.cancelGather(client, rt);
+    rt.gatherTargetNode = null;
+    const spawn = CONFIG.player.spawn;
+    rt.move = makeMoveState(spawn);
+    rt.hp = CONFIG.combat.player.maxHp;
+    ps.tileX = spawn.x;
+    ps.tileY = spawn.y;
+    ps.hp = rt.hp;
+    ps.gathering = false;
+    this.broadcast(MSG.combat, { type: 'playerDown', sessionId });
+    this.broadcast(MSG.notice, {
+      text: `${rt.sparkName} got knocked flat by a Scuttlebot — hauled back to the Dynamo.`,
+    });
   }
 
   private beginGather(sessionId: string, rt: PlayerRuntime): void {

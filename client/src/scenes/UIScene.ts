@@ -31,6 +31,9 @@ export class UIScene extends Phaser.Scene {
   private chat!: ChatUI;
   private skillsPanel!: SkillsPanel;
   private toast: Phaser.GameObjects.Container | null = null;
+  private hpBar!: Phaser.GameObjects.Graphics;
+  private hpText!: Phaser.GameObjects.Text;
+  private hp = { hp: 0, maxHp: 0 };
 
   /** A soft chip that slides in top-center and fades — tram arrivals etc. */
   private showToast(text: string): void {
@@ -123,6 +126,21 @@ export class UIScene extends Phaser.Scene {
       if (this.skillsPanel.visible) this.skillsPanel.refresh();
     });
 
+    this.hpBar = this.add.graphics();
+    this.hpBar.setDepth(900);
+    this.hpText = this.add.text(0, 0, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: UI_TEXT_WARM,
+      stroke: PALETTE.ink,
+      strokeThickness: 3,
+    });
+    this.hpText.setDepth(901);
+    session.events.on(SessionEvents.hp, (v: { hp: number; maxHp: number }) => {
+      this.hp = v;
+      this.drawHpBar();
+    });
+
     // Tram arrivals get a warm toast up top (the chat log keeps the line too).
     session.events.on(SessionEvents.notice, (text: string) => {
       if (text.includes('stepped off the tram') || text.includes('rode the tram out')) {
@@ -153,7 +171,25 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel.setPosition((w - inv.w) / 2, (h - inv.h) / 2 - 20);
     const sk = this.skillsPanel.pixelSize();
     this.skillsPanel.setPosition((w - sk.w) / 2, (h - sk.h) / 2 - 10);
+    this.drawHpBar();
     this.refreshAll();
+  }
+
+  /** The Spark's charge (HP) — a warm bar over the hotbar's left corner. */
+  private drawHpBar(): void {
+    if (this.hp.maxHp <= 0) return;
+    const hb = this.hotbar.pixelSize();
+    const x = (this.scale.width - hb.w) / 2;
+    const y = this.scale.height - hb.h - 34;
+    const W = 148;
+    const frac = Math.max(0, Math.min(1, this.hp.hp / this.hp.maxHp));
+    this.hpBar.clear();
+    this.hpBar.fillStyle(PALETTE_INT.ink, 0.72);
+    this.hpBar.fillRoundedRect(x, y, W, 12, 6);
+    this.hpBar.fillStyle(frac > 0.35 ? PALETTE_INT.warmGlow : PALETTE_INT.neonRose, 0.95);
+    this.hpBar.fillRoundedRect(x + 2, y + 2, Math.max(4, (W - 4) * frac), 8, 4);
+    this.hpText.setText(`⚡ ${this.hp.hp}/${this.hp.maxHp}`);
+    this.hpText.setPosition(x + W + 8, y - 1);
   }
 
   private refreshAll(): void {

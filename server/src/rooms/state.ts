@@ -13,12 +13,34 @@ export class PlayerState extends Schema {
   tileY = 0;
   /** True while the server is gathering for this Spark (busy pose). */
   gathering = false;
+  hp = 0;
+  maxHp = 0;
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
   tileX: 'int16',
   tileY: 'int16',
   gathering: 'boolean',
+  hp: 'int16',
+  maxHp: 'int16',
+});
+
+export class MobState extends Schema {
+  kind = 'scuttlebot';
+  tileX = 0;
+  tileY = 0;
+  hp = 0;
+  maxHp = 0;
+  /** AI state string — clients render telegraphs from transitions. */
+  ai = 'idle';
+}
+defineTypes(MobState, {
+  kind: 'string',
+  tileX: 'int16',
+  tileY: 'int16',
+  hp: 'int16',
+  maxHp: 'int16',
+  ai: 'string',
 });
 
 export class NodeState extends Schema {
@@ -30,8 +52,11 @@ export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
   /** Keyed by node id (stringified). */
   nodes = new MapSchema<NodeState>();
+  /** Keyed by mob id. */
+  mobs = new MapSchema<MobState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
   nodes: { map: NodeState },
+  mobs: { map: MobState },
 });

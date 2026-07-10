@@ -159,6 +159,17 @@ export class Spark {
     this.bubble.setDepth(this.image.depth + 2);
   }
 
+  /** Brief hurt blink (rose fill, then back to the style tint). */
+  flashHurt(): void {
+    this.image.setTintFill(PALETTE_INT.neonRose);
+    this.scene.time.delayedCall(90, () => {
+      if (!this.image.active) return;
+      const wt = worldSpriteTint();
+      if (wt !== null) this.image.setTint(wt);
+      else this.image.clearTint();
+    });
+  }
+
   /** The /wave emote: a friendly double hop + a little hand flourish. */
   playWave(): void {
     this.scene.tweens.add({

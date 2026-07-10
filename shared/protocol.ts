@@ -30,6 +30,7 @@ export const MSG = {
   chatMsg: 'chatMsg',
   notice: 'notice',
   emote: 'emote',
+  combat: 'combat',
 } as const;
 
 export interface MoveIntent {
@@ -164,6 +165,21 @@ export interface ChatBroadcast {
   ts: number;
 }
 
+/** Combat happenings that need timing/feedback beyond schema sync. */
+export type CombatEvent =
+  | { type: 'mobBite'; mobId: string; sessionId: string; damage: number; hp: number }
+  | { type: 'playerDown'; sessionId: string };
+
+/** Mirror of the synced MobState schema (client-side typing only). */
+export interface MobStateShape {
+  kind: string;
+  tileX: number;
+  tileY: number;
+  hp: number;
+  maxHp: number;
+  ai: string;
+}
+
 export interface EmoteBroadcast {
   sessionId: string;
   from: string;
@@ -189,6 +205,8 @@ export interface PlayerStateShape {
   tileX: number;
   tileY: number;
   gathering: boolean;
+  hp: number;
+  maxHp: number;
 }
 
 export interface NodeStateShape {

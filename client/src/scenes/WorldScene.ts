@@ -5,7 +5,9 @@ import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
 import { mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
   ChatBroadcast,
+  CombatEvent,
   EmoteBroadcast,
+  MobStateShape,
   NodeEventPayload,
   NoticeEvent,
   SkillsSync,
@@ -23,6 +25,7 @@ import type {
 import { makeRng, type Rng } from '@shared/rng';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
+import { Mob } from '../entities/Mob';
 import {
   AmperiteNode,
   AntennaNode,
@@ -75,6 +78,7 @@ export class WorldScene extends Phaser.Scene {
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  private mobs = new Map<string, Mob>();
   private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
@@ -160,7 +164,7 @@ export class WorldScene extends Phaser.Scene {
     // Boundary typing for the runtime-typed Colyseus callback proxy.
     interface EntityProxy {
       onChange(cb: () => void): void;
-      listen(prop: 'depleted', cb: (v: boolean) => void): void;
+      listen(prop: string, cb: (v: never) => void): void;
     }
     interface StateProxy {
       players: {
@@ -169,6 +173,10 @@ export class WorldScene extends Phaser.Scene {
       };
       nodes: {
         onAdd(cb: (n: NodeStateShape, key: string) => void): void;
+      };
+      mobs: {
+        onAdd(cb: (m: MobStateShape, id: string) => void): void;
+        onRemove(cb: (m: MobStateShape, id: string) => void): void;
       };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
@@ -180,6 +188,10 @@ export class WorldScene extends Phaser.Scene {
       session.events.emit(SessionEvents.presence, this.sparks.size);
       if (sessionId === room.sessionId) {
         this.cameraCtl.followTarget(spark.image);
+        session.events.emit(SessionEvents.hp, { hp: p.hp, maxHp: p.maxHp });
+        proxy(p).listen('hp', (v: number) =>
+          session.events.emit(SessionEvents.hp, { hp: v, maxHp: p.maxHp }),
+        );
       }
       // Drift correction: if the server's committed tile diverges while the
       // client isn't animating a path, snap to truth.
@@ -204,6 +216,22 @@ export class WorldScene extends Phaser.Scene {
       node.setDepleted(n.depleted);
       proxy(n).listen('depleted', (v: boolean) => node.setDepleted(v));
     });
+
+    $state.mobs.onAdd((m: MobStateShape, id: string) => {
+      const mob = new Mob(this, id, { x: m.tileX, y: m.tileY }, m.hp, m.maxHp);
+      this.mobs.set(id, mob);
+      const mp = proxy(m);
+      mp.listen('tileX', () => mob.moveTo({ x: m.tileX, y: m.tileY }));
+      mp.listen('tileY', () => mob.moveTo({ x: m.tileX, y: m.tileY }));
+      mp.listen('hp', (v: number) => mob.setHp(v));
+      mp.listen('ai', (v: string) => mob.setAi(v));
+    });
+    $state.mobs.onRemove((_m: MobStateShape, id: string) => {
+      this.mobs.get(id)?.poof();
+      this.mobs.delete(id);
+    });
+
+    room.onMessage(MSG.combat, (e: CombatEvent) => this.handleCombatEvent(e));
 
     room.onMessage(MSG.moveAccepted, (e: MoveAcceptedEvent) => {
       const spark = this.sparks.get(e.sessionId);
@@ -272,6 +300,55 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(e.sessionId)?.playWave();
       session.events.emit(SessionEvents.notice, `${e.from} waves.`);
     });
+  }
+
+  /** Combat feedback — the server decided everything; we act it out. */
+  private handleCombatEvent(e: CombatEvent): void {
+    const room = this.room;
+    if (room === null) return;
+    if (e.type === 'mobBite') {
+      const spark = this.sparks.get(e.sessionId);
+      const mob = this.mobs.get(e.mobId);
+      if (mob !== undefined && spark !== undefined) {
+        mob.lungeAt(spark.image.x, spark.image.y);
+      }
+      if (spark !== undefined) {
+        spark.flashHurt();
+        floatText(this, spark.image.x, spark.image.y - 64, `-${e.damage}`, PALETTE.neonRose);
+      }
+      if (e.sessionId === room.sessionId) {
+        this.cameras.main.shake(110, 0.0035);
+      }
+      return;
+    }
+    if (e.type === 'playerDown') {
+      const spark = this.sparks.get(e.sessionId);
+      const p = (
+        room.state as { players: { get(id: string): PlayerStateShape | undefined } }
+      ).players.get(e.sessionId);
+      if (spark !== undefined && p !== undefined) {
+        spark.stop();
+        spark.snapTo({ x: p.tileX, y: p.tileY });
+        // Arrive back at the Dynamo in a warm jolt of light.
+        const jolt = this.add.image(spark.image.x, spark.image.y - 20, 'fx-glow');
+        jolt.setTint(PALETTE_INT.warmGlow);
+        jolt.setBlendMode(Phaser.BlendModes.ADD);
+        jolt.setScale(0.1);
+        jolt.setAlpha(0.9);
+        jolt.setDepth(spark.image.depth + 2);
+        this.tweens.add({
+          targets: jolt,
+          scale: 0.5,
+          alpha: 0,
+          duration: 600,
+          ease: 'quad.out',
+          onComplete: () => jolt.destroy(),
+        });
+      }
+      if (e.sessionId === room.sessionId) {
+        this.cameras.main.flash(260, 30, 22, 48);
+      }
+    }
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),
     );
