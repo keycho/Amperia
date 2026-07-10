@@ -442,6 +442,13 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   Neon will need `prisma migrate deploy` on first ship — 4 new
   migrations landed this block (trade guardrails, shop stalls, the
   Citywide Charge, economy summaries).
+- NEW (identity block I0): the mascot image attached to the kickoff brief
+  could not be read from this environment, so `docs/brand/spark-mascot.png`
+  is the bust REBUILT faithfully through the real voxel pipeline (rose mop,
+  black goggle band + teal lenses, plum collar + amber tag, glowing bulb,
+  3-tone shading). It works as the canonical in-pipeline reference; if the
+  original artwork should also live in the repo, drop it in as
+  `docs/brand/spark-mascot-original.png` — no code references it.
 - Git tags (`m0-complete`, `run-20260709-autonomous`) exist locally only —
   the remote refuses tag pushes from this session.
 - A second district doubles room count per instance — no action needed

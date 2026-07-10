@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
 import { makeAtmosphereTextures } from '../render/atmosphere';
 import { bakeFloorTiles } from '../render/floorTiles';
+import { bakeSparkModels } from '../render/sparkModel';
 import { bakeCoreVoxelModels } from '../render/voxelModels';
 import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
 import {
@@ -33,6 +34,7 @@ export class BootScene extends Phaser.Scene {
     makeShadowTextures(this);
     makeAtmosphereTextures(this);
     bakeCoreVoxelModels(this);
+    bakeSparkModels(this);
     bakeWorldVoxelModels(this);
     bakeFloorTiles(this);
     this.scene.start('login');

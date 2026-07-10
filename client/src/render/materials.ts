@@ -57,6 +57,10 @@ export const MATERIALS = {
   /** Neutral grey-mauve pavement and curbs. */
   concrete: def(MATERIAL_INT.concrete, 0.045, 0.09, 0.13, 0.05, 'low'),
   concreteDeep: def(MATERIAL_INT.concreteDeep, 0.045, 0.08, 0.13, 0.05, 'low'),
+  /** Character skin: quiet noise, no wear/stains, gentle lit warmth. */
+  skin: def(MATERIAL_INT.skin, 0.035, 0, 0, 0.12),
+  /** Character cloth (hair, jackets, knitwear): soft weave variation. */
+  cloth: def(MATERIAL_INT.paintRose, 0.06, 0, 0.04, 0.3),
 } as const;
 
 export type MaterialId = keyof typeof MATERIALS;

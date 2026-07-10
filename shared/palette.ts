@@ -111,6 +111,9 @@ export const MATERIAL_COLORS = {
   /** Street asphalt — dark, warm-grey, never purple. */
   asphalt: '#453F47',
   asphaltDeep: '#332E36',
+  /** Spark skin midtone (character identity block) — warm sand; the
+   *  creator's tone options derive from this via sanctioned mixes. */
+  skin: '#E3B98A',
   /** The void beyond the map: ink fading to near-black (composition §B5). */
   voidBlack: '#0B0812',
 } as const;
