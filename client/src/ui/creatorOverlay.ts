@@ -11,8 +11,15 @@ import {
   SKIN_TONES,
   SPARK_NAME_RE,
 } from '@shared/appearance';
+import {
+  COSMETIC_SLOTS,
+  decodeEquipped,
+  encodeEquipped,
+  type EquippedMap,
+  ownedForSlot,
+} from '@shared/cosmetics';
 import { intToHex, PALETTE, UI_TEXT_WARM } from '@shared/palette';
-import { bakeSparkAppearance } from '../render/sparkModel';
+import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 
 /**
@@ -32,7 +39,11 @@ export interface CreatorOpts {
   mode: 'first' | 'wardrobe';
   currentCode: string;
   currentName: string;
+  /** Owned cosmetics + worn wire (wardrobe mode shows the slot rows). */
+  owned?: string[];
+  currentEquipped?: string;
   onConfirm(code: string, name: string | undefined): void;
+  onWardrobe?: (equippedWire: string) => void;
   onCancel?: () => void;
 }
 
@@ -40,6 +51,8 @@ const SWATCH = 22;
 
 export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   const a: Appearance = { ...(decodeAppearance(opts.currentCode) ?? DEFAULT_APPEARANCE) };
+  const owned = opts.owned ?? [];
+  const eq: EquippedMap = decodeEquipped(opts.currentEquipped ?? '', owned);
 
   const root = document.createElement('div');
   root.id = 'amperia-creator';
@@ -79,8 +92,9 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
 
   const drawPreview = () => {
     const code = encodeAppearance(a);
-    bakeSparkAppearance(opts.scene, code, { previewOnly: true });
-    const baked = voxelSprite(`spark@${code}-sw`);
+    const wire = encodeEquipped(eq);
+    bakeSparkAppearance(opts.scene, code, { previewOnly: true, equipped: wire });
+    const baked = voxelSprite(`spark@${code}#${equipKey(eq)}-sw`);
     const src = opts.scene.game.textures.get(baked.key).getSourceImage() as HTMLCanvasElement;
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const W = canvas.width;
@@ -279,6 +293,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     confirmBtn.disabled = true;
     randomBtn.disabled = true;
     msg.textContent = '';
+    if (opts.mode === 'wardrobe') opts.onWardrobe?.(encodeEquipped(eq));
     opts.onConfirm(encodeAppearance(a), name);
     // Re-enable after a beat in case the server bounces it.
     window.setTimeout(() => {
@@ -291,6 +306,41 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   buttonRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
   buttonRow.append(randomBtn, confirmBtn);
 
+  /** Wardrobe rows (anchor slots, §10.2): None + every OWNED cosmetic. */
+  const slotRow = (slot: (typeof COSMETIC_SLOTS)[number], label: string) => {
+    const options = ownedForSlot(owned, slot);
+    if (options.length === 0) return null;
+    const wrap = document.createElement('div');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
+    const chips: Array<{ el: HTMLButtonElement; id: string | undefined }> = [];
+    const mkChip = (text: string, id: string | undefined) => {
+      const chip = document.createElement('button');
+      chip.textContent = text;
+      chip.style.cssText =
+        'padding:4px 8px;border-radius:7px;font-family:monospace;font-size:11px;cursor:pointer;';
+      chip.onclick = () => {
+        if (id === undefined) delete eq[slot];
+        else eq[slot] = id;
+        refreshAll();
+      };
+      chips.push({ el: chip, id });
+      row.append(chip);
+    };
+    mkChip('None', undefined);
+    for (const def of options) mkChip(def.label, def.id);
+    refreshers.push(() => {
+      for (const { el, id } of chips) {
+        const on = eq[slot] === id || (id === undefined && eq[slot] === undefined);
+        el.style.background = on ? PALETTE.neonTeal : PALETTE.ink;
+        el.style.color = on ? PALETTE.ink : UI_TEXT_WARM;
+        el.style.border = `1px solid ${on ? PALETTE.neonTeal : PALETTE.groundBase}`;
+      }
+    });
+    wrap.append(rowLabel(label), row);
+    return wrap;
+  };
+
   controls.append(title, sub, msg);
   if (nameInput !== null) controls.append(nameInput);
   controls.append(
@@ -299,8 +349,32 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     swatchRow('Hair color', HAIR_COLORS, 'hairColor'),
     swatchRow('Jacket', JACKET_COLORS, 'jacket'),
     chipRow('Flair', ACCESSORIES, 'accessory'),
-    buttonRow,
   );
+  if (opts.mode === 'wardrobe') {
+    const slotLabels: Array<[(typeof COSMETIC_SLOTS)[number], string]> = [
+      ['head', 'Worn · head'],
+      ['back', 'Worn · back'],
+      ['jacket', 'Worn · jacket'],
+      ['tool', 'Worn · tool shine'],
+      ['trail', 'Worn · trail'],
+      ['nameGlow', 'Worn · name glow'],
+    ];
+    let any = false;
+    for (const [slot, label] of slotLabels) {
+      const row = slotRow(slot, label);
+      if (row !== null) {
+        controls.append(row);
+        any = true;
+      }
+    }
+    if (!any) {
+      const empty = document.createElement('div');
+      empty.textContent = 'The wardrobe is bare — the city rewards its own.';
+      empty.style.cssText = `color:${UI_TEXT_WARM};opacity:.6;font-size:11px;`;
+      controls.append(empty);
+    }
+  }
+  controls.append(buttonRow);
 
   if (opts.mode === 'wardrobe') {
     const closeBtn = button('Keep the old look', false);

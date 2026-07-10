@@ -25,6 +25,8 @@ export interface CharacterSnapshot {
   district: string;
   /** Creator appearance code; '' = not chosen (first-login creator). */
   appearance: string;
+  /** Worn wardrobe wire; '' = never set, 'none' = explicitly bare. */
+  equipped: string;
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -95,6 +97,7 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
       : [],
     district: c.district,
     appearance: c.appearance,
+    equipped: c.equipped,
   };
 }
 
@@ -114,6 +117,7 @@ export async function persistCharacter(
     quests: Record<string, unknown>;
     cosmetics: string[];
     district: string;
+    equipped: string;
   },
 ): Promise<void> {
   try {
@@ -134,6 +138,7 @@ export async function persistCharacter(
         questsJson: data.quests as object,
         cosmeticsJson: data.cosmetics,
         district: data.district,
+        equipped: data.equipped,
       },
     });
   } catch (err) {

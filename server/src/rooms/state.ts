@@ -19,7 +19,8 @@ export class PlayerState extends Schema {
   appearance = '';
   hp = 0;
   maxHp = 0;
-  cosmetic = '';
+  /** Worn wardrobe cosmetics (shared/cosmetics.ts wire form). */
+  equipped = '';
   /** Charge-regalia name-glow trim ('' = none) — never gameplay. */
   trim = '';
 }
@@ -32,7 +33,7 @@ defineTypes(PlayerState, {
   appearance: 'string',
   hp: 'int16',
   maxHp: 'int16',
-  cosmetic: 'string',
+  equipped: 'string',
   trim: 'string',
 });
 

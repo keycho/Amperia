@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
+import { COSMETICS } from '@shared/cosmetics';
 import { canCraft, repairQuote, type Recipe } from '@shared/crafting';
 import { ITEMS, type ItemId } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
@@ -92,7 +93,11 @@ export class BenchPanel {
         .map(([mid, q]) => `${q} ${mid}`)
         .join(' + ');
       const check = canCraft(r, gameState.bolts, (id) => gameState.count(id));
-      add(16, y, ITEMS[r.output as ItemId].name, UI_TEXT_WARM);
+      // Cosmetic recipes (I3): wardrobe shine, zero stats — labeled honestly.
+      const label = r.output.startsWith('cosmetic:')
+        ? `${COSMETICS[r.output.slice(9)]?.label ?? r.output} (cosmetic)`
+        : ITEMS[r.output as ItemId].name;
+      add(16, y, label, UI_TEXT_WARM);
       add(216, y, `${r.bolts} B + ${mats}`, check.ok ? PALETTE.warmGlow : PALETTE.neonRose);
       if (check.ok) {
         add(w - 70, y, '[craft]', PALETTE.neonTeal, () => {

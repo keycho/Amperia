@@ -1,7 +1,16 @@
 import { prisma } from './db.js';
 
 export interface LedgerEntry {
-  type: 'gather' | 'glint' | 'trophy' | 'trade' | 'spend' | 'quest' | 'anomaly' | 'system';
+  type:
+    | 'gather'
+    | 'glint'
+    | 'trophy'
+    | 'trade'
+    | 'spend'
+    | 'quest'
+    | 'anomaly'
+    | 'cosmetic'
+    | 'system';
   account: string;
   data: Record<string, unknown>;
 }

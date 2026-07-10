@@ -4,8 +4,10 @@ import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { DEPTH_SHADOW, depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { DEFAULT_APPEARANCE_CODE } from '@shared/appearance';
+import { decodeEquipped } from '@shared/cosmetics';
+import { addLayeredGlow, type LayeredGlow } from '../render/glow';
 import { worldSpriteTint } from '../render/styleConfig';
-import { bakeSparkAppearance } from '../render/sparkModel';
+import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 
 /**
@@ -28,7 +30,10 @@ export class Spark {
   private bubbleHeight = 0;
   /** Fired when a walk step lands on its tile (own Spark: footsteps). */
   onStep: (() => void) | null = null;
-  private cosmetic = '';
+  /** Worn wardrobe cosmetics (wire form) + its texture-key chunk. */
+  private equipped = '';
+  private equippedKey = 'none';
+  private bulbGlow: LayeredGlow | null = null;
   private trim = '';
   private appearance = DEFAULT_APPEARANCE_CODE;
   private dir: 'se' | 'sw' | 'ne' | 'nw' = 'se';
@@ -42,7 +47,7 @@ export class Spark {
     this.scene = scene;
     this.tile = { ...tile };
     const { x, y } = tileToWorld(tile.x, tile.y);
-    const baked = voxelSprite(`spark@${DEFAULT_APPEARANCE_CODE}-se`);
+    const baked = voxelSprite(`spark@${DEFAULT_APPEARANCE_CODE}#none-se`);
     this.image = scene.add.image(x, y, baked.key);
     this.image.setOrigin(baked.originX, baked.originY);
     this.image.setScale(baked.scale);
@@ -78,13 +83,12 @@ export class Spark {
     this.applyTexture();
   }
 
-  /** Pose bakes win over walk frames; cosmetics ride the base frames. */
+  /** Pose bakes win over walk frames; worn cosmetics live in the key. */
   private textureName(): string {
-    const base = `spark@${this.appearance}-${this.dir}`;
+    const base = `spark@${this.appearance}#${this.equippedKey}-${this.dir}`;
     if (this.pose !== null) return `${base}-pose-${this.pose}`;
     const frame = this.frame === 'idle' ? '' : `-${this.frame}`;
-    const cos = this.cosmetic !== '' ? `-${this.cosmetic}` : '';
-    return `${base}${frame}${cos}`;
+    return `${base}${frame}`;
   }
 
   /**
@@ -93,9 +97,40 @@ export class Spark {
    */
   setAppearance(code: string): void {
     if (code === this.appearance || code === '') return;
-    bakeSparkAppearance(this.scene, code);
     this.appearance = code;
+    bakeSparkAppearance(this.scene, code, { equipped: this.equipped });
     this.applyTexture();
+  }
+
+  /** Worn wardrobe cosmetics (server-broadcast wire string). */
+  setEquipped(wire: string): void {
+    if (wire === this.equipped) return;
+    this.equipped = wire;
+    this.equippedKey = equipKey(decodeEquipped(wire));
+    bakeSparkAppearance(this.scene, this.appearance, { equipped: wire });
+    this.applyTexture();
+    this.syncBulbGlow();
+  }
+
+  /** The Bulb hat carries its own warm emissive glow (render/glow.ts). */
+  private syncBulbGlow(): void {
+    const wearing = decodeEquipped(this.equipped).head === 'bulbHat';
+    if (!wearing && this.bulbGlow !== null) {
+      this.bulbGlow.core.destroy();
+      this.bulbGlow.mid.destroy();
+      this.bulbGlow.outer.destroy();
+      this.bulbGlow = null;
+    } else if (wearing && this.bulbGlow === null) {
+      this.bulbGlow = addLayeredGlow(
+        this.scene,
+        this.image.x,
+        this.image.y - this.image.displayHeight + 8,
+        PALETTE_INT.warmGlow,
+        0.5,
+        this.image.depth + 1,
+        0.55,
+      );
+    }
   }
 
   private applyTexture(): void {
@@ -128,13 +163,6 @@ export class Spark {
   setPose(id: string | null): void {
     if (id === this.pose) return;
     this.pose = id;
-    this.applyTexture();
-  }
-
-  /** Worn cosmetic (quest rewards — presentation only, never gameplay). */
-  setCosmetic(id: string): void {
-    if (id === this.cosmetic) return;
-    this.cosmetic = id;
     this.applyTexture();
   }
 
@@ -193,6 +221,15 @@ export class Spark {
 
   private syncLabel(): void {
     this.shadow.setPosition(this.image.x, this.image.y - 2);
+    if (this.bulbGlow !== null) {
+      const gx = this.image.x;
+      const gy = this.image.y - this.image.displayHeight + 8;
+      const depth = this.image.depth + 1;
+      for (const layer of [this.bulbGlow.core, this.bulbGlow.mid, this.bulbGlow.outer]) {
+        layer.setPosition(gx, gy);
+        layer.setDepth(depth);
+      }
+    }
     if (this.label === null) return;
     this.label.setPosition(
       this.image.x,
@@ -336,6 +373,12 @@ export class Spark {
   }
 
   destroy(): void {
+    if (this.bulbGlow !== null) {
+      this.bulbGlow.core.destroy();
+      this.bulbGlow.mid.destroy();
+      this.bulbGlow.outer.destroy();
+      this.bulbGlow = null;
+    }
     this.stepTween?.stop();
     this.scene.tweens.killTweensOf(this.image);
     this.scene.tweens.killTweensOf(this.labelRise);

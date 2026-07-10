@@ -71,6 +71,9 @@ export const CONFIG = {
       },
       /** Minimum tile distance between scattered nodes. */
       minNodeSpacing: 3,
+      /** Rare COSMETIC roll per completed heap (I3): the Alley Beanie.
+       *  Presentation only, untradeable, ledger-logged on grant. */
+      rareCosmetic: { id: 'alleyBeanie', chance: 0.02 },
     },
 
     /** Brass seams → Brass (Delving) — seam-fork active layer. */
@@ -376,7 +379,7 @@ export const CONFIG = {
         name: 'Bench Work',
         copy: 'Craft a piece of gear at the Tinkerbench.',
         step: { type: 'craft', itemId: null, qty: 1 },
-        rewards: { bolts: 40 },
+        rewards: { bolts: 40, cosmetic: 'starterScarf' },
         prereq: 'tut2',
         repeatable: null,
       },
@@ -385,7 +388,7 @@ export const CONFIG = {
         name: 'Wide Hands',
         copy: 'Gather with two skills beyond Scavving.',
         step: { type: 'gatherSkills', itemId: null, qty: 2 },
-        rewards: { bolts: 50 },
+        rewards: { bolts: 50, cosmetic: 'salvagerSatchel' },
         prereq: 'tut3',
         repeatable: null,
       },
@@ -394,7 +397,7 @@ export const CONFIG = {
         name: 'A Spark for the City',
         copy: 'Donate 5 Amperite to the Charge Warden at the Dynamo.',
         step: { type: 'donate', itemId: 'amperite', qty: 5 },
-        rewards: { bolts: 80, cosmetic: 'starterScarf' },
+        rewards: { bolts: 80, cosmetic: 'bulbHat' },
         prereq: 'tut4',
         repeatable: null,
       },
@@ -453,6 +456,8 @@ export const CONFIG = {
       { id: 'skim3', output: 'coilSkimnet', bolts: 190, materials: { salvage: 32, brass: 20, amperite: 10, glowkoi: 12 } },
       { id: 'tuner2', output: 'brassTuner', bolts: 80, materials: { salvage: 20, brass: 12, signal: 6 } },
       { id: 'tuner3', output: 'coilTuner', bolts: 220, materials: { salvage: 36, brass: 22, amperite: 12, signal: 12 } },
+      /** Cosmetic-only (I3): Brassbound tool skin — shine, zero stats. */
+      { id: 'brassTrim', output: 'cosmetic:brassToolSkin', bolts: 120, materials: { salvage: 10, brass: 30 } },
     ],
     /** Server-checked bench reach (chebyshev tiles). */
     benchRadiusTiles: 3,

@@ -46,6 +46,9 @@ model Character {
   /// Creator appearance code (shared/appearance.ts); "" = not chosen yet,
   /// so the client shows the first-login creator. Presentation only.
   appearance     String @default("")
+  /// Worn wardrobe cosmetics (shared/cosmetics.ts wire); "" = never set
+  /// (derive from owned on load), "none" = explicitly bare.
+  equipped       String @default("")
   /// Which district the Spark was last in ('filament' | 'tangle').
   district       String @default("filament")
   createdAt DateTime @default(now())

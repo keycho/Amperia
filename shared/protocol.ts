@@ -38,6 +38,7 @@ export const MSG = {
   moveStack: 'moveStack',
   chat: 'chat',
   appearance: 'appearance',
+  wardrobe: 'wardrobe',
   // server → client (results/events)
   moveAccepted: 'moveAccepted',
   gatherStart: 'gatherStart',
@@ -408,6 +409,12 @@ export const CHAT_LIMITS = {
  * Read-side shapes of the synced room state (mirrors server schema classes;
  * lets the client stay `any`-free when reading Colyseus state).
  */
+/** Client → server: wear/remove cosmetics (full worn-state set). */
+export interface WardrobeIntent {
+  /** shared/cosmetics.ts wire form; server validates against OWNED. */
+  equipped: string;
+}
+
 /** Client → server: creator confirm (name only settable on first login). */
 export interface AppearanceIntent {
   code: string;
@@ -422,6 +429,10 @@ export interface IdentityEvent {
   appearance: string;
   sparkName: string;
   chosen: boolean;
+  /** Cosmetics this Spark OWNS (wardrobe list) — all untradeable. */
+  owned: string[];
+  /** Worn wire form (shared/cosmetics.ts). */
+  equipped: string;
   error?: string;
 }
 
@@ -436,8 +447,8 @@ export interface PlayerStateShape {
   appearance: string;
   hp: number;
   maxHp: number;
-  /** Worn cosmetic id ('' = none) — quest rewards, never gameplay. */
-  cosmetic: string;
+  /** Worn wardrobe cosmetics (shared/cosmetics.ts wire) — never gameplay. */
+  equipped: string;
   /** Name-glow trim id ('' = none) — Charge regalia, never gameplay. */
   trim: string;
 }

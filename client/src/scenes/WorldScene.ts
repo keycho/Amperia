@@ -312,8 +312,8 @@ export class WorldScene extends Phaser.Scene {
       }
       // Drift correction: if the server's committed tile diverges while the
       // client isn't animating a path, snap to truth.
-      proxy(p).listen('cosmetic', (v: string) => spark.setCosmetic(v));
-      spark.setCosmetic(p.cosmetic);
+      proxy(p).listen('equipped', (v: string) => spark.setEquipped(v));
+      spark.setEquipped(p.equipped);
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
       // Working pose while gathering (server-set, presentation only).
@@ -860,8 +860,13 @@ export class WorldScene extends Phaser.Scene {
       mode,
       currentCode: identity.appearance,
       currentName: identity.sparkName,
+      owned: identity.owned,
+      currentEquipped: identity.equipped,
       onConfirm: (code, name) => {
         send.appearance(room, name === undefined ? { code } : { code, name });
+      },
+      onWardrobe: (equipped) => {
+        send.wardrobe(room, { equipped });
       },
       onCancel: () => {
         this.creator = null;

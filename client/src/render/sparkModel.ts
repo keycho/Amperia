@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { decodeEquipped, encodeEquipped, type EquippedMap } from '@shared/cosmetics';
 import {
   type Appearance,
   decodeAppearance,
@@ -249,9 +250,35 @@ function buildHair(
   lean: number,
   lift: number,
   back: boolean,
+  headWear?: string,
 ): void {
-  const style = HAIR_STYLES[styleIdx]?.id ?? 'mop';
   const z = 14 + lift;
+  if (headWear === 'alleyBeanie') {
+    // The Alley Beanie replaces the hair: ochre knit dome, ember brim,
+    // amber bobble — reads across the plaza as a warm knit silhouette.
+    const knit = MATERIAL_INT.paintOchre;
+    const knitDeep = blendInt(knit, PALETTE_INT.ink, 0.28);
+    const brim = blendInt(PALETTE_INT.emberOrange, PALETTE_INT.structureMid, 0.3);
+    for (let dx = 0; dx < 8; dx++) {
+      for (let dy = 0; dy < 6; dy++) {
+        if (Math.min(dx, 7 - dx) + Math.min(dy, 5 - dy) < 1) continue;
+        v.push({ x: -1 + dx, y: lean - 2 + dy, z, c: brim, mat: cloth });
+        const rib = voxelHash(dx, dy, 61) < 0.4;
+        v.push({ x: -1 + dx, y: lean - 2 + dy, z: z + 1, c: rib ? knitDeep : knit, mat: cloth });
+      }
+    }
+    for (let dx = 0; dx < 6; dx++) {
+      for (let dy = 0; dy < 4; dy++) {
+        if (Math.min(dx, 5 - dx) + Math.min(dy, 3 - dy) < 1) continue;
+        const rib = voxelHash(dx, dy, 63) < 0.4;
+        v.push({ x: dx, y: lean - 1 + dy, z: z + 2, c: rib ? knitDeep : knit, mat: cloth });
+      }
+    }
+    v.push({ x: 2, y: lean, z: z + 3, c: PALETTE_INT.neonAmber }); // bobble
+    v.push({ x: 3, y: lean + 1, z: z + 3, c: PALETTE_INT.neonAmber });
+    return;
+  }
+  const style = HAIR_STYLES[styleIdx]?.id ?? 'mop';
   switch (style) {
     case 'spikes': {
       hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, false);
@@ -317,47 +344,61 @@ function buildHair(
   }
 }
 
+/** Brassbound tool-skin body color (cosmetic, zero stats — §10.2 TOOL). */
+const BRASS = blendInt(PALETTE_INT.neonAmber, MATERIAL_INT.paintOchre, 0.55);
+
 /** Tool minis for the gather poses, as offsets past the raised hand.
- *  [dx, dyForward, dz, color] — dyForward is mapped through the view. */
-const TOOL_CELLS: Record<Exclude<SparkPoseId, 'brawl'>, Array<[number, number, number, number]>> = {
-  magclaw: [
-    [0, 1, 0, BODY_COLORS.toolRust],
-    [-1, 2, 0, PALETTE_INT.neonTeal],
-    [1, 2, 0, PALETTE_INT.neonTeal],
-  ],
-  drillhammer: [
-    [0, 1, 0, BODY_COLORS.toolWood],
-    [-1, 2, 0, BODY_COLORS.toolMetal],
-    [0, 2, 0, BODY_COLORS.toolMetal],
-    [1, 2, 0, BODY_COLORS.toolMetal],
-    [0, 2, 1, BODY_COLORS.toolMetal],
-  ],
-  skimnet: [
-    [0, 1, 0, BODY_COLORS.toolWood],
-    [-1, 2, 0, PALETTE_INT.neonTeal],
-    [1, 2, 0, PALETTE_INT.neonTeal],
-    [-1, 3, 0, PALETTE_INT.neonTeal],
-    [1, 3, 0, PALETTE_INT.neonTeal],
-    [0, 3, 0, PALETTE_INT.neonTeal],
-  ],
-  tuner: [
-    [0, 1, 0, BODY_COLORS.toolMetal],
-    [0, 2, 0, PALETTE_INT.neonCyan],
-    [0, 1, 1, BODY_COLORS.toolMetal],
-  ],
-  riveter: [
-    [0, 1, 0, BODY_COLORS.toolRust],
-    [0, 2, 0, BODY_COLORS.toolRust],
-    [0, 3, 0, PALETTE_INT.neonAmber],
-  ],
-};
+ *  [dx, dyForward, dz, color] — dyForward is mapped through the view.
+ *  The brass skin swaps the BODY metals; neon working tips stay. */
+function toolCells(
+  pose: Exclude<SparkPoseId, 'brawl'>,
+  brass: boolean,
+): Array<[number, number, number, number]> {
+  const rust = brass ? BRASS : BODY_COLORS.toolRust;
+  const metal = brass ? BRASS : BODY_COLORS.toolMetal;
+  const wood = BODY_COLORS.toolWood;
+  const cells: Record<Exclude<SparkPoseId, 'brawl'>, Array<[number, number, number, number]>> = {
+    magclaw: [
+      [0, 1, 0, rust],
+      [-1, 2, 0, PALETTE_INT.neonTeal],
+      [1, 2, 0, PALETTE_INT.neonTeal],
+    ],
+    drillhammer: [
+      [0, 1, 0, wood],
+      [-1, 2, 0, metal],
+      [0, 2, 0, metal],
+      [1, 2, 0, metal],
+      [0, 2, 1, metal],
+    ],
+    skimnet: [
+      [0, 1, 0, wood],
+      [-1, 2, 0, PALETTE_INT.neonTeal],
+      [1, 2, 0, PALETTE_INT.neonTeal],
+      [-1, 3, 0, PALETTE_INT.neonTeal],
+      [1, 3, 0, PALETTE_INT.neonTeal],
+      [0, 3, 0, PALETTE_INT.neonTeal],
+    ],
+    tuner: [
+      [0, 1, 0, metal],
+      [0, 2, 0, PALETTE_INT.neonCyan],
+      [0, 1, 1, metal],
+    ],
+    riveter: [
+      [0, 1, 0, rust],
+      [0, 2, 0, rust],
+      [0, 3, 0, PALETTE_INT.neonAmber],
+    ],
+  };
+  return cells[pose];
+}
 
 interface SparkBuild {
   view: 'front' | 'back';
   frame: SparkFrame;
   appearance: Appearance;
   pose?: SparkPoseId;
-  scarf?: boolean;
+  /** Worn wardrobe cosmetics (visual slots: head/back/jacket/tool). */
+  equipped?: EquippedMap;
 }
 
 /**
@@ -371,6 +412,7 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   const v: Voxel[] = [];
   const C = SPARK_COLORS;
   const t = resolveTints(b.appearance);
+  const eq = b.equipped ?? {};
   const back = b.view === 'back';
   const fwd = back ? -1 : 1;
   const posed = b.pose !== undefined;
@@ -402,6 +444,15 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   v.push(...cbox(1, lean, 8 + lift, 4, 3, 1, t.jacketDeep));
   if (!back) {
     v.push({ x: 3, y: 2 + lean, z: 7 + lift, c: C.tag });
+    if (eq.back === 'salvagerSatchel') {
+      // Shoulder strap reads the satchel from the front too.
+      v.push({ x: 2, y: 2 + lean, z: 8 + lift, c: t.jacketDeep });
+    }
+  } else if (eq.back === 'salvagerSatchel') {
+    // The Salvager Satchel: a proper wood-ribbed bag with an amber clasp.
+    v.push(...cbox(1, 2 + lean, 4 + lift, 4, 1, 3, BODY_COLORS.toolRust, MATERIALS.rust));
+    v.push(...cbox(1, 2 + lean, 7 + lift, 4, 1, 1, BODY_COLORS.toolWood, MATERIALS.wood));
+    v.push({ x: 2, y: 2 + lean, z: 5 + lift, c: C.tag });
   } else {
     v.push(...cbox(2, 2 + lean, 5 + lift, 2, 1, 2, BODY_COLORS.toolRust, MATERIALS.rust));
   }
@@ -426,14 +477,18 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   if (posed && b.pose !== 'brawl') {
     const handX = 5;
     const handY = lean + 2 * fwd;
-    for (const [dx, dyF, dz, c] of TOOL_CELLS[b.pose as Exclude<SparkPoseId, 'brawl'>]) {
+    const cells = toolCells(
+      b.pose as Exclude<SparkPoseId, 'brawl'>,
+      eq.tool === 'brassToolSkin',
+    );
+    for (const [dx, dyF, dz, c] of cells) {
       v.push({ x: handX + dx, y: handY + dyF * fwd, z: 7 + lift + dz, c });
     }
   }
 
-  // Starter scarf (JACKET-slot cosmetic): a rose wrap proud of the collar
-  // with a trailing tail down the chest (front) / back (back view).
-  if (b.scarf === true) {
+  // Starter scarf (JACKET slot): a rose wrap proud of the collar with a
+  // trailing tail down the chest (front) / back (back view).
+  if (eq.jacket === 'starterScarf') {
     v.push(...cbox(0, lean - 1, 8 + lift, 6, 5, 1, BODY_COLORS.scarf, cloth));
     const tailY = lean + (back ? -1 : 3);
     v.push({ x: back ? 1 : 0, y: tailY, z: 7 + lift, c: BODY_COLORS.scarfDeep, mat: cloth });
@@ -453,8 +508,31 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   // Goggle band: proud wrap at the crown — visible from every direction.
   v.push(...cbox(-1, lean - 2, 12 + lift, 8, 6, 2, C.band));
 
-  // Hair per the chosen style, in the chosen color.
-  buildHair(v, t, b.appearance.hair, lean, lift, back);
+  // Hair per the chosen style, in the chosen color (the beanie covers it).
+  buildHair(v, t, b.appearance.hair, lean, lift, back, eq.head);
+
+  // THE BULB HAT (final Dispatcher-chain reward): screw base sunk into the
+  // hair, warm glass above — the emissive glow attaches at placement.
+  if (eq.head === 'bulbHat') {
+    const zh = 17 + lift;
+    v.push(...cbox(2, lean, zh, 2, 2, 2, SPARK_COLORS.screw, MATERIALS.gunmetal));
+    for (let dx = 0; dx < 4; dx++) {
+      for (let dy = 0; dy < 4; dy++) {
+        for (let dz = 0; dz < 4; dz++) {
+          const corner =
+            (dx === 0 || dx === 3) && (dy === 0 || dy === 3) && (dz === 0 || dz === 3);
+          if (corner) continue;
+          const inner = dx > 0 && dx < 3 && dy > 0 && dy < 3 && dz < 3;
+          v.push({
+            x: 1 + dx,
+            y: lean - 1 + dy,
+            z: zh + 2 + dz,
+            c: inner ? shade(SPARK_COLORS.bulbGlass, 0.35) : SPARK_COLORS.bulbGlass,
+          });
+        }
+      }
+    }
+  }
 
   // Accessory flair (front views only — all tiny, all presentation).
   if (!back) {
@@ -492,25 +570,38 @@ const SPARK_POSES: SparkPoseId[] = [
   'brawl',
 ];
 
+/** Visual-slot part of an equipped map, as a stable texture-key chunk. */
+export function equipKey(eq: EquippedMap): string {
+  const visual = encodeEquipped({
+    head: eq.head,
+    back: eq.back,
+    jacket: eq.jacket,
+    tool: eq.tool,
+  });
+  return visual === '' ? 'none' : visual;
+}
+
 /**
- * Bake one appearance's full sprite set. Names are prefixed with the
- * appearance code: `spark@<code>-<dir>[-frame][-starterScarf|-pose-x]`.
- * Idempotent per name (bakeVoxelModel checks its registry), so re-baking a
- * code that's already live is free.
+ * Bake one (appearance, worn-cosmetics) combination's full sprite set.
+ * Names: `spark@<code>#<equipKey>-<dir>[-frame|-pose-x]`. Idempotent per
+ * name (bakeVoxelModel checks its registry), so re-baking a live combo is
+ * free — combos only bake for Sparks actually wearing them.
  *
- * previewOnly bakes just the SW idle — the creator re-bakes on every
- * option click and only needs the pedestal view.
+ * previewOnly bakes just the SW idle — the creator/wardrobe re-bakes on
+ * every option click and only needs the pedestal view.
  */
 export function bakeSparkAppearance(
   scene: Phaser.Scene,
   code: string,
-  opts: { previewOnly?: boolean } = {},
+  opts: { previewOnly?: boolean; equipped?: string } = {},
 ): void {
   const appearance = decodeAppearance(code) ?? DEFAULT_APPEARANCE;
+  const equipped = decodeEquipped(opts.equipped ?? '');
+  const key = `spark@${code}#${equipKey(equipped)}`;
   if (opts.previewOnly === true) {
     bakeVoxelModel(scene, {
-      name: `spark@${code}-sw`,
-      voxels: dirVoxels('sw', { frame: 'idle', appearance }),
+      name: `${key}-sw`,
+      voxels: dirVoxels('sw', { frame: 'idle', appearance, equipped }),
       warmRim: true,
       shadow: false,
     });
@@ -519,19 +610,17 @@ export function bakeSparkAppearance(
   for (const dir of SPARK_DIRS) {
     for (const frame of SPARK_FRAMES) {
       const frameSuffix = frame === 'idle' ? '' : `-${frame}`;
-      for (const scarf of [false, true]) {
-        bakeVoxelModel(scene, {
-          name: `spark@${code}-${dir}${frameSuffix}${scarf ? '-starterScarf' : ''}`,
-          voxels: dirVoxels(dir, { frame, scarf, appearance }),
-          warmRim: true,
-          shadow: false,
-        });
-      }
+      bakeVoxelModel(scene, {
+        name: `${key}-${dir}${frameSuffix}`,
+        voxels: dirVoxels(dir, { frame, appearance, equipped }),
+        warmRim: true,
+        shadow: false,
+      });
     }
     for (const pose of SPARK_POSES) {
       bakeVoxelModel(scene, {
-        name: `spark@${code}-${dir}-pose-${pose}`,
-        voxels: dirVoxels(dir, { frame: 'idle', pose, appearance }),
+        name: `${key}-${dir}-pose-${pose}`,
+        voxels: dirVoxels(dir, { frame: 'idle', pose, appearance, equipped }),
         warmRim: true,
         shadow: false,
       });

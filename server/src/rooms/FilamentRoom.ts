@@ -51,6 +51,12 @@ import {
   SPARK_NAME_RE,
 } from '@shared/appearance';
 import {
+  COSMETICS,
+  decodeEquipped,
+  encodeEquipped,
+  type EquippedMap,
+} from '@shared/cosmetics';
+import {
   CHAT_LIMITS,
   MSG,
   type AppearanceIntent,
@@ -78,6 +84,7 @@ import {
   type TradeSideView,
   type TravelIntent,
   type TradeIntent,
+  type WardrobeIntent,
   type UseItemIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
@@ -156,6 +163,16 @@ type Session =
       lockSeconds: number;
     };
 
+/** Pre-wardrobe characters: everything owned goes on (first id per slot). */
+function deriveInitialEquipped(owned: readonly string[]): EquippedMap {
+  const eq: EquippedMap = {};
+  for (const id of owned) {
+    const def = COSMETICS[id];
+    if (def !== undefined && eq[def.slot] === undefined) eq[def.slot] = id;
+  }
+  return eq;
+}
+
 /** Server-side per-player runtime (never synced). */
 interface PlayerRuntime {
   accountId: string;
@@ -178,6 +195,8 @@ interface PlayerRuntime {
   cosmetics: string[];
   /** Creator appearance code; '' until the first-login creator confirms. */
   appearance: string;
+  /** Worn wardrobe cosmetics by slot (validated against `cosmetics`). */
+  equipped: EquippedMap;
   hp: number;
   /** Set when the player pays the tram toll; persisted as the district. */
   pendingDistrict: DistrictId | null;
@@ -306,6 +325,9 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<AppearanceIntent>(MSG.appearance, (client, msg) => {
       void this.handleAppearance(client, msg);
     });
+    this.onMessage<WardrobeIntent>(MSG.wardrobe, (client, msg) =>
+      this.handleWardrobe(client, msg),
+    );
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
@@ -388,6 +410,15 @@ export class FilamentRoom extends Room<FilamentState> {
       quests: character.quests as QuestLog,
       cosmetics: character.cosmetics,
       appearance: character.appearance,
+      // '' = pre-wardrobe character: auto-equip everything owned (keeps
+      // old looks); 'none'/wire = the player's explicit choice.
+      equipped:
+        character.equipped === ''
+          ? deriveInitialEquipped(character.cosmetics)
+          : decodeEquipped(
+              character.equipped === 'none' ? '' : character.equipped,
+              character.cosmetics,
+            ),
       hp: CONFIG.combat.player.maxHp,
       pendingDistrict: null,
       healAcc: 0,
@@ -405,19 +436,13 @@ export class FilamentRoom extends Room<FilamentState> {
     ps.tileY = spawn.y;
     ps.hp = runtime.hp;
     ps.maxHp = CONFIG.combat.player.maxHp;
-    ps.cosmetic = runtime.cosmetics.includes('starterScarf') ? 'starterScarf' : '';
-    ps.trim = runtime.cosmetics.includes(CONFIG.charge.trimCosmetic)
-      ? CONFIG.charge.trimCosmetic
-      : '';
+    ps.equipped = encodeEquipped(runtime.equipped);
+    ps.trim = runtime.equipped.nameGlow ?? '';
     ps.appearance =
       runtime.appearance !== '' ? runtime.appearance : DEFAULT_APPEARANCE_CODE;
     this.state.players.set(client.sessionId, ps);
     // Identity snapshot: chosen=false pops the first-login creator.
-    client.send(MSG.identity, {
-      appearance: ps.appearance,
-      sparkName: runtime.sparkName,
-      chosen: runtime.appearance !== '',
-    } satisfies IdentityEvent);
+    client.send(MSG.identity, this.identitySnapshot(runtime));
     void this.deliverChargeAwards(client, runtime);
 
     client.send(MSG.inventory, this.inventorySync(runtime));
@@ -652,13 +677,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const rt = this.runtimes.get(client.sessionId);
     const ps = this.state.players.get(client.sessionId);
     if (rt === undefined || ps === undefined) return;
-    const fail = (error: string) =>
-      client.send(MSG.identity, {
-        appearance: ps.appearance,
-        sparkName: rt.sparkName,
-        chosen: rt.appearance !== '',
-        error,
-      } satisfies IdentityEvent);
+    const fail = (error: string) => client.send(MSG.identity, this.identitySnapshot(rt, error));
 
     const code = typeof msg.code === 'string' ? msg.code : '';
     if (decodeAppearance(code) === null) return fail('That look did not scan.');
@@ -681,11 +700,59 @@ export class FilamentRoom extends Room<FilamentState> {
       ps.sparkName = rename;
     }
     ps.appearance = code;
-    client.send(MSG.identity, {
-      appearance: code,
+    client.send(MSG.identity, this.identitySnapshot(rt));
+  }
+
+  private identitySnapshot(rt: PlayerRuntime, error?: string): IdentityEvent {
+    const base: IdentityEvent = {
+      appearance: rt.appearance !== '' ? rt.appearance : DEFAULT_APPEARANCE_CODE,
       sparkName: rt.sparkName,
-      chosen: true,
-    } satisfies IdentityEvent);
+      chosen: rt.appearance !== '',
+      owned: [...rt.cosmetics],
+      equipped: encodeEquipped(rt.equipped),
+    };
+    return error === undefined ? base : { ...base, error };
+  }
+
+  /**
+   * Grant an untradeable cosmetic (I3). The ONLY way cosmetics enter a
+   * wardrobe: quest rewards, the junk-heap beanie roll, the Tinkerbench
+   * brass-skin recipe, and Charge trims. Ledger-logged, auto-equipped into
+   * a free slot, persisted. Never gameplay, never tradeable, never drops.
+   */
+  private grantCosmetic(client: Client, rt: PlayerRuntime, id: string, source: string): boolean {
+    const def = COSMETICS[id];
+    if (def === undefined || rt.cosmetics.includes(id)) return false;
+    rt.cosmetics.push(id);
+    if (rt.equipped[def.slot] === undefined) {
+      rt.equipped[def.slot] = id;
+      this.applyEquipState(client.sessionId, rt);
+    }
+    ledger.log({
+      type: 'cosmetic',
+      account: rt.accountId,
+      data: { id, slot: def.slot, source },
+    });
+    client.send(MSG.notice, { text: `Wardrobe: ${def.label} is yours.` });
+    client.send(MSG.identity, this.identitySnapshot(rt));
+    void this.persist(rt);
+    return true;
+  }
+
+  private applyEquipState(sessionId: string, rt: PlayerRuntime): void {
+    const ps = this.state.players.get(sessionId);
+    if (ps === undefined) return;
+    ps.equipped = encodeEquipped(rt.equipped);
+    ps.trim = rt.equipped.nameGlow ?? '';
+  }
+
+  /** Full worn-state set from the wardrobe UI, validated against OWNED. */
+  private handleWardrobe(client: Client, msg: WardrobeIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined) return;
+    rt.equipped = decodeEquipped(String(msg.equipped ?? ''), rt.cosmetics);
+    this.applyEquipState(client.sessionId, rt);
+    void this.persist(rt);
   }
 
   private handleChat(client: Client, msg: ChatIntent): void {
@@ -886,11 +953,12 @@ export class FilamentRoom extends Room<FilamentState> {
       const awards = await charge.undeliveredAwards(rt.accountId);
       for (const award of awards) {
         if (this.runtimes.get(client.sessionId) !== rt) return;
-        if (!rt.cosmetics.includes(CONFIG.charge.trimCosmetic)) {
-          rt.cosmetics.push(CONFIG.charge.trimCosmetic);
-        }
-        const ps = this.state.players.get(client.sessionId);
-        if (ps !== undefined) ps.trim = CONFIG.charge.trimCosmetic;
+        this.grantCosmetic(
+          client,
+          rt,
+          CONFIG.charge.trimCosmetic,
+          `Citywide Charge rank ${award.rank}, week ${award.weekKey}`,
+        );
         await charge.markDelivered(award.id);
         client.send(MSG.notice, {
           text: `The city remembers: rank ${award.rank} on the week of ${award.weekKey}'s Citywide Charge — your name carries the glow.`,
@@ -1987,6 +2055,13 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     const recipe = recipeById(msg.recipeId);
     if (recipe === undefined) return;
+    const cosmeticId = recipe.output.startsWith('cosmetic:')
+      ? recipe.output.slice('cosmetic:'.length)
+      : null;
+    if (cosmeticId !== null && rt.cosmetics.includes(cosmeticId)) {
+      client.send(MSG.notice, { text: 'Your wardrobe already has that shine.' });
+      return;
+    }
     const missingBolts = recipe.bolts - rt.bolts;
     if (missingBolts > 0) {
       client.send(MSG.notice, { text: `That takes ${recipe.bolts} Bolts.` });
@@ -2005,6 +2080,18 @@ export class FilamentRoom extends Room<FilamentState> {
     // Consume, then grant.
     for (const [mid, qty] of Object.entries(recipe.materials)) {
       rt.pack = removeItem(rt.pack, mid as ItemId, qty).inv;
+    }
+    if (cosmeticId !== null) {
+      // Cosmetic recipe (I3): shine only, zero stats, untradeable.
+      rt.bolts -= recipe.bolts;
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'craft', recipeId: recipe.id, output: recipe.output, bolts: recipe.bolts, materials: recipe.materials },
+      });
+      this.grantCosmetic(client, rt, cosmeticId, 'crafted at the Tinkerbench');
+      client.send(MSG.inventory, this.inventorySync(rt));
+      return;
     }
     const add = addItem(rt.pack, recipe.output as ItemId, 1, CONFIG.inventory.stackMax);
     if (add.added < 1) {
@@ -2135,11 +2222,8 @@ export class FilamentRoom extends Room<FilamentState> {
         account: rt.accountId,
         data: { questId: def.id, bolts: def.rewards.bolts, cosmetic: def.rewards.cosmetic ?? null },
       });
-      if (def.rewards.cosmetic !== undefined && !rt.cosmetics.includes(def.rewards.cosmetic)) {
-        rt.cosmetics.push(def.rewards.cosmetic);
-        const ps = this.state.players.get(client.sessionId);
-        if (ps !== undefined) ps.cosmetic = def.rewards.cosmetic;
-        client.send(MSG.notice, { text: 'The Dispatch Scarf settles around your neck.' });
+      if (def.rewards.cosmetic !== undefined) {
+        this.grantCosmetic(client, rt, def.rewards.cosmetic, `quest: ${def.name}`);
       }
       client.send(MSG.quests, { log: rt.quests });
       client.send(MSG.inventory, this.inventorySync(rt));
@@ -2930,6 +3014,14 @@ export class FilamentRoom extends Room<FilamentState> {
         rareGranted = rare;
       }
     }
+    // The Alley Beanie (I3): a rare junk-heap COSMETIC roll — presentation
+    // only, untradeable, once ever, server-rolled like everything else.
+    if (ledgerData.kind === 'junkHeap') {
+      const rc = CONFIG.gathering.junkHeap.rareCosmetic;
+      if (!rt.cosmetics.includes(rc.id) && this.rng() < rc.chance) {
+        this.grantCosmetic(client, rt, rc.id, 'a rare find in a junk heap');
+      }
+    }
     this.wearActiveTool(client, rt);
     if (added > 0) {
       this.questProgress(client, rt, {
@@ -3005,6 +3097,7 @@ export class FilamentRoom extends Room<FilamentState> {
       cosmetics: rt.cosmetics,
       district,
       skills: rt.skills,
+      equipped: encodeEquipped(rt.equipped) === '' ? 'none' : encodeEquipped(rt.equipped),
     });
   }
 }
