@@ -10,7 +10,7 @@ import {
   type Inventory,
 } from '@shared/inventory';
 import { ITEMS, type ItemId } from '@shared/items';
-import { buildWorldMap, type WorldMap } from '@shared/map';
+import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
 import {
   amperiteStrikeYield,
   inSweetZone,
@@ -62,7 +62,9 @@ import {
   type CraftIntent,
   type DonateIntent,
   type QuestIntent,
+  type ReclaimIntent,
   type RepairIntent,
+  type TravelIntent,
   type TradeIntent,
   type UseItemIntent,
 } from '@shared/protocol';
@@ -73,7 +75,7 @@ import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
-import { FilamentState, LampState, MobState, NodeState, PlayerState } from './state.js';
+import { CacheState, FilamentState, LampState, MobState, NodeState, PlayerState } from './state.js';
 
 type Session =
   | {
@@ -139,6 +141,8 @@ interface PlayerRuntime {
   quests: QuestLog;
   cosmetics: string[];
   hp: number;
+  /** Set when the player pays the tram toll; persisted as the district. */
+  pendingDistrict: DistrictId | null;
   /** Fractional regen accumulator (hp stays an int on the wire). */
   healAcc: number;
   lastAttackAtMs: number;
@@ -149,9 +153,12 @@ interface PlayerRuntime {
   glintReactionsMs: number[];
 }
 
+type MobKind = 'scuttlebot' | 'junkhound';
+
 /** Server-side per-mob runtime (never synced). */
 interface MobRuntime {
   id: string;
+  kind: MobKind;
   home: TilePoint;
   move: MoveState;
   hp: number;
@@ -182,12 +189,24 @@ export class FilamentRoom extends Room<FilamentState> {
   private mobs = new Map<string, MobRuntime>();
   private lamps = new Map<string, { tile: TilePoint; owner: string; expiresAtMs: number }>();
   private lampSeq = 0;
+  protected districtId: DistrictId = 'filament';
+  private caches = new Map<
+    string,
+    {
+      tile: TilePoint;
+      ownerAccountId: string;
+      bolts: number;
+      stacks: Array<{ itemId: ItemId; qty: number }>;
+      expiresAtMs: number;
+    }
+  >();
+  private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
 
   onCreate(): void {
     this.state = new FilamentState();
-    this.map = buildWorldMap();
+    this.map = buildDistrictMap(this.districtId);
     this.grid = { size: this.map.size, walkable: this.map.walkable };
     for (const n of this.map.nodes) {
       this.state.nodes.set(String(n.id), new NodeState());
@@ -220,6 +239,8 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     this.onMessage<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
     this.onMessage<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
+    this.onMessage<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
+    this.onMessage<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
     void merchant.load();
 
     this.setSimulationInterval((dt) => this.tick(dt), 50);
@@ -238,10 +259,29 @@ export class FilamentRoom extends Room<FilamentState> {
       }
     }
     const character = await loadCharacter(auth.characterId);
+    // Joining a district you're not persisted in IS a tram ride: the toll
+    // is charged here too, so no client can dodge the sink by joining the
+    // room directly. The honest path (handleTravel) persists the new
+    // district BEFORE travelGo, so arrivals never pay twice.
+    let bolts = character.bolts;
+    if (character.district !== this.districtId) {
+      const toll = CONFIG.travel.tollBolts;
+      if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
+      bolts -= toll;
+      ledger.log({
+        type: 'spend',
+        account: auth.accountId,
+        data: { sink: 'tramToll', bolts: toll, to: this.districtId, via: 'join' },
+      });
+    }
+    const gate: TilePoint =
+      this.districtId === 'tangle' ? CONFIG.travel.tangleSpawn : CONFIG.player.spawn;
     const spawn: TilePoint =
-      character.tile !== null && this.map.walkable[character.tile.y]?.[character.tile.x] === true
+      character.district === this.districtId &&
+      character.tile !== null &&
+      this.map.walkable[character.tile.y]?.[character.tile.x] === true
         ? character.tile
-        : CONFIG.player.spawn;
+        : gate;
 
     const runtime: PlayerRuntime = {
       accountId: auth.accountId,
@@ -252,12 +292,13 @@ export class FilamentRoom extends Room<FilamentState> {
       hotbar: character.hotbar ?? makeStarterHotbar(),
       activeSlot: 0,
       skills: character.skills,
-      bolts: character.bolts,
+      bolts,
       dailySaleBolts: character.dailySaleBolts,
       dailySaleDate: character.dailySaleDate,
       quests: character.quests as QuestLog,
       cosmetics: character.cosmetics,
       hp: CONFIG.combat.player.maxHp,
+      pendingDistrict: null,
       healAcc: 0,
       lastAttackAtMs: 0,
       gatherTargetNode: null,
@@ -561,6 +602,7 @@ export class FilamentRoom extends Room<FilamentState> {
 
     this.tickMobs(dt);
     this.tickHealing(dt);
+    this.tickCaches();
 
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
@@ -612,7 +654,7 @@ export class FilamentRoom extends Room<FilamentState> {
 
   /** Mob death: poof, respawn clock, Brawling XP. NO Bolts, NO stack loot. */
   private downMob(m: MobRuntime, client: Client, rt: PlayerRuntime): void {
-    m.respawnAtMs = Date.now() + CONFIG.combat.scuttlebot.respawnSeconds * 1000;
+    m.respawnAtMs = Date.now() + this.mobCfg(m.kind).respawnSeconds * 1000;
     m.ai = 'idle';
     m.targetSessionId = null;
     this.state.mobs.delete(m.id);
@@ -621,11 +663,11 @@ export class FilamentRoom extends Room<FilamentState> {
       mobId: m.id,
       bySessionId: client.sessionId,
     });
-    this.grantXp(client, rt, 'brawling', CONFIG.combat.scuttlebot.xpBrawlingPerKill);
+    this.grantXp(client, rt, 'brawling', this.mobCfg(m.kind).xpBrawlingPerKill);
 
     // The ONLY drop of any kind: a rare Manifest trophy (server-rolled,
     // ledger-logged). Mobs never print Bolts or resources (golden rule 9).
-    if (this.rng() < CONFIG.combat.scuttlebot.trophyChance) {
+    if (this.rng() < this.mobCfg(m.kind).trophyChance) {
       const rr = addItem(rt.pack, 'dentedCrest', 1, CONFIG.inventory.stackMax);
       if (rr.added > 0) {
         rt.pack = rr.inv;
@@ -709,7 +751,11 @@ export class FilamentRoom extends Room<FilamentState> {
     for (const [sessionId, rt] of this.runtimes) {
       if (rt.hp <= 0 || rt.hp >= pc.maxHp) continue;
       let rate = 0;
-      if (chebyshev(rt.move.tile, plazaCenter) <= pc.dynamoHealRadiusTiles) {
+      // Only the Filament has the Dynamo's warmth; the Tangle heals nobody.
+      if (
+        this.districtId === 'filament' &&
+        chebyshev(rt.move.tile, plazaCenter) <= pc.dynamoHealRadiusTiles
+      ) {
         rate = pc.dynamoHealPerSecond;
       }
       for (const lamp of this.lamps.values()) {
@@ -1104,53 +1150,204 @@ export class FilamentRoom extends Room<FilamentState> {
     this.questProgress(client, rt, { type: 'donate', itemId: msg.itemId, qty });
   }
 
-  // ── mobs ────────────────────────────────────────────────────────────────
+  /** Tram travel between districts: a Bolts toll, then a room hop. */
+  private async handleTravel(client: Client, msg: TravelIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (msg.to !== 'filament' && msg.to !== 'tangle') return;
+    if (msg.to === this.districtId) return;
+    if (!this.nearProp(rt, 'tramgate', 4)) {
+      client.send(MSG.notice, { text: 'The tram leaves from the gate.' });
+      return;
+    }
+    const toll = CONFIG.travel.tollBolts;
+    if (rt.bolts < toll) {
+      client.send(MSG.notice, { text: `The tram toll is ${toll} Bolts.` });
+      return;
+    }
+    rt.bolts -= toll;
+    rt.pendingDistrict = msg.to;
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'tramToll', bolts: toll, to: msg.to },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    // Commit the new district BEFORE the go-ahead: the arrival room's join
+    // must see it (it charges the toll itself on any district mismatch).
+    await this.persist(rt);
+    client.send(MSG.travelGo, { to: msg.to });
+  }
 
-  /** Deterministic spawn seats: spaced walkable tiles in the home box. */
-  private spawnMobs(): void {
-    const cfg = CONFIG.combat.scuttlebot;
-    const seats: TilePoint[] = [];
-    for (let y = cfg.homeBox.y0; y <= cfg.homeBox.y1 && seats.length < cfg.count; y += 1) {
-      for (let x = cfg.homeBox.x0; x <= cfg.homeBox.x1 && seats.length < cfg.count; x += 1) {
-        if (this.map.walkable[y]?.[x] !== true) continue;
-        if (seats.some((s) => chebyshev(s, { x, y }) < 3)) continue;
-        seats.push({ x, y });
+  /**
+   * Tangle death: carried resources + Bolts drop into a Scrapcache the
+   * owner can reclaim within the window for a small fee. Equipped gear
+   * (the hotbar) NEVER drops; nothing but the five resources leaves the
+   * Pack. Filament death stays free (handled by the caller).
+   */
+  private dropScrapcache(rt: PlayerRuntime, tile: TilePoint): void {
+    const RESOURCES: ItemId[] = ['salvage', 'brass', 'amperite', 'glowkoi', 'signal'];
+    const stacks: Array<{ itemId: ItemId; qty: number }> = [];
+    for (const res of RESOURCES) {
+      const have = rt.pack.slots.reduce(
+        (acc, sl) => (sl !== null && sl.itemId === res ? acc + sl.qty : acc),
+        0,
+      );
+      if (have > 0) {
+        stacks.push({ itemId: res, qty: have });
+        rt.pack = removeItem(rt.pack, res, have).inv;
       }
     }
-    seats.forEach((seat, i) => {
-      const id = `mob-${i}`;
-      this.mobs.set(id, {
-        id,
-        home: { ...seat },
-        move: makeMoveState(seat),
-        hp: cfg.maxHp,
-        ai: 'idle',
-        targetSessionId: null,
-        windupElapsed: 0,
-        cooldownRemaining: 0,
-        wanderWait: 1 + (i % 3),
-        repathWait: 0,
-        respawnAtMs: null,
-      });
-      this.state.mobs.set(id, this.makeMobState(seat, cfg.maxHp));
+    const bolts = rt.bolts;
+    rt.bolts = 0;
+    if (stacks.length === 0 && bolts <= 0) return;
+    const id = `cache-${this.cacheSeq++}`;
+    this.caches.set(id, {
+      tile: { ...tile },
+      ownerAccountId: rt.accountId,
+      bolts,
+      stacks,
+      expiresAtMs: Date.now() + CONFIG.tangle.scrapcache.windowSeconds * 1000,
+    });
+    const cs = new CacheState();
+    cs.tileX = tile.x;
+    cs.tileY = tile.y;
+    this.state.caches.set(id, cs);
+    ledger.log({
+      type: 'trade',
+      account: rt.accountId,
+      data: { side: 'scrapcacheDrop', cacheId: id, bolts, stacks },
     });
   }
 
-  private makeMobState(tile: TilePoint, hp: number): MobState {
+  /** Owner reclaims a Scrapcache for the config fee (from its Bolts). */
+  private handleReclaim(client: Client, msg: ReclaimIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0 || typeof msg.cacheId !== 'string') return;
+    const cache = this.caches.get(msg.cacheId);
+    if (cache === undefined) return;
+    if (cache.ownerAccountId !== rt.accountId) {
+      client.send(MSG.notice, { text: 'That Scrapcache is not yours to open.' });
+      return;
+    }
+    if (chebyshev(rt.move.tile, cache.tile) > 2) {
+      client.send(MSG.notice, { text: 'Step up to your Scrapcache.' });
+      return;
+    }
+    const fee = Math.min(CONFIG.tangle.scrapcache.reclaimFeeBolts, cache.bolts);
+    rt.bolts += cache.bolts - fee;
+    for (const stack of cache.stacks) {
+      rt.pack = addItem(rt.pack, stack.itemId, stack.qty, CONFIG.inventory.stackMax).inv;
+    }
+    this.caches.delete(msg.cacheId);
+    this.state.caches.delete(msg.cacheId);
+    ledger.log({
+      type: 'trade',
+      account: rt.accountId,
+      data: {
+        side: 'scrapcacheReclaim',
+        cacheId: msg.cacheId,
+        boltsReturned: cache.bolts - fee,
+        feeBolts: fee,
+        stacks: cache.stacks,
+      },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    client.send(MSG.notice, {
+      text: `Scrapcache reclaimed (${fee} Bolts handling fee).`,
+    });
+  }
+
+  /** Expire abandoned Scrapcaches (their contents sink for good). */
+  private tickCaches(): void {
+    const now = Date.now();
+    for (const [id, cache] of this.caches) {
+      if (now < cache.expiresAtMs) continue;
+      this.caches.delete(id);
+      this.state.caches.delete(id);
+      ledger.log({
+        type: 'spend',
+        account: cache.ownerAccountId,
+        data: { sink: 'scrapcacheExpired', cacheId: id, bolts: cache.bolts, stacks: cache.stacks },
+      });
+    }
+  }
+
+  // ── mobs ────────────────────────────────────────────────────────────────
+
+  /** Per-kind mob tuning (junkhounds share the scuttlebot brain). */
+  private mobCfg(kind: MobKind): typeof CONFIG.combat.scuttlebot {
+    return kind === 'junkhound'
+      ? (CONFIG.junkhound as unknown as typeof CONFIG.combat.scuttlebot)
+      : CONFIG.combat.scuttlebot;
+  }
+
+  /** Deterministic spawn seats: spaced walkable tiles in the home box. */
+  private spawnMobs(): void {
+    const packs: Array<{ kind: MobKind; count: number; box: { x0: number; y0: number; x1: number; y1: number } }> =
+      this.districtId === 'tangle'
+        ? [
+            {
+              kind: 'scuttlebot',
+              count: CONFIG.tangle.scuttlebotCount,
+              box: CONFIG.tangle.scuttlebotHomeBox,
+            },
+            { kind: 'junkhound', count: CONFIG.junkhound.count, box: CONFIG.junkhound.homeBox },
+          ]
+        : [
+            {
+              kind: 'scuttlebot',
+              count: CONFIG.combat.scuttlebot.count,
+              box: CONFIG.combat.scuttlebot.homeBox,
+            },
+          ];
+    let seq = 0;
+    for (const pack of packs) {
+      const seats: TilePoint[] = [];
+      for (let y = pack.box.y0; y <= pack.box.y1 && seats.length < pack.count; y += 1) {
+        for (let x = pack.box.x0; x <= pack.box.x1 && seats.length < pack.count; x += 1) {
+          if (this.map.walkable[y]?.[x] !== true) continue;
+          if (seats.some((s) => chebyshev(s, { x, y }) < 3)) continue;
+          seats.push({ x, y });
+        }
+      }
+      const cfg = this.mobCfg(pack.kind);
+      for (const seat of seats) {
+        const id = `mob-${seq++}`;
+        this.mobs.set(id, {
+          id,
+          kind: pack.kind,
+          home: { ...seat },
+          move: makeMoveState(seat),
+          hp: cfg.maxHp,
+          ai: 'idle',
+          targetSessionId: null,
+          windupElapsed: 0,
+          cooldownRemaining: 0,
+          wanderWait: 1 + (seq % 3),
+          repathWait: 0,
+          respawnAtMs: null,
+        });
+        this.state.mobs.set(id, this.makeMobState(pack.kind, seat, cfg.maxHp));
+      }
+    }
+  }
+
+  private makeMobState(kind: MobKind, tile: TilePoint, hp: number): MobState {
     const ms = new MobState();
-    ms.kind = 'scuttlebot';
+    ms.kind = kind;
     ms.tileX = tile.x;
     ms.tileY = tile.y;
     ms.hp = hp;
-    ms.maxHp = CONFIG.combat.scuttlebot.maxHp;
+    ms.maxHp = this.mobCfg(kind).maxHp;
     ms.ai = 'idle';
     return ms;
   }
 
   private tickMobs(dt: number): void {
-    const cfg = CONFIG.combat.scuttlebot;
     const now = Date.now();
     for (const m of this.mobs.values()) {
+      const cfg = this.mobCfg(m.kind);
       // Dead: wait out the respawn clock, then pop back at home.
       if (m.respawnAtMs !== null) {
         if (now >= m.respawnAtMs) {
@@ -1160,7 +1357,7 @@ export class FilamentRoom extends Room<FilamentState> {
           m.move = makeMoveState(m.home);
           m.targetSessionId = null;
           m.cooldownRemaining = 0;
-          this.state.mobs.set(m.id, this.makeMobState(m.home, m.hp));
+          this.state.mobs.set(m.id, this.makeMobState(m.kind, m.home, m.hp));
         }
         continue;
       }
@@ -1295,7 +1492,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const rt = this.runtimes.get(sessionId);
     const ps = this.state.players.get(sessionId);
     if (rt === undefined || ps === undefined || rt.hp <= 0) return;
-    const dmg = CONFIG.combat.scuttlebot.contactDamage;
+    const dmg = this.mobCfg(m.kind).contactDamage;
     rt.hp = Math.max(0, rt.hp - dmg);
     ps.hp = rt.hp;
     this.broadcast(MSG.combat, {
@@ -1317,7 +1514,15 @@ export class FilamentRoom extends Room<FilamentState> {
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client !== undefined) this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
-    const spawn = CONFIG.combat.player.respawnTile;
+    // Tangle death has teeth: carried resources + Bolts drop where you
+    // fell. The Filament stays free (Game Bible B7 cozy death).
+    if (this.districtId === 'tangle') {
+      this.dropScrapcache(rt, rt.move.tile);
+      // The drop emptied the pockets — tell the owner right away.
+      if (client !== undefined) client.send(MSG.inventory, this.inventorySync(rt));
+    }
+    const spawn =
+      this.districtId === 'tangle' ? CONFIG.travel.tangleSpawn : CONFIG.combat.player.respawnTile;
     rt.move = makeMoveState(spawn);
     rt.hp = CONFIG.combat.player.maxHp;
     ps.tileX = spawn.x;
@@ -1723,8 +1928,17 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private async persist(rt: PlayerRuntime): Promise<void> {
+    const district = rt.pendingDistrict ?? this.districtId;
+    // A tram rider's saved tile belongs to the ORIGIN district's geometry —
+    // persist the destination gate instead so arrivals step off the tram.
+    const tile =
+      district === this.districtId
+        ? rt.move.tile
+        : district === 'tangle'
+          ? CONFIG.travel.tangleSpawn
+          : CONFIG.player.spawn;
     await persistCharacter(rt.characterId, {
-      tile: rt.move.tile,
+      tile,
       pack: rt.pack,
       hotbar: rt.hotbar,
       bolts: rt.bolts,
@@ -1732,7 +1946,7 @@ export class FilamentRoom extends Room<FilamentState> {
       dailySaleDate: rt.dailySaleDate,
       quests: rt.quests,
       cosmetics: rt.cosmetics,
-      district: 'filament',
+      district,
       skills: rt.skills,
     });
   }

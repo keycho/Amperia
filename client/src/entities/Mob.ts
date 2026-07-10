@@ -23,14 +23,24 @@ export class Mob {
   private windupTween: Phaser.Tweens.Tween | null = null;
   private baseScaleY: number;
 
-  constructor(scene: Phaser.Scene, id: string, tile: TilePoint, hp: number, maxHp: number) {
+  private readonly kind: string;
+
+  constructor(
+    scene: Phaser.Scene,
+    id: string,
+    kind: string,
+    tile: TilePoint,
+    hp: number,
+    maxHp: number,
+  ) {
     this.scene = scene;
     this.id = id;
+    this.kind = kind;
     this.tile = { ...tile };
     this.hp = hp;
     this.maxHp = maxHp;
     const { x, y } = tileToWorld(tile.x, tile.y);
-    this.image = addVoxelSprite(scene, 'scuttlebot-feral', x, y);
+    this.image = addVoxelSprite(scene, kind === 'junkhound' ? 'junkhound' : 'scuttlebot-feral', x, y);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
     this.baseScaleY = this.image.scaleY;
@@ -66,7 +76,10 @@ export class Mob {
       targets: this.image,
       x: to.x,
       y: to.y,
-      duration: CONFIG.combat.scuttlebot.moveSecondsPerTile * 1000,
+      duration:
+        (this.kind === 'junkhound'
+          ? CONFIG.junkhound.moveSecondsPerTile
+          : CONFIG.combat.scuttlebot.moveSecondsPerTile) * 1000,
       ease: 'linear',
       onUpdate: () => this.sync(),
       onComplete: () => {
@@ -98,7 +111,10 @@ export class Mob {
         targets: this.eye,
         alpha: 1,
         scale: 0.085,
-        duration: CONFIG.combat.scuttlebot.windupSeconds * 1000,
+        duration:
+          (this.kind === 'junkhound'
+            ? CONFIG.junkhound.windupSeconds
+            : CONFIG.combat.scuttlebot.windupSeconds) * 1000,
         ease: 'quad.in',
       });
     } else if (was === 'windup') {

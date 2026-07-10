@@ -227,6 +227,43 @@ export const CONFIG = {
   },
 
   /**
+   * Districts + tram travel. The Tangle is the first dangerous district:
+   * darker, denser nodes, more bots, and Scrapcache death rules. The tram
+   * toll is a recurring Bolts sink (golden rule 9).
+   */
+  travel: {
+    tollBolts: 5,
+    /** Tangle gate + arrival tile. */
+    tangleSpawn: { x: 4, y: 20 },
+  },
+  tangle: {
+    /** Node-count multipliers over the Filament config counts. */
+    nodeMult: { junkHeap: 1.6, brassSeam: 1.5, amperite: 1.6 },
+    antennaCount: 2,
+    scuttlebotCount: 7,
+    scuttlebotHomeBox: { x0: 11, y0: 11, x1: 28, y1: 28 },
+    /** Scrapcache death rules (Tangle only; the Filament stays free). */
+    scrapcache: {
+      windowSeconds: 300,
+      reclaimFeeBolts: 10,
+    },
+  },
+  junkhound: {
+    count: 3,
+    maxHp: 22,
+    contactDamage: 4,
+    moveSecondsPerTile: 0.24,
+    aggroRadiusTiles: 4,
+    leashRadiusTiles: 9,
+    windupSeconds: 0.5,
+    attackCooldownSeconds: 1.2,
+    respawnSeconds: 30,
+    xpBrawlingPerKill: 26,
+    trophyChance: 0.03,
+    homeBox: { x0: 14, y0: 14, x1: 25, y1: 25 },
+  },
+
+  /**
    * Quests (server-tracked; copy follows the comms rules — quests REWARD,
    * never "earn"). The tutorial chain teaches the whole core loop; dailies
    * repeat under a per-day cap.

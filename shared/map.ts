@@ -42,7 +42,10 @@ export interface GatherNode {
   y: number;
 }
 
+export type DistrictId = 'filament' | 'tangle';
+
 export interface WorldMap {
+  district: DistrictId;
   size: number;
   /** walkable[y][x] — true = a Spark can stand here. */
   walkable: boolean[][];
@@ -482,7 +485,139 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     },
   );
 
-  return { size, walkable, canal, props, nodes, plaza };
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza };
+}
+
+/**
+ * THE TANGLE — wire-maze outskirts (first dangerous district): container
+ * walls form broken corridor rings around a scrap heart; darker and
+ * sparser-lit than the Filament, with denser junk/brass/amperite and no
+ * canal, plaza, or Dynamo warmth. PvE only.
+ */
+export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap {
+  const size = CONFIG.map.size;
+  const rng: Rng = makeRng(seed);
+  const walkable: boolean[][] = Array.from({ length: size }, () => Array(size).fill(true));
+  const canal: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const props: Prop[] = [];
+  const nodes: GatherNode[] = [];
+  // No plaza: radius -1 disables ring/heal-zone logic downstream.
+  const plaza = { cx: 3, cy: 20, radius: -1 };
+
+  const place = (kind: PropKind, x: number, y: number, w = 1, h = 1, variant = 0) => {
+    const p: Prop = { kind, x, y, w, h, variant };
+    props.push(p);
+    blockFootprint(walkable, p);
+  };
+
+  // The return Tramgate on the west edge (arrivals from the Filament).
+  place('tramgate', 1, 18, 2, 5);
+
+  // Corridor rings: container wall runs with gaps — a maze you can read.
+  const wallRun = (x0: number, y0: number, dx: number, dy: number, len: number, gapEvery: number) => {
+    for (let i = 0; i < len; i++) {
+      if (i % gapEvery === gapEvery - 1) continue; // the gap
+      const x = x0 + dx * i;
+      const y = y0 + dy * i;
+      if (walkable[y]?.[x] !== true) continue;
+      // Straight runs of containers read as wire-maze walls.
+      place('block', x, y, 1, 1, randInt(rng, 0, 2));
+    }
+  };
+  // Outer ring (leaves the west gate approach open).
+  wallRun(8, 8, 1, 0, 24, 7);
+  wallRun(8, 31, 1, 0, 24, 6);
+  wallRun(8, 9, 0, 1, 10, 5);
+  wallRun(8, 24, 0, 1, 7, 5);
+  wallRun(31, 9, 0, 1, 22, 6);
+  // Inner ring around the scrap heart.
+  wallRun(14, 14, 1, 0, 12, 5);
+  wallRun(14, 25, 1, 0, 12, 4);
+  wallRun(14, 15, 0, 1, 10, 4);
+  wallRun(25, 15, 0, 1, 10, 5);
+
+  // Sparse light: four alleylamps mark the corridor turns — that's all.
+  for (const [lx, ly] of [
+    [10, 19],
+    [20, 10],
+    [29, 20],
+    [20, 29],
+  ] as const) {
+    if (walkable[ly]?.[lx] === true) place('alleylamp', lx, ly);
+  }
+
+  // Two salvage shacks squat in the maze (landmarks, lit windows).
+  for (const [sx, sy, v] of [
+    [5, 6, 1],
+    [33, 32, 2],
+  ] as const) {
+    if (isAreaFree(walkable, sx, sy, 2, 2)) place('shack', sx, sy, 2, 2, v);
+  }
+
+  // Wire clutter: denser than the Filament fringe, everywhere off the
+  // gate approach; the free-ring rule keeps every pocket reachable.
+  const clutterTarget = Math.floor(size * size * 0.03);
+  let placed = 0;
+  let attempts = 0;
+  while (placed < clutterTarget && attempts < clutterTarget * 80) {
+    attempts++;
+    const x = randInt(rng, 2, size - 3);
+    const y = randInt(rng, 2, size - 3);
+    if (Math.abs(y - 20) <= 1 && x <= 8) continue; // gate approach stays open
+    if (rng() > 0.5) continue;
+    if (!isAreaFree(walkable, x, y, 1, 1)) continue;
+    const kind: PropKind = rng() < 0.5 ? 'crate' : 'block';
+    place(kind, x, y, 1, 1, kind === 'block' && rng() < 0.8 ? randInt(rng, 0, 2) : 3);
+    placed++;
+  }
+
+  // Nodes: denser junk/brass/amperite; a couple of antennas; no koi.
+  const g = CONFIG.gathering;
+  const mult = CONFIG.tangle.nodeMult;
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'junkHeap',
+    Math.round(g.junkHeap.nodeCount * mult.junkHeap),
+    g.junkHeap.minNodeSpacing,
+    { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
+    (x, y) => !(Math.abs(y - 20) <= 1 && x <= 8),
+  );
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'brassSeam',
+    Math.round(g.brassSeam.nodeCount * mult.brassSeam),
+    g.brassSeam.minNodeSpacing,
+    { x0: 9, y0: 9, x1: size - 8, y1: size - 8 },
+  );
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'amperite',
+    Math.round(g.amperite.nodeCount * mult.amperite),
+    g.amperite.minNodeSpacing,
+    { x0: 13, y0: 13, x1: 27, y1: 27 },
+  );
+  scatterNodes(
+    rng,
+    walkable,
+    nodes,
+    'antenna',
+    CONFIG.tangle.antennaCount,
+    g.antenna.minNodeSpacing,
+    { x0: 3, y0: 3, x1: size - 4, y1: size - 4 },
+    (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6,
+  );
+
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza };
+}
+
+export function buildDistrictMap(district: DistrictId): WorldMap {
+  return district === 'tangle' ? buildTangleMap() : buildWorldMap();
 }
 
 /** Flood-fill reachability from a start tile (4-directional). */

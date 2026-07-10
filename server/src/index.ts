@@ -6,6 +6,7 @@ import cors from 'cors';
 import express from 'express';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { FilamentRoom } from './rooms/FilamentRoom.js';
+import { TangleRoom } from './rooms/TangleRoom.js';
 
 const PORT = Number(process.env.PORT ?? 2567);
 
@@ -55,6 +56,7 @@ const gameServer = new Server({
 });
 
 gameServer.define('filament', FilamentRoom);
+gameServer.define('tangle', TangleRoom);
 
 httpServer.listen(PORT, () => {
   console.log(`[amperia] server listening on :${PORT} — keep the city lit`);

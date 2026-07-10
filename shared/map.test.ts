@@ -1,6 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type NodeKind } from './config';
-import { buildWorldMap, reachableTiles } from './map';
+import { buildTangleMap, buildWorldMap, reachableTiles } from './map';
+
+describe('buildTangleMap', () => {
+  const tangle = buildTangleMap();
+
+  it('is deterministic and marked as the tangle', () => {
+    expect(buildTangleMap().props).toEqual(tangle.props);
+    expect(tangle.district).toBe('tangle');
+  });
+
+  it('has denser junk/brass/amperite than the Filament config counts', () => {
+    const count = (k: string) => tangle.nodes.filter((n) => n.kind === k).length;
+    expect(count('junkHeap')).toBeGreaterThan(CONFIG.gathering.junkHeap.nodeCount);
+    expect(count('brassSeam')).toBeGreaterThan(CONFIG.gathering.brassSeam.nodeCount);
+    expect(count('amperite')).toBeGreaterThan(CONFIG.gathering.amperite.nodeCount);
+    expect(count('glowkoi')).toBe(0);
+  });
+
+  it('every walkable tile is reachable from the tangle gate', () => {
+    const spawn = CONFIG.travel.tangleSpawn;
+    expect(tangle.walkable[spawn.y]?.[spawn.x]).toBe(true);
+    const reached = reachableTiles(tangle, spawn.x, spawn.y);
+    let walkableCount = 0;
+    for (const row of tangle.walkable) for (const w of row) if (w) walkableCount++;
+    expect(reached.size).toBe(walkableCount);
+  });
+});
 
 describe('buildWorldMap', () => {
   const map = buildWorldMap();

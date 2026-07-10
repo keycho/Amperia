@@ -1,4 +1,5 @@
 import { Client, getStateCallbacks, type Room } from 'colyseus.js';
+import type { DistrictId } from '@shared/map';
 import { MSG } from '@shared/protocol';
 import type {
   AttackIntent,
@@ -6,8 +7,10 @@ import type {
   CraftIntent,
   DonateIntent,
   QuestIntent,
+  ReclaimIntent,
   RepairIntent,
   TradeIntent,
+  TravelIntent,
   UseItemIntent,
   GatherIntent,
   GlintClickIntent,
@@ -25,6 +28,8 @@ export interface AuthResponse {
   token: string;
   sparkName: string;
   email: string | null;
+  /** Last persisted district — rejoin the Spark where they left off. */
+  district: DistrictId;
 }
 
 async function authPost(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
@@ -46,14 +51,21 @@ export const auth = {
 };
 
 export const TOKEN_KEY = 'amperia.token';
+/** Mirrors the Spark's district so a stored-token resume rejoins it. */
+export const DISTRICT_KEY = 'amperia.district';
 
-/** Live connection to the Filament district. */
+export function rememberedDistrict(): DistrictId {
+  return localStorage.getItem(DISTRICT_KEY) === 'tangle' ? 'tangle' : 'filament';
+}
+
+/** Live connection to a district room (Filament, Tangle, …). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Colyseus schema state is runtime-typed; access goes through getStateCallbacks proxies.
 export type FilamentRoom = Room<any>;
 
-export async function joinFilament(token: string): Promise<FilamentRoom> {
+/** Join a district room by id — rooms are registered under their district. */
+export async function joinDistrict(token: string, district: DistrictId): Promise<FilamentRoom> {
   const client = new Client(SERVER_URL);
-  return client.joinOrCreate('filament', { token });
+  return client.joinOrCreate(district, { token });
 }
 
 export { getStateCallbacks, MSG };
@@ -72,6 +84,8 @@ export const send = {
   repair: (room: FilamentRoom, msg: RepairIntent) => room.send(MSG.repair, msg),
   quest: (room: FilamentRoom, msg: QuestIntent) => room.send(MSG.quest, msg),
   donate: (room: FilamentRoom, msg: DonateIntent) => room.send(MSG.donate, msg),
+  travel: (room: FilamentRoom, msg: TravelIntent) => room.send(MSG.travel, msg),
+  reclaim: (room: FilamentRoom, msg: ReclaimIntent) => room.send(MSG.reclaim, msg),
   selectSlot: (room: FilamentRoom, msg: SelectSlotIntent) => room.send(MSG.selectSlot, msg),
   moveStack: (room: FilamentRoom, msg: MoveStackIntent) => room.send(MSG.moveStack, msg),
   chat: (room: FilamentRoom, msg: ChatIntent) => room.send(MSG.chat, msg),

@@ -50,6 +50,12 @@ export class NodeState extends Schema {
 }
 defineTypes(NodeState, { depleted: 'boolean' });
 
+export class CacheState extends Schema {
+  tileX = 0;
+  tileY = 0;
+}
+defineTypes(CacheState, { tileX: 'int16', tileY: 'int16' });
+
 export class LampState extends Schema {
   tileX = 0;
   tileY = 0;
@@ -64,10 +70,13 @@ export class FilamentState extends Schema {
   mobs = new MapSchema<MobState>();
   /** Keyed by lamp id. */
   lamps = new MapSchema<LampState>();
+  /** Keyed by cache id (Tangle Scrapcaches). */
+  caches = new MapSchema<CacheState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
   nodes: { map: NodeState },
   mobs: { map: MobState },
   lamps: { map: LampState },
+  caches: { map: CacheState },
 });

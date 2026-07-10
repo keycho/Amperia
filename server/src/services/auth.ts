@@ -25,6 +25,8 @@ export interface AuthResult {
   token: string;
   sparkName: string;
   email: string | null;
+  /** Last persisted district — the client rejoins the Spark where they left. */
+  district: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -69,6 +71,7 @@ async function createAccountWithCharacter(
     token: signToken({ accountId: account.id, characterId: character.id }),
     sparkName: character.sparkName,
     email: account.email,
+    district: character.district,
   };
 }
 
@@ -111,6 +114,7 @@ export async function loginEmail(email: string, password: string): Promise<AuthR
     token: signToken({ accountId: account.id, characterId: account.character.id }),
     sparkName: account.character.sparkName,
     email: account.email,
+    district: account.character.district,
   };
 }
 

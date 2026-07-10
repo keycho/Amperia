@@ -23,6 +23,9 @@ export const MSG = {
   quest: 'quest',
   quests: 'quests',
   donate: 'donate',
+  travel: 'travel',
+  travelGo: 'travelGo',
+  reclaim: 'reclaim',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -201,6 +204,27 @@ export interface DonateIntent {
 /** Server → player: the full personal quest log. */
 export interface QuestsSync {
   log: Record<string, { state: string; progress: number; day?: string }>;
+}
+
+/** Player → server: ride the tram to another district (Bolts toll). */
+export interface TravelIntent {
+  to: 'filament' | 'tangle';
+}
+
+/** Server → player: leave this room and join the named district. */
+export interface TravelGo {
+  to: 'filament' | 'tangle';
+}
+
+/** Player → server: reclaim your Scrapcache (owner-only, small fee). */
+export interface ReclaimIntent {
+  cacheId: string;
+}
+
+/** Mirror of the synced CacheState schema (client-side typing only). */
+export interface CacheStateShape {
+  tileX: number;
+  tileY: number;
 }
 
 export interface SkillsSync {

@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
-import { buildWorldMap, type Prop, type WorldMap } from '@shared/map';
+import { buildDistrictMap, type DistrictId, type Prop, type WorldMap } from '@shared/map';
 import { MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
 import type {
+  CacheStateShape,
   ChatBroadcast,
   CombatEvent,
   EmoteBroadcast,
@@ -24,6 +25,7 @@ import type {
   QuestsSync,
   NodeStateShape,
   PlayerStateShape,
+  TravelGo,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
@@ -47,8 +49,9 @@ import {
   worldToTileFloor,
 } from '../iso/project';
 import {
+  DISTRICT_KEY,
   getStateCallbacks,
-  joinFilament,
+  joinDistrict,
   MSG,
   send,
   TOKEN_KEY,
@@ -85,9 +88,11 @@ export class WorldScene extends Phaser.Scene {
   private sparks = new Map<string, Spark>();
   private mobs = new Map<string, Mob>();
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
+  private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
   private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
+  private district: DistrictId = 'filament';
   private dynamoWorld = { x: 0, y: 0 };
   private stallsWorld = { x: 0, y: 0 };
   private spatialAt = 0;
@@ -97,12 +102,25 @@ export class WorldScene extends Phaser.Scene {
     super('world');
   }
 
-  init(data: { token?: string }): void {
-    this.token = data.token ?? '';
+  init(data: { token?: string; district?: DistrictId }): void {
+    this.token = data.token ?? this.token;
+    this.district = data.district ?? 'filament';
+    // Scene restarts (tram travel) reuse this instance: field initializers
+    // don't re-run, so the entity maps still point at destroyed objects.
+    this.nodes = new Map();
+    this.sparks = new Map();
+    this.mobs = new Map();
+    this.lampViews = new Map();
+    this.cacheViews = new Map();
+    this.ambientBots = [];
+    this.room = null;
+    this.dynamoWorld = { x: 0, y: 0 };
+    this.stallsWorld = { x: 0, y: 0 };
+    this.activeSessionNode = null;
   }
 
   create(): void {
-    this.map = buildWorldMap();
+    this.map = buildDistrictMap(this.district);
     makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
@@ -176,13 +194,22 @@ export class WorldScene extends Phaser.Scene {
 
   private async connect(): Promise<void> {
     try {
-      const room = await joinFilament(this.token);
+      const room = await joinDistrict(this.token, this.district);
       this.bindRoom(room);
       this.connectingText?.destroy();
       this.connectingText = null;
     } catch (err) {
+      // A remembered district can go stale (or its toll be short) — fall
+      // back to the Filament once before treating the token as bad.
+      if (this.district !== 'filament') {
+        console.warn('[net] district join failed — riding home instead', err);
+        localStorage.setItem(DISTRICT_KEY, 'filament');
+        this.scene.restart({ token: this.token, district: 'filament' });
+        return;
+      }
       console.error('[net] join failed', err);
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(DISTRICT_KEY);
       this.scene.stop('ui');
       this.scene.start('login');
     }
@@ -211,6 +238,10 @@ export class WorldScene extends Phaser.Scene {
       lamps: {
         onAdd(cb: (l: LampStateShape, id: string) => void): void;
         onRemove(cb: (l: LampStateShape, id: string) => void): void;
+      };
+      caches: {
+        onAdd(cb: (c: CacheStateShape, id: string) => void): void;
+        onRemove(cb: (c: CacheStateShape, id: string) => void): void;
       };
     }
     const proxy = getStateCallbacks(room) as unknown as (o: unknown) => EntityProxy;
@@ -255,7 +286,7 @@ export class WorldScene extends Phaser.Scene {
     });
 
     $state.mobs.onAdd((m: MobStateShape, id: string) => {
-      const mob = new Mob(this, id, { x: m.tileX, y: m.tileY }, m.hp, m.maxHp);
+      const mob = new Mob(this, id, m.kind, { x: m.tileX, y: m.tileY }, m.hp, m.maxHp);
       this.mobs.set(id, mob);
       const mp = proxy(m);
       mp.listen('tileX', () => mob.moveTo({ x: m.tileX, y: m.tileY }));
@@ -300,6 +331,22 @@ export class WorldScene extends Phaser.Scene {
 
     $state.lamps.onAdd((l: LampStateShape, id: string) => this.addLamp(id, l));
     $state.lamps.onRemove((_l: LampStateShape, id: string) => this.removeLamp(id));
+
+    $state.caches.onAdd((c: CacheStateShape, id: string) => this.addCache(id, c));
+    $state.caches.onRemove((_c: CacheStateShape, id: string) => this.removeCache(id));
+
+    // The tram accepted the toll: hop rooms and rebuild the scene there.
+    room.onMessage(MSG.travelGo, (e: TravelGo) => {
+      const to: DistrictId = e.to === 'tangle' ? 'tangle' : 'filament';
+      localStorage.setItem(DISTRICT_KEY, to);
+      session.events.emit(
+        SessionEvents.notice,
+        to === 'tangle' ? 'The tram rattles out into the Tangle…' : 'Homeward — the Filament glow ahead.',
+      );
+      void room.leave().finally(() => {
+        this.scene.restart({ token: this.token, district: to });
+      });
+    });
 
     room.onMessage(MSG.moveAccepted, (e: MoveAcceptedEvent) => {
       const spark = this.sparks.get(e.sessionId);
@@ -386,7 +433,68 @@ export class WorldScene extends Phaser.Scene {
       this.room = null;
     });
 
-    this.scene.launch('ui');
+    // Tram hops restart this scene while the HUD stays up — relaunching an
+    // active scene would tear it down and strand its event subscriptions.
+    if (!this.scene.isActive('ui')) this.scene.launch('ui');
+  }
+
+  /**
+   * A fallen Spark's Scrapcache: rust chest + rose claim-beacon. Clicking
+   * walks up and asks the server to reclaim (owner-only; it decides).
+   */
+  private addCache(id: string, c: CacheStateShape): void {
+    const { x, y } = tileToWorld(c.tileX, c.tileY);
+    const img = addVoxelSprite(this, 'scrapcache', x, y);
+    img.setDepth(depthForWorldY(y));
+    img.setInteractive({ useHandCursor: true });
+    img.on(
+      'pointerdown',
+      (
+        pointer: Phaser.Input.Pointer,
+        _lx: number,
+        _ly: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        if (!pointer.leftButtonDown() || this.room === null) return;
+        event.stopPropagation();
+        const me = this.sparks.get(this.room.sessionId);
+        if (me === undefined) return;
+        const d = Math.max(
+          Math.abs(me.settledTile.x - c.tileX),
+          Math.abs(me.settledTile.y - c.tileY),
+        );
+        if (d > 2) {
+          const step = this.nearestAdjacentWalkable({ x: c.tileX, y: c.tileY }, me.settledTile);
+          if (step !== null) send.move(this.room, step);
+          return;
+        }
+        send.reclaim(this.room, { cacheId: id });
+      },
+    );
+    const beacon = this.add.image(x, y - 30, 'fx-glow');
+    beacon.setTint(PALETTE_INT.neonRose);
+    beacon.setBlendMode(Phaser.BlendModes.ADD);
+    beacon.setScale(0.09);
+    beacon.setAlpha(bloom(0.7));
+    beacon.setDepth(depthForWorldY(y) + 1);
+    addFlicker(this, beacon, bloom(0.7), 0.12);
+    img.setScale(img.scaleX, 0.01);
+    this.tweens.add({ targets: img, scaleY: 0.5, duration: 240, ease: 'back.out' });
+    this.cacheViews.set(id, [img, beacon]);
+  }
+
+  private removeCache(id: string): void {
+    const parts = this.cacheViews.get(id);
+    this.cacheViews.delete(id);
+    if (parts === undefined) return;
+    for (const part of parts) {
+      this.tweens.add({
+        targets: part,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => part.destroy(),
+      });
+    }
   }
 
   /** A placed Heatlamp: voxel post + flickering glow + its own pool. */
@@ -733,7 +841,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateHoverMarker(): void {
-    if (this.hoverMarker === undefined) {
+    if (this.hoverMarker === undefined || !this.hoverMarker.active) {
       this.hoverMarker = this.add.image(0, 0, 'tex-tile-marker');
       this.hoverMarker.setScale(TEX_SCALE);
       this.hoverMarker.setAlpha(0.4);
@@ -830,11 +938,14 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Floor-fix §1: per-tile baked diamonds — the zone material changes
-        // read the district layout; no drawn gridlines anywhere.
-        const inLane = ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
-        const onBoardwalk = tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
-        const inPlaza = plazaDist <= plaza.radius;
-        const onStepRing = plazaDist === plaza.radius;
+        // read the district layout; no drawn gridlines anywhere. The Tangle
+        // keeps only the industrial zones: plating fringe, asphalt maze.
+        const isTangle = this.map.district === 'tangle';
+        const inLane = !isTangle && ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
+        const onBoardwalk =
+          !isTangle && tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
+        const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
+        const onStepRing = plaza.radius > 0 && plazaDist === plaza.radius;
         const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
         const rugVariant = rugTiles.get(ty * size + tx);
         let kind: FloorKind;
@@ -845,7 +956,7 @@ export class WorldScene extends Phaser.Scene {
         } else if (inLane || onBoardwalk) kind = 'deck';
         else if (onStepRing) kind = 'paverLight';
         else if (inPlaza) kind = 'paver';
-        else if (distToEdgeT <= 6 || (tx >= 27 && ty >= 28)) kind = 'plating';
+        else if (distToEdgeT <= 6 || (!isTangle && tx >= 27 && ty >= 28)) kind = 'plating';
         else kind = 'asphalt';
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(0.5);
@@ -1137,6 +1248,43 @@ export class WorldScene extends Phaser.Scene {
           const wt = worldSpriteTint();
           if (wt !== null) img.setTint(wt);
           img.setDepth(depthForWorldY(y));
+          // Ride the tram: click sends the travel intent (server checks the
+          // gate distance and takes the Bolts toll before the hop).
+          const dest: DistrictId = this.district === 'filament' ? 'tangle' : 'filament';
+          const destName = dest === 'tangle' ? 'the Tangle' : 'the Filament';
+          img.setInteractive({ useHandCursor: true });
+          img.on(
+            'pointerdown',
+            (
+              pointer: Phaser.Input.Pointer,
+              _lx: number,
+              _ly: number,
+              event: Phaser.Types.Input.EventData,
+            ) => {
+              if (!pointer.leftButtonDown() || this.room === null) return;
+              event.stopPropagation();
+              const me = this.sparks.get(this.room.sessionId);
+              if (me === undefined) return;
+              const d = Math.max(
+                Math.abs(me.settledTile.x - p.x),
+                Math.abs(me.settledTile.y - p.y),
+              );
+              if (d > 4) {
+                floatText(this, img.x, img.y - 70, 'the tram leaves from the gate', PALETTE.warmGlow);
+                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y + 2 }, me.settledTile);
+                if (step !== null) send.move(this.room, step);
+                return;
+              }
+              floatText(
+                this,
+                img.x,
+                img.y - 70,
+                `to ${destName} — ${CONFIG.travel.tollBolts} Bolts`,
+                PALETTE.neonAmber,
+              );
+              send.travel(this.room, { to: dest });
+            },
+          );
           // Sign glow over the lane + beacon + arrival pool of light.
           const sign = this.add.image(x - 26, y - 84, 'fx-glow');
           sign.setTint(PALETTE_INT.neonAmber);
@@ -1513,6 +1661,7 @@ export class WorldScene extends Phaser.Scene {
    */
   private spawnAmbientBots(): void {
     const { cx, cy, radius } = this.map.plaza;
+    if (radius <= 0) return; // no plaza (the Tangle) — no pottering decor bots
     const seats: Array<[number, number]> = [
       [cx + radius - 1, cy - 3],
       [cx - radius + 2, cy + 4],
@@ -1540,6 +1689,7 @@ export class WorldScene extends Phaser.Scene {
    * gatherable Glowkoi spots are separate server-owned nodes.
    */
   private placeCanalLife(): void {
+    if (!this.map.canal.some((row) => row.includes(true))) return; // no coolant here
     const cv = CONFIG.canal;
     const bridgeRows = cv.bridgeRows as readonly number[];
     const segments: Array<[number, number]> = [];

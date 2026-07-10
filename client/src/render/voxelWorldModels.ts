@@ -335,6 +335,41 @@ function wardenModel(): Voxel[] {
   return v;
 }
 
+// ── Junkhound (the Tangle's fast biter) + Scrapcache ──────────────────────
+
+function junkhoundModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Four gunmetal legs.
+  for (const [lx, ly] of [
+    [1, 0],
+    [1, 3],
+    [6, 0],
+    [6, 3],
+  ] as const) {
+    v.push(...mbox(lx, ly, 0, 1, 1, 2, MATERIALS.gunmetalDeep));
+  }
+  // Long rusty body with a salvaged plate saddle.
+  v.push(...mbox(0, 0, 2, 8, 4, 3, MATERIALS.rust));
+  v.push(...mbox(2, 1, 5, 4, 2, 1, MATERIALS.gunmetal));
+  // Head forward (+x) with jaw + rose eye; stub tail behind.
+  v.push(...mbox(8, 1, 3, 2, 2, 2, MATERIALS.rustDeep));
+  v.push({ x: 9, y: 2, z: 4, c: PALETTE_INT.neonRose });
+  v.push(...mbox(8, 1, 2, 2, 2, 1, MATERIALS.gunmetalDeep)); // jaw
+  v.push({ x: 0, y: 2, z: 5, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+  return v;
+}
+
+function scrapcacheModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // A dropped pack: rusty chest with a rose claim-marker.
+  v.push(...mbox(0, 0, 0, 5, 4, 3, MATERIALS.rustDeep));
+  v.push(...mbox(0, 0, 3, 5, 4, 1, MATERIALS.rust));
+  v.push({ x: 2, y: 3, z: 2, c: PALETTE_INT.neonRose });
+  v.push(...mbox(4, 0, 4, 1, 1, 2, MATERIALS.gunmetal)); // marker post
+  v.push({ x: 4, y: 0, z: 6, c: PALETTE_INT.neonRose });
+  return v;
+}
+
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
@@ -434,4 +469,6 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'tinkerbench', voxels: tinkerbenchModel() });
   bakeVoxelModel(scene, { name: 'dispatcher', voxels: dispatcherModel() });
   bakeVoxelModel(scene, { name: 'warden', voxels: wardenModel() });
+  bakeVoxelModel(scene, { name: 'junkhound', voxels: junkhoundModel() });
+  bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
 }
