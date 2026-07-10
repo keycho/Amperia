@@ -65,6 +65,18 @@ You will **not** build tall walkable skyscrapers. Height is implied, and the pla
 
 Flat ground is a *feature* here: it's what makes the game legible enough to enjoy every day.
 
+> **§5 AMENDMENT (districts block, 2026-07-10 — binding, arrived with The
+> Stacks brief in §12B):** tall structures **may exist as blocking world
+> objects — never interiors**. The camera never enters a building; a tower
+> is a very large prop. Walkable levels may ride **+2/+3 via the elevation
+> system** (terraces, rooflines, stair runs) — the *ground the player walks*
+> remains flat planes connected by ramps, exactly as R4 built them. And the
+> price of height: **anything that can occlude the player requires
+> occlusion fade** (the structure drops to ~35% opacity while it stands
+> between the camera and your Spark or the hovered tile, restoring when
+> clear). Verticality is now real where a district's fantasy demands it —
+> readability still wins every collision.
+
 ## 6. Characters & mobs
 
 - **Chunky, readable voxel/sprite** figures with strong silhouettes and a warm rim-light so they always pop off the ground.
@@ -181,6 +193,67 @@ same-sized props in ANY district. The brief defines:
   clusters as cool light sources in the dark, the crane beacon's slow
   rose blink on top. Corners and dead ends genuinely dark. Corridor
   floors: cracked asphalt + plating, with real wall shadows.
+
+### The Stacks — district brief (the vertical quarter)
+
+- **FANTASY:** the dense residential canyon where Sparks LIVE, stacked to
+  the sky — laundry between towers, a thousand lit windows, the city's
+  tallest antenna blinking over everything. Looking UP is the show.
+- **(a) Dominant hue:** warm window-light (amber/cream `#FFD9A0`/`#FFB84D`)
+  on gunmetal-and-painted-panel tower bodies. Accents: **violet neon
+  `#B266FF` EARNS ITS HOME HERE — exactly one licensed sign per street**,
+  the premium color at last living somewhere; **signal red `#C0392B` only
+  as the Spire's slow crown beacon**; teal stays interactable-only; rose
+  stays sparse (a curtain, a balcony cloth). No hazard-amber stripes —
+  this is where people live, not where cargo dies.
+- **(b) XL landmark:** **THE SIGNAL SPIRE** — the city's tallest antenna
+  tower, a lattice mast rising past every roofline with a slow red beacon
+  at the crown, visible from every street. Navigation, identity, and the
+  reason the Roofline's Signal is the best in the city.
+- **(c) Mass hierarchy:** XL = the Spire + the tower walls themselves
+  (5–9 stories, 3–4 designs × material/paint variants — **every roofline
+  distinct**: water tanks, antenna clusters, tarp shanties, one rooftop
+  garden) · L = street-level shopfronts and stair blocks · M = balconies,
+  AC boxes, laundry lines, planters · S = cables, pots, pigeon-bots,
+  window boxes. §12B(e) shape mix binds here doubly: towers are boxes by
+  nature, so their SKYLINES and street furniture carry the variety.
+- **(d) Light plan:** canyon streets run DARKER than the Filament at
+  ground level — the towers eat the sky — lit by window-glow spill and
+  shop signs, not lamp posts. Hundreds of lit windows on a slow
+  light/dim cycle are the district's texture. The overhead layer is the
+  densest in the city (laundry, cable webs, banners). The Citywide
+  Charge hook scales WINDOW DENSITY here: festival week turns the whole
+  quarter blazing.
+- **(f) Verticality license (per the §5 amendment):** towers are blocking
+  world objects, never interiors; the ROOFLINE terrace walks at +3 via
+  elevation; every tower and the Spire participate in occlusion fade.
+
+### The Terrarium — district brief (the hanging-garden tier)
+
+- **FANTASY:** the city grows its greens overhead — terraced gardens on
+  built decking, vines OWNING the trellises, glow-fruit for lanterns.
+  The gentlest district; still night, never a lawn.
+- **(a) Dominant hue:** solar green `#7BC59A` + warm wood `#9A8574` on
+  plum structure. Greenery is INFRASTRUCTURE (planters, vine walls,
+  hanging gardens) — the ground stays decking and terraces per Part I §1;
+  grass never touches the floor. Accents: **warm glow-fruit clusters**
+  (amber-through-green) as the district's lamps; teal only on irrigation
+  valves and interactables; NO violet, NO signal red, no hazard stripes.
+- **(b) XL landmark:** the **MOTHER TRELLIS** — a towering vine-wrapped
+  irrigation frame, glow-fruit strung through its lattice, drip-lines
+  feeding every terrace below. The district's heart and its light source.
+- **(c) Mass hierarchy:** XL = the Mother Trellis · L = terraced garden
+  platforms (three stepped elevation levels) and Loftpod berths · M =
+  planter rows, tool sheds, compost drums, Loftpods themselves · S =
+  pots, watering cans, seed trays, firefly motes.
+- **(d) Light plan:** the softest in the city — warm-green firefly motes
+  drifting, glow-fruit clusters on the Trellis and terrace edges, warm
+  window spill from the pods. No neon signage at all; the Terrarium is
+  what the market quarter dreams about. Charge hook: fruit clusters
+  brighten with the meter.
+- **(e) Housing note (§10.8):** the Terrarium is the housing showroom —
+  Loftpod berths get generous sightlines and catwalk-grade light so a
+  decorated pod reads across the terrace.
 
 ## 12. Build notes for this addendum
 
