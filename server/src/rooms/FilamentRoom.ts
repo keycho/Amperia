@@ -65,6 +65,8 @@ import {
   type QuestIntent,
   type ReclaimIntent,
   type RepairIntent,
+  type ShopIntent,
+  type ShopSyncEvent,
   type TradeEndEvent,
   type TradeSideView,
   type TravelIntent,
@@ -85,9 +87,18 @@ import {
 } from '@shared/trade';
 import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
+import { shops, type StallView } from '../services/shops.js';
 import { verifyToken } from '../services/auth.js';
 import { loadCharacter, persistCharacter } from '../services/persistence.js';
-import { CacheState, FilamentState, LampState, MobState, NodeState, PlayerState } from './state.js';
+import {
+  CacheState,
+  FilamentState,
+  LampState,
+  MobState,
+  NodeState,
+  PlayerState,
+  StallState,
+} from './state.js';
 
 type Session =
   | {
@@ -238,6 +249,7 @@ export class FilamentRoom extends Room<FilamentState> {
   private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
+  private stallTicker = 0;
   /** Live trade windows, by trade id. */
   private trades = new Map<string, PlayerTradeState>();
   /** sessionId → tradeId for anyone in (or invited to) a trade. */
@@ -280,6 +292,10 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<PlayerTradeIntent>(MSG.ptrade, (client, msg) =>
       this.handlePlayerTrade(client, msg),
     );
+    this.onMessage<ShopIntent>(MSG.shop, (client, msg) => {
+      void this.handleShop(client, msg);
+    });
+    if (this.map.shopStalls.length > 0) void this.loadStalls();
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
@@ -371,6 +387,9 @@ export class FilamentRoom extends Room<FilamentState> {
     client.send(MSG.skills, { xp: runtime.skills });
     client.send(MSG.prices, { buy: merchant.prices(Date.now()) });
     client.send(MSG.quests, { log: runtime.quests });
+    // Stall mail: expired-stall returns + the "sold while you were away"
+    // toast (Filament only — the stalls live on this lane).
+    if (this.map.shopStalls.length > 0) void this.deliverShopMail(client, runtime);
     this.broadcast(
       MSG.notice,
       { text: `${character.sparkName} stepped off the tram.` },
@@ -678,6 +697,21 @@ export class FilamentRoom extends Room<FilamentState> {
     if (this.persistTicker >= 30_000) {
       this.persistTicker = 0;
       for (const rt of this.runtimes.values()) void this.persist(rt);
+    }
+
+    // Stall rent sweep (~every 60s): lapsed stalls vacate even if nobody
+    // touches them, so the lane never shows a dead shingle for long.
+    if (this.map.shopStalls.length > 0) {
+      this.stallTicker += dtMs;
+      if (this.stallTicker >= 60_000) {
+        this.stallTicker = 0;
+        void shops
+          .getAll(Date.now())
+          .then((views) => {
+            for (const v of views) this.refreshStallState(v);
+          })
+          .catch((err) => console.error('[shops] sweep failed', err));
+      }
     }
   }
 
@@ -1321,6 +1355,365 @@ export class FilamentRoom extends Room<FilamentState> {
     if (tradeId === undefined) return;
     const trade = this.trades.get(tradeId);
     if (trade !== undefined) this.endTrade(trade, outcome, text);
+  }
+
+  // ── player shop stalls (E2) ─────────────────────────────────────────────
+
+  /** Boot the stall rows + synced shingles (Filament market lane only). */
+  private async loadStalls(): Promise<void> {
+    try {
+      await shops.ensureRows(this.map.shopStalls.length);
+      for (const v of await shops.getAll(Date.now())) this.refreshStallState(v);
+    } catch (err) {
+      console.error('[shops] load failed', err);
+    }
+  }
+
+  /** Mirror a stall's public face (shingle + counter goods) into state. */
+  private refreshStallState(v: StallView): void {
+    let st = this.state.stalls.get(String(v.id));
+    if (st === undefined) {
+      st = new StallState();
+      this.state.stalls.set(String(v.id), st);
+    }
+    st.ownerName = v.ownerName;
+    st.goods = v.stock
+      .slice(0, 3)
+      .map((l) => l.itemId)
+      .join(',');
+  }
+
+  /** Chebyshev reach to the nearest tile of the stall's footprint. */
+  private nearStallSpot(rt: PlayerRuntime, stallId: number): boolean {
+    const spot = this.map.shopStalls.find((s) => s.id === stallId);
+    if (spot === undefined) return false;
+    let best = Number.MAX_SAFE_INTEGER;
+    for (let dy = 0; dy < spot.h; dy++) {
+      for (let dx = 0; dx < spot.w; dx++) {
+        best = Math.min(best, chebyshev(rt.move.tile, { x: spot.x + dx, y: spot.y + dy }));
+      }
+    }
+    return best <= CONFIG.economy.shops.reachTiles;
+  }
+
+  private sendShopSync(client: Client, v: StallView, rt: PlayerRuntime): void {
+    const mine = v.ownerAccountId === rt.accountId;
+    const payload: ShopSyncEvent = {
+      stallId: v.id,
+      ownerName: v.ownerName,
+      mine,
+      rentPaidUntilMs: v.rentPaidUntilMs,
+      stock: v.stock,
+      cashboxBolts: mine ? v.cashboxBolts : 0,
+    };
+    client.send(MSG.shopSync, payload);
+  }
+
+  /** Re-read a stall, refresh its shingle, and answer the asking client. */
+  private async replyStall(client: Client, rt: PlayerRuntime, stallId: number): Promise<void> {
+    const v = await shops.get(stallId, Date.now());
+    this.refreshStallState(v);
+    if (this.runtimes.get(client.sessionId) === rt) this.sendShopSync(client, v, rt);
+  }
+
+  /**
+   * Shop stall intents. The pattern for every value movement: mutate the
+   * LIVE runtime synchronously first (deduct Bolts / remove goods), then
+   * await the guarded DB step, and refund the runtime if it refused —
+   * the single-threaded room makes the synchronous half atomic, and the
+   * version guard makes the DB half safe across room instances.
+   */
+  private async handleShop(client: Client, msg: ShopIntent): Promise<void> {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (!Number.isInteger(msg.stallId)) return;
+    if (!this.nearStallSpot(rt, msg.stallId)) {
+      client.send(MSG.notice, { text: 'Step up to the stall first.' });
+      return;
+    }
+    const now = Date.now();
+    const notice = (text: string) => client.send(MSG.notice, { text });
+
+    switch (msg.action) {
+      case 'browse': {
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'rent': {
+        const rent = CONFIG.economy.shops.rentBoltsPerWeek;
+        if (rt.bolts < rent) {
+          notice(`A week at this stall costs ${rent} Bolts.`);
+          return;
+        }
+        rt.bolts -= rent;
+        const err = await shops.rent(msg.stallId, rt.accountId, rt.sparkName, now);
+        if (err !== null) {
+          rt.bolts += rent;
+          notice(err);
+          return;
+        }
+        // Rent is DESTROYED — a real recurring sink (golden rule 9).
+        ledger.log({
+          type: 'spend',
+          account: rt.accountId,
+          data: { sink: 'stallRent', stallId: msg.stallId, bolts: rent },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        notice('The stall is yours for the week — hang your shingle.');
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'renew': {
+        const rent = CONFIG.economy.shops.rentBoltsPerWeek;
+        if (rt.bolts < rent) {
+          notice(`Another week costs ${rent} Bolts.`);
+          return;
+        }
+        rt.bolts -= rent;
+        const err = await shops.renew(msg.stallId, rt.accountId, now);
+        if (err !== null) {
+          rt.bolts += rent;
+          notice(err);
+          return;
+        }
+        ledger.log({
+          type: 'spend',
+          account: rt.accountId,
+          data: { sink: 'stallRent', stallId: msg.stallId, bolts: rent, renewal: true },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        notice('Rent paid ahead — the shingle stays up.');
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'stock': {
+        if (!Number.isInteger(msg.slot) || !Number.isInteger(msg.qty) || msg.qty <= 0) return;
+        const slot = rt.pack.slots[msg.slot];
+        if (slot === null || slot === undefined) {
+          notice('Nothing in that Pack slot.');
+          return;
+        }
+        if (!itemIsTradeable(slot.itemId)) {
+          notice('Regalia never goes on sale.');
+          return;
+        }
+        // Snapshot + remove from the pack synchronously (escrow starts now).
+        const isGear = slot.durability !== undefined;
+        const qty = isGear ? 1 : Math.min(msg.qty, slot.qty);
+        const line = {
+          itemId: slot.itemId,
+          qty,
+          priceBolts: Math.floor(Number(msg.priceBolts)),
+          ...(isGear ? { durability: slot.durability } : {}),
+        };
+        if (isGear) rt.pack.slots[msg.slot] = null;
+        else rt.pack = removeItem(rt.pack, slot.itemId, qty).inv;
+        const err = await shops.stock(msg.stallId, rt.accountId, line, now);
+        if (err !== null) {
+          // Hand it back (the pack can't have filled — we just emptied it).
+          if (isGear) {
+            const back = rt.pack.slots[msg.slot];
+            if (back === null) rt.pack.slots[msg.slot] = { itemId: line.itemId, qty: 1, durability: line.durability };
+            else rt.pack = addItem(rt.pack, line.itemId, 1, CONFIG.inventory.stackMax).inv;
+          } else {
+            rt.pack = addItem(rt.pack, line.itemId, qty, CONFIG.inventory.stackMax).inv;
+          }
+          notice(err);
+          client.send(MSG.inventory, this.inventorySync(rt));
+          return;
+        }
+        // Escrow move, not a sale yet: conservation row for the dashboard.
+        ledger.log({
+          type: 'trade',
+          account: rt.accountId,
+          data: { side: 'stallStock', stallId: msg.stallId, itemId: line.itemId, qty: line.qty, priceBolts: line.priceBolts },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'unstock': {
+        if (!Number.isInteger(msg.lineIdx) || !Number.isInteger(msg.qty)) return;
+        const r = await shops.unstock(msg.stallId, rt.accountId, msg.lineIdx, msg.qty, now);
+        if ('error' in r) {
+          notice(r.error);
+          return;
+        }
+        if (this.runtimes.get(client.sessionId) !== rt) return;
+        const add = addItem(rt.pack, r.taken.itemId, r.taken.qty, CONFIG.inventory.stackMax);
+        rt.pack = add.inv;
+        if (add.overflow > 0) {
+          // Pack filled mid-flight: park the rest in the mailbox, no loss.
+          await shops.parkOverflow(
+            rt.accountId,
+            [{ itemId: r.taken.itemId, qty: add.overflow, ...(r.taken.durability === undefined ? {} : { durability: r.taken.durability }) }],
+            'unstockOverflow',
+          );
+          notice('Your Pack filled up — the rest waits for your next visit.');
+        }
+        ledger.log({
+          type: 'trade',
+          account: rt.accountId,
+          data: { side: 'stallUnstock', stallId: msg.stallId, itemId: r.taken.itemId, qty: r.taken.qty },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'setPrice': {
+        if (!Number.isInteger(msg.lineIdx)) return;
+        const err = await shops.setPrice(
+          msg.stallId,
+          rt.accountId,
+          msg.lineIdx,
+          Math.floor(Number(msg.priceBolts)),
+          now,
+        );
+        if (err !== null) notice(err);
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+
+      case 'buy': {
+        if (!Number.isInteger(msg.lineIdx) || !Number.isInteger(msg.qty) || msg.qty <= 0) return;
+        // Quote from the current stock, take the Bolts synchronously, then
+        // let the guarded DB step settle it. Any mismatch refunds in full.
+        const before = await shops.get(msg.stallId, now);
+        if (this.runtimes.get(client.sessionId) !== rt) return;
+        const line = before.stock[msg.lineIdx];
+        if (line === undefined) {
+          notice('That shelf just emptied.');
+          await this.replyStall(client, rt, msg.stallId);
+          return;
+        }
+        const qty = Math.min(msg.qty, line.qty);
+        const quoted = line.priceBolts * qty;
+        if (rt.bolts < quoted) {
+          notice(`That costs ${quoted} Bolts.`);
+          return;
+        }
+        rt.bolts -= quoted;
+        const r = await shops.buy(msg.stallId, rt.accountId, msg.lineIdx, qty, now);
+        const stillHere = this.runtimes.get(client.sessionId) === rt;
+        if ('error' in r || r.gross !== quoted) {
+          rt.bolts += quoted;
+          if (!('error' in r)) {
+            // Price changed under us: undo the sale we just made.
+            await shops.stock(msg.stallId, before.ownerAccountId ?? '', r.bought, now);
+          }
+          if (stillHere) {
+            notice('error' in r ? r.error : 'The price just changed — look again.');
+            await this.replyStall(client, rt, msg.stallId);
+          }
+          return;
+        }
+        const add = addItem(rt.pack, r.bought.itemId, r.bought.qty, CONFIG.inventory.stackMax);
+        rt.pack = add.inv;
+        if (r.bought.durability !== undefined) {
+          // Gear travels with its wear: stamp it onto the slot just added.
+          for (let i = rt.pack.slots.length - 1; i >= 0; i--) {
+            const s = rt.pack.slots[i];
+            if (s !== null && s !== undefined && s.itemId === r.bought.itemId) {
+              s.durability = r.bought.durability;
+              break;
+            }
+          }
+        }
+        if (add.overflow > 0) {
+          await shops.parkOverflow(
+            rt.accountId,
+            [{ itemId: r.bought.itemId, qty: add.overflow, ...(r.bought.durability === undefined ? {} : { durability: r.bought.durability }) }],
+            'buyOverflow',
+          );
+          if (stillHere) notice('Your Pack filled up — the rest waits for your next visit.');
+        }
+        if (stillHere) {
+          client.send(MSG.inventory, this.inventorySync(rt));
+          notice(`Bought ${r.bought.qty} ${ITEMS[r.bought.itemId].name} for ${r.gross} Bolts.`);
+          await this.replyStall(client, rt, msg.stallId);
+        }
+        return;
+      }
+
+      case 'collect': {
+        const r = await shops.collect(msg.stallId, rt.accountId, now);
+        if ('error' in r) {
+          notice(r.error);
+          return;
+        }
+        if (this.runtimes.get(client.sessionId) !== rt) return;
+        rt.bolts += r.bolts;
+        // Conservation: cashbox → pocket (the sale rows already ledgered).
+        ledger.log({
+          type: 'trade',
+          account: rt.accountId,
+          data: { side: 'shopCollect', stallId: msg.stallId, bolts: r.bolts },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        notice(`${r.bolts} Bolts from the cashbox, warm from the till.`);
+        await this.replyStall(client, rt, msg.stallId);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Login mail: expired-stall returns + overflow parcels land in the pack,
+   * and an owner with away-sales gets the "sold while you were away" toast.
+   * Applied to the live runtime BEFORE the mailbox row settles, so a crash
+   * can at worst re-deliver — never lose goods.
+   */
+  private async deliverShopMail(client: Client, rt: PlayerRuntime): Promise<void> {
+    try {
+      const mail = await shops.returnsFor(rt.accountId);
+      for (const parcel of mail) {
+        if (this.runtimes.get(client.sessionId) !== rt) return;
+        rt.bolts += parcel.bolts;
+        const leftover: typeof parcel.stock = [];
+        for (const item of parcel.stock) {
+          const add = addItem(rt.pack, item.itemId, item.qty, CONFIG.inventory.stackMax);
+          rt.pack = add.inv;
+          if (item.durability !== undefined && add.added > 0) {
+            for (let i = rt.pack.slots.length - 1; i >= 0; i--) {
+              const s = rt.pack.slots[i];
+              if (s !== null && s !== undefined && s.itemId === item.itemId) {
+                s.durability = item.durability;
+                break;
+              }
+            }
+          }
+          if (add.overflow > 0) {
+            leftover.push({ itemId: item.itemId, qty: add.overflow, ...(item.durability === undefined ? {} : { durability: item.durability }) });
+          }
+        }
+        ledger.log({
+          type: 'trade',
+          account: rt.accountId,
+          data: { side: 'stallReturnDelivered', bolts: parcel.bolts, stock: parcel.stock, reason: parcel.reason },
+        });
+        await shops.settleReturn(parcel.id, leftover);
+        client.send(MSG.inventory, this.inventorySync(rt));
+        client.send(MSG.notice, {
+          text:
+            parcel.reason === 'rentExpired'
+              ? `Your stall's rent ran out while you were away — the goods${parcel.bolts > 0 ? ' and cashbox' : ''} came back to you.`
+              : 'A parcel that could not fit before found its way to your Pack.',
+        });
+      }
+      const own = await shops.ownedBy(rt.accountId, Date.now());
+      if (own !== null && own.awaySaleBolts > 0 && this.runtimes.get(client.sessionId) === rt) {
+        client.send(MSG.notice, {
+          text: `Sold while you were away: ${own.awaySaleBolts} Bolts of goods — collect at your stall.`,
+        });
+      }
+    } catch (err) {
+      console.error('[shops] mail delivery failed', err);
+    }
   }
 
   /** Consumables from the Pack (Warmcup now; Cellwax lands with durability). */

@@ -62,6 +62,17 @@ export class LampState extends Schema {
 }
 defineTypes(LampState, { tileX: 'int16', tileY: 'int16' });
 
+/**
+ * A rentable shop stall's public face: the shingle name and up to three
+ * stocked item ids (comma-joined) rendered as counter goods. Prices and
+ * quantities go per-client via shopSync — never broadcast state.
+ */
+export class StallState extends Schema {
+  ownerName = '';
+  goods = '';
+}
+defineTypes(StallState, { ownerName: 'string', goods: 'string' });
+
 export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
   /** Keyed by node id (stringified). */
@@ -72,6 +83,8 @@ export class FilamentState extends Schema {
   lamps = new MapSchema<LampState>();
   /** Keyed by cache id (Tangle Scrapcaches). */
   caches = new MapSchema<CacheState>();
+  /** Keyed by stall id (Filament market lane only). */
+  stalls = new MapSchema<StallState>();
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
@@ -79,4 +92,5 @@ defineTypes(FilamentState, {
   mobs: { map: MobState },
   lamps: { map: LampState },
   caches: { map: CacheState },
+  stalls: { map: StallState },
 });

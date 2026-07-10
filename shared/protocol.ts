@@ -30,6 +30,8 @@ export const MSG = {
   tradeAsk: 'tradeAsk',
   tradeSync: 'tradeSync',
   tradeEnd: 'tradeEnd',
+  shop: 'shop',
+  shopSync: 'shopSync',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -266,6 +268,41 @@ export interface TradeEndEvent {
   tradeId: string;
   outcome: 'completed' | 'declined' | 'cancelled' | 'timeout' | 'disconnected' | 'failed';
   text: string;
+}
+
+/**
+ * Player → server: shop stall actions (E2). Stocking references PACK slots
+ * (the server snapshots the goods itself); everything else references the
+ * stall's stock lines by index as last synced.
+ */
+export type ShopIntent =
+  | { action: 'browse'; stallId: number }
+  | { action: 'rent'; stallId: number }
+  | { action: 'renew'; stallId: number }
+  | { action: 'stock'; stallId: number; slot: number; qty: number; priceBolts: number }
+  | { action: 'unstock'; stallId: number; lineIdx: number; qty: number }
+  | { action: 'setPrice'; stallId: number; lineIdx: number; priceBolts: number }
+  | { action: 'buy'; stallId: number; lineIdx: number; qty: number }
+  | { action: 'collect'; stallId: number };
+
+/** Server → the asking client: one stall's full detail for the shop panel. */
+export interface ShopSyncEvent {
+  stallId: number;
+  ownerName: string;
+  /** True when the asking Spark rents this stall (owner view). */
+  mine: boolean;
+  /** Epoch ms the rent runs out (null = vacant). */
+  rentPaidUntilMs: number | null;
+  stock: Array<{ itemId: ItemId; qty: number; priceBolts: number; durability?: number }>;
+  /** Owner view only: uncollected sale proceeds. */
+  cashboxBolts: number;
+}
+
+/** Mirror of the synced StallState schema (client-side typing only). */
+export interface StallStateShape {
+  ownerName: string;
+  /** Up to three stocked item ids, comma-joined — counter presence props. */
+  goods: string;
 }
 
 /** Mirror of the synced CacheState schema (client-side typing only). */

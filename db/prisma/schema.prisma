@@ -56,6 +56,41 @@ model MerchantState {
   updatedAt  DateTime @updatedAt
 }
 
+/// A rentable player shop stall on the Nightstalls lane (E2). The id is the
+/// stall's deterministic index in the map's shopStalls list. Stock escrows
+/// here so the shop sells while the owner is OFFLINE; proceeds accumulate
+/// in the cashbox until collected. `version` guards concurrent mutations
+/// (optimistic: update ... WHERE version = seen).
+/// NOTE: allocation is first-come flat rent for now — premium deed AUCTIONS
+/// replace the allocation method at the token layer (M4).
+model ShopStall {
+  id             Int       @id
+  ownerAccountId String?
+  ownerName      String    @default("")
+  rentPaidUntil  DateTime?
+  /// [{ itemId, qty, priceBolts, durability? }]
+  stockJson      Json      @default("[]")
+  cashboxBolts   Int       @default(0)
+  /// Bolts of sales since the owner last collected (login toast).
+  awaySaleBolts  Int       @default(0)
+  version        Int       @default(0)
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Mailbox for goods coming back to a Spark outside a live session: an
+/// expired stall's stock + cashbox wait here and deliver on next login.
+model StallReturn {
+  id          String   @id @default(cuid())
+  accountId   String
+  boltsAmount Int      @default(0)
+  /// [{ itemId, qty, durability? }]
+  stockJson   Json     @default("[]")
+  reason      String   @default("rentExpired")
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+}
+
 model LedgerEvent {
   id        BigInt   @id @default(autoincrement())
   ts        DateTime @default(now())

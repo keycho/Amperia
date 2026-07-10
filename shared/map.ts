@@ -56,6 +56,20 @@ export interface WorldMap {
   nodes: GatherNode[];
   /** Tiles inside the plaza decking (warmer floor variant). */
   plaza: { cx: number; cy: number; radius: number };
+  /**
+   * Rentable player shop stalls (the Nightstalls come alive — E2), in a
+   * FIXED deterministic order: the stall id is the index here, and the
+   * ShopStall DB rows key on it. Empty outside the Filament.
+   */
+  shopStalls: ShopStallSpot[];
+}
+
+export interface ShopStallSpot {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 function blockFootprint(walkable: boolean[][], p: { x: number; y: number; w: number; h: number }): void {
@@ -195,15 +209,26 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
   props.push(gate);
   blockFootprint(walkable, gate);
 
-  // North lane row: three stalls whose counters (+y face) FACE the lane.
+  // North lane row: four stalls whose counters (+y face) FACE the lane
+  // (the westmost extends the row toward the plaza — a rentable pitch).
   for (let i = 0; i < 3; i++) {
     const stall: Prop = { kind: 'stall', x: 28 + i * 3, y: 17, w: 2, h: 2, variant: i };
     props.push(stall);
     blockFootprint(walkable, stall);
   }
-  // South lane row: two stalls tucked awning-to-awning opposite.
+  {
+    const stall: Prop = { kind: 'stall', x: 25, y: 17, w: 2, h: 2, variant: 3 };
+    props.push(stall);
+    blockFootprint(walkable, stall);
+  }
+  // South lane row: three stalls tucked awning-to-awning opposite.
   for (let i = 0; i < 2; i++) {
     const stall: Prop = { kind: 'stall', x: 30 + i * 3, y: 22, w: 2, h: 2, variant: (i + 3) % 4 };
+    props.push(stall);
+    blockFootprint(walkable, stall);
+  }
+  {
+    const stall: Prop = { kind: 'stall', x: 27, y: 22, w: 2, h: 2, variant: 1 };
     props.push(stall);
     blockFootprint(walkable, stall);
   }
@@ -485,7 +510,13 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     },
   );
 
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza };
+  // Every stall on the Filament lane is a rentable player pitch, id'd by
+  // its deterministic build order (ShopStall DB rows key on this).
+  const shopStalls: ShopStallSpot[] = props
+    .filter((p) => p.kind === 'stall')
+    .map((p, i) => ({ id: i, x: p.x, y: p.y, w: p.w, h: p.h }));
+
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls };
 }
 
 /**
@@ -613,7 +644,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6,
   );
 
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza };
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [] };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {

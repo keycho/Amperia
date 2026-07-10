@@ -64,8 +64,18 @@ describe('buildWorldMap', () => {
     expect(shacks.length).toBeGreaterThanOrEqual(10);
     expect(shacks.every((s) => s.w === 2 && s.h === 2)).toBe(true);
     expect(map.props.filter((p) => p.kind === 'tramgate').length).toBe(1);
-    expect(map.props.filter((p) => p.kind === 'stall').length).toBe(6);
+    expect(map.props.filter((p) => p.kind === 'stall').length).toBe(8);
     expect(map.props.filter((p) => p.kind === 'ropepost').length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('every lane stall is a rentable pitch with stable sequential ids', () => {
+    const stalls = map.props.filter((p) => p.kind === 'stall');
+    expect(map.shopStalls.length).toBe(stalls.length);
+    map.shopStalls.forEach((s, i) => {
+      expect(s.id).toBe(i);
+      const prop = stalls[i];
+      expect({ x: s.x, y: s.y }).toEqual({ x: prop?.x, y: prop?.y });
+    });
   });
 
   it('keeps the market lane clear between the Tramgate and the plaza', () => {

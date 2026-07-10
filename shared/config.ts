@@ -279,6 +279,29 @@ export const CONFIG = {
       /** Fallback estimated value for anything not listed above. */
       valuationDefaultBolts: 5,
     },
+
+    /**
+     * Player shop stalls on the Nightstalls market lane (E2). Rent is a
+     * REAL recurring Bolts sink; the sale fee is destroyed. NOTE: stalls
+     * allocate first-come at a flat rent for now — premium deed AUCTIONS
+     * replace this allocation method at the token layer (M4), so keep the
+     * allocation path swappable (see ShopService.rent).
+     */
+    shops: {
+      /** Bolts per week of stall rent (destroyed — a sink, ledger-logged). */
+      rentBoltsPerWeek: 150,
+      /** A shopkeeper may pre-pay at most this many weeks ahead. */
+      maxWeeksAhead: 2,
+      /** Fraction of every sale destroyed as the stall fee (a sink). */
+      saleFeeFraction: 0.02,
+      /** Max distinct stock lines a stall can carry. */
+      maxStockLines: 12,
+      /** Server-checked interaction reach (chebyshev tiles). */
+      reachTiles: 3,
+      /** Asking-price bounds (Bolts per unit). */
+      minPriceBolts: 1,
+      maxPriceBolts: 100000,
+    },
   },
 
   /**
