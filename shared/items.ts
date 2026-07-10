@@ -15,6 +15,7 @@ export type ItemId =
   | 'blueHotBrass'
   | 'prismaticGlowkoi'
   | 'ghostFrequency'
+  | 'dentedCrest'
   // tools (Game Bible B3)
   | 'magclaw'
   | 'drillhammer'
@@ -96,6 +97,14 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     name: 'Ghost Frequency',
     flavor: 'A voice from the dead grid, caught mid-word.',
     icon: 'icon-ghost-frequency',
+    iconTint: 'neonRose',
+    rare: true,
+  },
+  dentedCrest: {
+    id: 'dentedCrest',
+    name: 'Dented Crest',
+    flavor: "A Scuttlebot's maker-mark, pried off mid-scuffle. The Manifest wants it.",
+    icon: 'icon-gilded-scrap',
     iconTint: 'neonRose',
     rare: true,
   },

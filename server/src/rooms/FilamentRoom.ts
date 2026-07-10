@@ -551,6 +551,28 @@ export class FilamentRoom extends Room<FilamentState> {
       bySessionId: client.sessionId,
     });
     this.grantXp(client, rt, 'brawling', CONFIG.combat.scuttlebot.xpBrawlingPerKill);
+
+    // The ONLY drop of any kind: a rare Manifest trophy (server-rolled,
+    // ledger-logged). Mobs never print Bolts or resources (golden rule 9).
+    if (this.rng() < CONFIG.combat.scuttlebot.trophyChance) {
+      const rr = addItem(rt.pack, 'dentedCrest', 1, CONFIG.inventory.stackMax);
+      if (rr.added > 0) {
+        rt.pack = rr.inv;
+        ledger.log({
+          type: 'trophy',
+          account: rt.accountId,
+          data: { source: 'scuttlebot', itemId: 'dentedCrest', qty: 1 },
+        });
+        client.send(MSG.loot, {
+          nodeId: -1,
+          itemId: 'dentedCrest',
+          qty: 0,
+          rare: 'dentedCrest',
+          glintHit: false,
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+      }
+    }
   }
 
   // ── mobs ────────────────────────────────────────────────────────────────
