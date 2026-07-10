@@ -1,5 +1,59 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-10 CHARACTER IDENTITY block (I0–I6)
+
+Sparks became people. The canonical mascot is in the repo, the base body
+is rebuilt to its proportions, players shape their own look on first
+login, and the wardrobe carries real cosmetics — all server-authoritative
+and ledger-logged. Shots: `docs/brand/spark-mascot.png` (brand reference)
+· `mascot-vs-model.png` · `spark-sheet.png` (all dirs/frames/poses) ·
+`creator-{first-login,customized,remote-view,wardrobe}.png` ·
+`wardrobe-slots.png` · `spark-lineup-lane.png` · `spark-bulb-hat-night.png`
+· `inspect-card.png` · `catwalk-{tramgate,plaza}.png` · `ui-pack-thumbs.png`.
+
+- **I0 · The mascot** — `docs/brand/spark-mascot.png`: the bust rebuilt
+  through the real voxel pipeline (rose mop, black goggle band + teal
+  lenses, plum collar + amber tag, glowing bulb) at 1000px on black; the
+  permanent reference all character work compares against. (The original
+  attachment bytes were unreachable in this environment — see NEEDS RUSTY.)
+- **I1 · The Spark body** — mascot-proportioned rebuild (head ≈45% of
+  height, visible hands, boots, layered jacket + tool-belt), FOUR real
+  direction bakes (transpose, never texture flips), weighted walk cycle
+  (stride A/B + raised passing frame + forward lean), gather poses per
+  tool + a brawl pose, server-broadcast `pose` state so remote clients
+  render working Sparks; the own Spark turns to face the node it works.
+- **I2 · The creator** — first-login "SHAPE YOUR SPARK" (5 warm skins, 6
+  hair styles, 6 hair colors, 5 jackets, 4 flair picks — index 0 is the
+  mascot preset), live preview of the REAL baked sprite on a lit pedestal,
+  randomize, one-time name pick; compact validated wire code persisted in
+  Postgres and broadcast so every client re-bakes (two-browser verified).
+  `/wardrobe` reopens the look-only version.
+- **I3 · The wardrobe** — anchor slots per §10.2 (HEAD/BACK/JACKET/TOOL/
+  TRAIL/NAME-GLOW). THE BULB HAT is the final Dispatcher-chain reward
+  (with its own walking glow); scarf moved to JACKET (tut3), Salvager
+  Satchel BACK (tut4), Alley Beanie = rare junk-heap cosmetic roll,
+  Brassbound Tools = Tinkerbench cosmetic recipe (Bolts+brass sink, zero
+  stats), Charge trim = NAME-GLOW. ONE grant path: ledger-logged
+  ('cosmetic'), auto-equip, persisted. All untradeable.
+- **I4 · Hybrid UI** — Kenney 9-slice chrome (3 curated pieces, ALWAYS
+  re-tinted ink/plum), item thumbnails baked from the voxel pipeline on
+  plum cards (tier accents are real voxels, never tint washes), slot
+  states (empty dim inset / filled thumb + rarity edge-glow), terminal
+  text stays for chat/system.
+- **I5 · Social proof** — click a Spark → inspect card (baked portrait on
+  a dais, crew placeholder, top-3 Mastery, worn list, [offer trade] — the
+  first client-side trade entry point); catwalk light pools at the tram
+  platform + plaza rim (breathing, additive, light-only).
+- **I6 · Props + housekeeping** — kenney_voxel-pack ships NO .vox sources
+  (verified), so the vignette props were BUILT through the material
+  system: 8 families × variants (spools, barrels, pallets, vent, gas
+  cans, tarps, bins, tool rack) arranged in three Filament vignettes;
+  isometric zips retired to `assets/_retired/`, extracted voxel-pack PNGs
+  removed (icons are all baked now).
+
+Numbers: 137 client+shared tests + 5 server tests green; both workspaces
+strict-compile; 2 new migrations (appearance, equipped).
+
 ## Status after the 2026-07-10 RENDER OVERHAUL + TANGLE v2 run (R1–R6 + B1–B2)
 
 The whole game got a new renderer, then the Tangle got rebuilt on top of
@@ -442,6 +496,9 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   Neon will need `prisma migrate deploy` on first ship — 4 new
   migrations landed this block (trade guardrails, shop stalls, the
   Citywide Charge, economy summaries).
+- NEW (identity block): production Neon needs `prisma migrate deploy` for
+  2 more migrations (character_appearance, character_equipped) on first
+  ship after this block.
 - NEW (identity block I0): the mascot image attached to the kickoff brief
   could not be read from this environment, so `docs/brand/spark-mascot.png`
   is the bust REBUILT faithfully through the real voxel pipeline (rose mop,
