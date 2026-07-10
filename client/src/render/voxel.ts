@@ -55,10 +55,10 @@ export interface VoxelModel {
  * every shadow shears toward screen bottom-right. Tile-space shear per
  * voxel of height: tall things throw LONG shadows across the ground.
  */
-export const SHADOW_SHEAR_X = 0.95;
-export const SHADOW_SHEAR_Y = 0.3;
+export const SHADOW_SHEAR_X = 1.15;
+export const SHADOW_SHEAR_Y = 0.35;
 /** Overall alpha the cast-shadow layer renders at. */
-export const SHADOW_ALPHA = 0.5;
+export const SHADOW_ALPHA = 0.55;
 
 export interface BakedVoxelSprite {
   key: string;

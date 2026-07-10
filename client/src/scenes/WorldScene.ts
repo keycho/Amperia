@@ -1245,15 +1245,15 @@ export class WorldScene extends Phaser.Scene {
         if (this.map.canal[ty]?.[tx] === true) continue;
         let a = 0;
         // Light-away side: a tall wall to the tile's −x (and the diagonal).
-        if (tallAt(tx - 1, ty)) a += 0.15;
-        else if (tallAt(tx - 2, ty)) a += 0.07;
-        if (tallAt(tx - 1, ty - 1)) a += 0.06;
+        if (tallAt(tx - 1, ty)) a += 0.18;
+        else if (tallAt(tx - 2, ty)) a += 0.09;
+        if (tallAt(tx - 1, ty - 1)) a += 0.07;
         // Corridor squeeze: walls on both flanks pool ambient darkness.
-        if (tallAt(tx - 1, ty, 6) && tallAt(tx + 1, ty, 6)) a += 0.09;
-        if (tallAt(tx, ty - 1, 6) && tallAt(tx, ty + 1, 6)) a += 0.09;
+        if (tallAt(tx - 1, ty, 6) && tallAt(tx + 1, ty, 6)) a += 0.11;
+        if (tallAt(tx, ty - 1, 6) && tallAt(tx, ty + 1, 6)) a += 0.11;
         if (a <= 0) continue;
         const { x, y } = tileToWorld(tx, ty);
-        g.fillStyle(PALETTE_INT.ink, Math.min(0.26, a));
+        g.fillStyle(PALETTE_INT.ink, Math.min(0.32, a));
         this.traceDiamond(g, x, y);
         g.fillPath();
       }

@@ -26,7 +26,7 @@ export function addWarmAmbience(scene: Phaser.Scene): void {
       grad.addColorStop(0, 'rgba(0,0,0,0)');
       grad.addColorStop(
         1,
-        `rgba(${plum.red},${plum.green},${plum.blue},${Math.min(1, 0.42 * STYLE.vignetteScale)})`,
+        `rgba(${plum.red},${plum.green},${plum.blue},${Math.min(1, 0.52 * STYLE.vignetteScale)})`,
       );
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, size, size);

@@ -1,5 +1,32 @@
 # AMPERIA — Progress
 
+## R6 self-critique log (render overhaul, 2026-07-10)
+
+Rubric scored 1–5 per iteration across BOTH reference angles
+(`docs/screenshots/ref-lane-*.png` / `ref-tangle-*.png`); the three
+mid-run addendum criteria (sharpness, glow quality, lit saturation) are
+scored alongside the original six.
+
+| # | criterion | iter 1 (r5) | iter 2 (r6i2) | iter 3 (post-Tangle) |
+|---|---|---|---|---|
+| 1 | instant depth | 3.5 | 4 | — |
+| 2 | block crispness | 4.5 | 4.5 | — |
+| 3 | color intent | 3 | 3 | — |
+| 4 | light drama | 3.5 | 4 | — |
+| 5 | place identity | 2.5 | 2.5 | — |
+| 6 | readability | 4 | 4 | — |
+| 7 | sharpness (addendum) | 4.5 | 4.5 | — |
+| 8 | glow quality (addendum) | 4 | 4 | — |
+| 9 | lit saturation (addendum) | 3.5 | 4 | — |
+
+- **Iter 1 → 2 fixes** (two lowest renderer-addressable: light drama,
+  instant depth): shadow shear 0.95→1.15 + alpha 0.55 (longer, harder
+  cast shadows), wall-shade cap 0.26→0.32, dusk vignette 0.42→0.52 —
+  the histogram now runs true darks to hot brights.
+- **Iter 2 lowest two** (place identity 2.5, color intent 3) are the
+  Tangle's crate-confetti problem — their designed fix IS Part B's
+  district rebuild, so iteration 3 re-scores after it lands.
+
 ## Status after the 2026-07-10 PLAYER ECONOMY block (E1–E4)
 
 The city's economy went multiplayer: Sparks now trade with each other,
