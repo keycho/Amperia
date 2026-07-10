@@ -2063,6 +2063,13 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'registry': {
           const img = this.propSprite('registry', x, y);
+          // The token-layer tie-in stays a CLOSED DOOR until M4's gate —
+          // the shopfront exists, the clerk takes no appointments yet.
+          img.setInteractive({ useHandCursor: true });
+          img.on('pointerdown', (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+            ev.stopPropagation();
+            floatText(this, x, y - 96, 'The Vanity Registry — appointments open after the first season.', PALETTE.violetNeon);
+          });
           // Main street's ONE licensed violet sign + the always-on shift.
           const sign = this.add.image(x - 44, y - 38, 'fx-glow');
           sign.setTint(PALETTE_INT.violetNeon);
@@ -2819,6 +2826,28 @@ export class WorldScene extends Phaser.Scene {
    * kind (server-owned, in the scrap fringe) is a separate creature.
    */
   private spawnAmbientBots(): void {
+    // D1c the Stacks: the rooftop laundry-bot pottering its roofline and
+    // a junction skitterer — home-anchored so neither leaves its patch.
+    if (this.map.district === 'stacks') {
+      const R = CONFIG.stacks.roofline;
+      for (const home of [
+        { x: R.x0 + 4, y: R.y0 + 3 },
+        { x: 13, y: 16 },
+      ]) {
+        outer: for (let r = 0; r < 4; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              const t = { x: home.x + dx, y: home.y + dy };
+              if (this.map.walkable[t.y]?.[t.x] === true) {
+                this.ambientBots.push(new AmbientScuttlebot(this, this.map, t, home));
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      return;
+    }
     const { cx, cy, radius } = this.map.plaza;
     if (radius <= 0) return; // no plaza (the Tangle) — no pottering decor bots
     const seats: Array<[number, number]> = [

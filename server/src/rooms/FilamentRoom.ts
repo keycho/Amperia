@@ -3312,7 +3312,16 @@ export class FilamentRoom extends Room<FilamentState> {
         }
         if (s.elapsed >= cfg.tuneSeconds) {
           const lockRatio = Math.min(1, s.lockSeconds / cfg.tuneSeconds);
-          const amount = signalYield(cfg, lockRatio);
+          let amount = signalYield(cfg, lockRatio);
+          // D1c: the Roofline's shrines carry the city's best Signal —
+          // a LOCATION bonus (free to reach, never sold, same for all).
+          const node = this.map.nodes[s.nodeId];
+          const R = CONFIG.stacks.roofline;
+          const onRoofline =
+            this.districtId === 'stacks' &&
+            node !== undefined &&
+            node.x >= R.x0 && node.x <= R.x1 && node.y >= R.y0 && node.y <= R.y1;
+          if (onRoofline) amount = Math.round(amount * CONFIG.stacks.rooflineSignalMult);
           const rare = rollSignalRare(cfg, lockRatio, this.rng)
             ? (cfg.rareFindItem as ItemId)
             : null;
@@ -3322,6 +3331,7 @@ export class FilamentRoom extends Room<FilamentState> {
           this.grantLoot(client, rt, s.nodeId, 'signal', amount, rare, {
             kind: 'antenna',
             lockRatio: Number(lockRatio.toFixed(3)),
+            ...(onRoofline ? { roofline: true } : {}),
           });
           this.grantXp(client, rt, SKILL_BY_NODE.antenna, CONFIG.mastery.xpByNode.antenna);
           this.depleteNode(s.nodeId, cfg.respawnSeconds);

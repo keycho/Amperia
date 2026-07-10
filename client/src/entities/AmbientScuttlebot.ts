@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { WorldMap } from '@shared/map';
 import { PALETTE_INT } from '@shared/palette';
-import type { TilePoint } from '@shared/pathfinding';
+import { canStep, type TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { addVoxelSprite } from '../render/voxel';
 
@@ -18,11 +18,14 @@ export class AmbientScuttlebot {
   private readonly map: WorldMap;
   private moving = false;
   private waitUntil = 0;
+  /** Optional wander anchor (roofline bots stay on their roof). */
+  private readonly home: TilePoint | null;
 
-  constructor(scene: Phaser.Scene, map: WorldMap, tile: TilePoint) {
+  constructor(scene: Phaser.Scene, map: WorldMap, tile: TilePoint, home?: TilePoint) {
     this.scene = scene;
     this.map = map;
     this.tile = { ...tile };
+    this.home = home ?? null;
     const { x, y } = tileToWorld(tile.x, tile.y);
     this.image = addVoxelSprite(scene, 'scuttlebot', x, y);
     this.image.setDepth(depthForWorldY(y));
@@ -67,8 +70,12 @@ export class AmbientScuttlebot {
     this.image.destroy();
   }
 
-  /** Prefer staying on the plaza-edge ring; small random jitter. */
+  /** Prefer the home anchor's ring, else the plaza-edge ring. */
   private ringScore(t: TilePoint): number {
+    if (this.home !== null) {
+      const dh = Math.max(Math.abs(t.x - this.home.x), Math.abs(t.y - this.home.y));
+      return -Math.abs(dh - 1) + Math.random() * 0.8;
+    }
     const { cx, cy, radius } = this.map.plaza;
     const d = Math.max(Math.abs(t.x - cx), Math.abs(t.y - cy));
     return -Math.abs(d - (radius + 1)) + Math.random() * 0.8;
@@ -87,7 +94,8 @@ export class AmbientScuttlebot {
       [0, -1],
     ] as const) {
       const t = { x: this.tile.x + dx, y: this.tile.y + dy };
-      if (this.map.walkable[t.y]?.[t.x] === true) options.push(t);
+      // Elevation-aware (T0/§5 era): no strolling off a roofline edge.
+      if (canStep(this.map, this.tile.x, this.tile.y, t.x, t.y)) options.push(t);
     }
     if (options.length === 0) return null;
     options.sort((a, b) => score(b) - score(a));

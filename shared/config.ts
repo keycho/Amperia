@@ -412,6 +412,8 @@ export const CONFIG = {
     antennaGround: 2,
     /** Roofline shrines — the city's best Signal (Tuning endgame, D1c). */
     antennaRoofline: 2,
+    /** Yield multiplier on Roofline shrines (location-based, never paid). */
+    rooflineSignalMult: 1.75,
     /** The Roofline: the +3 walkable rooftop terrace. */
     roofline: { x0: 17, y0: 6, x1: 25, y1: 11, level: 3 },
   },
