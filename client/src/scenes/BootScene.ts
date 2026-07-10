@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { IMAGE_MANIFEST } from '../render/assetManifest';
+import { bakeFloorTiles } from '../render/floorTiles';
 import { bakeCoreVoxelModels } from '../render/voxelModels';
 import { bakeWorldVoxelModels } from '../render/voxelWorldModels';
 import {
@@ -29,6 +30,7 @@ export class BootScene extends Phaser.Scene {
     makeKoiTextures(this);
     bakeCoreVoxelModels(this);
     bakeWorldVoxelModels(this);
+    bakeFloorTiles(this);
     this.scene.start('login');
   }
 }

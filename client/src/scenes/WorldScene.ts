@@ -55,11 +55,12 @@ import {
 import { session, SessionEvents } from '../net/session';
 import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
+import { floorTileKey, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite } from '../render/voxel';
-import { bloom, gradeGround, worldSpriteTint } from '../render/styleConfig';
+import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { gameState } from '../state/GameState';
@@ -749,7 +750,7 @@ export class WorldScene extends Phaser.Scene {
   private drawFloor(): void {
     const { size, plaza } = this.map;
     const g = this.add.graphics();
-    g.setDepth(DEPTH_FLOOR);
+    g.setDepth(DEPTH_FLOOR + 1); // curbs/lip/sheen ride above the baked tiles
     const rng: Rng = makeRng(CONFIG.map.seed ^ 0x5eed);
 
     // Where lamplight lands (tile coords) — the wet glaze catches it there.
@@ -763,9 +764,19 @@ export class WorldScene extends Phaser.Scene {
       if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
     }
     for (const n of this.map.nodes) {
+      // Antennas keep an always-on beacon + pool; koi spots glow only while
+      // a shadow drifts in, so they don't count as standing light (§3).
       if (n.kind === 'antenna') lightSpots.push({ x: n.x, y: n.y, cool: true });
-      if (n.kind === 'glowkoi') lightSpots.push({ x: n.x, y: n.y, cool: true });
     }
+    // Rug tiles: the row in front of each stall counter (floor-fix §1).
+    const rugTiles = new Map<number, number>(); // tileKey -> stall variant
+    for (const p of this.map.props) {
+      if (p.kind !== 'stall') continue;
+      for (let dx = 0; dx < p.w; dx++) {
+        rugTiles.set((p.y + p.h) * size + (p.x + dx), p.variant);
+      }
+    }
+
     const nearestLight = (tx: number, ty: number) => {
       let best = Infinity;
       let cool = false;
@@ -783,7 +794,6 @@ export class WorldScene extends Phaser.Scene {
       for (let tx = 0; tx < size; tx++) {
         const { x, y } = tileToWorld(tx, ty);
         const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
-        const edgeness = Math.min(1, plazaDist / (size / 2));
 
         // Curb lips where walkable plating meets the coolant channel.
         if (this.map.canal[ty]?.[tx] !== true) {
@@ -799,83 +809,35 @@ export class WorldScene extends Phaser.Scene {
           if (this.map.canal[ty - 1]?.[tx] === true) curb(x - TILE_W / 2, y, x, y - TILE_H / 2);
         }
 
-        // Coolant canal: a dark built channel with cyan glints.
+        // Coolant canal: baked coolant tiles (the one zone that stays dark).
         if (this.map.canal[ty]?.[tx] === true) {
-          g.fillStyle(gradeGround(mixPalette('duskSky', 'ink', 0.45 + rng() * 0.1)));
-          this.traceDiamond(g, x, y);
-          g.fillPath();
-          if (rng() < 0.22) {
-            // Faint coolant ripple, barely catching the neon.
-            g.lineStyle(1, mixPalette('neonCyan', 'duskSky', 0.72), 0.16 + rng() * 0.06);
-            const gx = x - 10 + rng() * 20;
-            const gy = y - 3 + rng() * 6;
-            g.lineBetween(gx - 8, gy, gx + 8, gy);
-          }
+          const tile = this.add.image(x, y, floorTileKey('coolant', (tx * 7 + ty * 13) | 0));
+          tile.setScale(0.5);
+          tile.setDepth(DEPTH_FLOOR);
           continue;
         }
 
-        // §B10 material patchwork: plating in the plaza, decking on the
-        // market lane and the canal boardwalk, night streets elsewhere.
+        // Floor-fix §1: per-tile baked diamonds — the zone material changes
+        // read the district layout; no drawn gridlines anywhere.
         const inLane = ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
         const onBoardwalk = tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
         const inPlaza = plazaDist <= plaza.radius;
         const onStepRing = plazaDist === plaza.radius;
-        let fill: number;
-        if (inLane || onBoardwalk) {
-          // Wood decking under the night air.
-          fill = this.lerpColor(
-            MATERIAL_INT.wood,
-            PALETTE_INT.duskSky,
-            0.52 + rng() * 0.06,
-          );
-        } else if (onStepRing) {
-          // The plaza's raised step ring: a shade lighter than the plates.
-          fill = this.lerpColor(MATERIAL_INT.concrete, PALETTE_INT.duskSky, 0.42 + rng() * 0.05);
-        } else if (inPlaza) {
-          // Concrete plating, sunk in plum night air.
-          fill = this.lerpColor(MATERIAL_INT.concrete, PALETTE_INT.duskSky, 0.52 + rng() * 0.07);
-        } else {
-          // Streets: deep ink-plum, sinking toward ink at the fringe.
-          const t = 0.12 + edgeness * 0.3 + rng() * 0.06;
-          fill = mixPalette('duskSky', 'ink', Math.min(0.55, t));
-        }
-
-        g.fillStyle(gradeGround(fill));
-        this.traceDiamond(g, x, y);
-        g.fillPath();
-
-        // Decking planks: seams across the boards + the odd knot.
-        if (inLane || onBoardwalk) {
-          g.lineStyle(1, this.lerpColor(MATERIAL_INT.woodDeep, PALETTE_INT.ink, 0.45), 0.5);
-          g.lineBetween(x - TILE_W / 4, y + TILE_H / 4, x + TILE_W / 4, y - TILE_H / 4);
-          if (rng() < 0.2) {
-            g.fillStyle(this.lerpColor(MATERIAL_INT.woodDeep, PALETTE_INT.ink, 0.3), 0.6);
-            g.fillCircle(x - 8 + rng() * 16, y - 4 + rng() * 8, 1.3);
-          }
-        }
-
-        // Plaza plating: 2×2 plate seams with rivets at the plate corners.
-        if (inPlaza && !onStepRing) {
-          if (tx % 2 === 0) {
-            g.lineStyle(1, this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.4), 0.32);
-            g.lineBetween(x - TILE_W / 2, y, x, y + TILE_H / 2);
-          }
-          if (ty % 2 === 0) {
-            g.lineStyle(1, this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.4), 0.32);
-            g.lineBetween(x, y + TILE_H / 2, x + TILE_W / 2, y);
-          }
-          if (tx % 2 === 0 && ty % 2 === 0) {
-            g.fillStyle(this.lerpColor(MATERIAL_INT.gunmetal, PALETTE_INT.ink, 0.35), 0.55);
-            g.fillCircle(x, y + TILE_H / 2 - 3, 1.4);
-          }
-          // The occasional drainage grate.
-          if (rng() < 0.015) {
-            g.fillStyle(this.lerpColor(MATERIAL_INT.gunmetalDeep, PALETTE_INT.ink, 0.5), 0.85);
-            g.fillRect(x - 9, y - 4, 18, 8);
-            g.lineStyle(1, this.lerpColor(MATERIAL_INT.gunmetal, PALETTE_INT.ink, 0.2), 0.7);
-            for (let sl = -6; sl <= 6; sl += 4) g.lineBetween(x + sl, y - 3, x + sl, y + 3);
-          }
-        }
+        const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
+        const rugVariant = rugTiles.get(ty * size + tx);
+        let kind: FloorKind;
+        let seed = (tx * 31 + ty * 17) | 0;
+        if (rugVariant !== undefined) {
+          kind = 'rug';
+          seed = rugVariant;
+        } else if (inLane || onBoardwalk) kind = 'deck';
+        else if (onStepRing) kind = 'paverLight';
+        else if (inPlaza) kind = 'paver';
+        else if (distToEdgeT <= 6 || (tx >= 27 && ty >= 28)) kind = 'plating';
+        else kind = 'asphalt';
+        const tile = this.add.image(x, y, floorTileKey(kind, seed));
+        tile.setScale(0.5);
+        tile.setDepth(DEPTH_FLOOR);
 
         // Step-ring lip: a bright leading edge + shadow line under it.
         if (onStepRing) {
@@ -914,41 +876,13 @@ export class WorldScene extends Phaser.Scene {
           }
         }
 
-        // Occasional rivets on the plating.
-        if (rng() < 0.07 && plazaDist > plaza.radius) {
-          g.fillStyle(mixPalette('groundBase', 'ink', 0.4), 0.8);
-          g.fillCircle(x - 6 + rng() * 12, y - 3 + rng() * 6, 1.6);
-        }
       }
-    }
-
-    // Rugs at the stall fronts (§B10): muted woven mats, one per stall.
-    const rugTints = [MATERIAL_INT.paintRose, MATERIAL_INT.paintOchre, MATERIAL_INT.paintTeal];
-    let rugIdx = 0;
-    for (const p of this.map.props) {
-      if (p.kind !== 'stall') continue;
-      const front = tileToWorld(p.x + 0.5, p.y + p.h);
-      const tint = this.lerpColor(
-        rugTints[rugIdx++ % rugTints.length] as number,
-        PALETTE_INT.duskSky,
-        0.35,
-      );
-      g.fillStyle(tint, 0.55);
-      g.beginPath();
-      g.moveTo(front.x, front.y - TILE_H / 2 + 4);
-      g.lineTo(front.x + TILE_W - 6, front.y + TILE_H / 2 - 2);
-      g.lineTo(front.x + TILE_W / 2 - 3, front.y + TILE_H - 5);
-      g.lineTo(front.x - TILE_W / 2 + 3, front.y + 3);
-      g.closePath();
-      g.fillPath();
-      g.lineStyle(1, this.lerpColor(tint, PALETTE_INT.warmGlow, 0.35), 0.5);
-      g.strokePath();
     }
 
     // THE VOID (§B5): the map is an island of light — its last rows fade
     // into near-black so screenshot corners are dark, not plum.
     const voidG = this.add.graphics();
-    voidG.setDepth(DEPTH_FLOOR + 1);
+    voidG.setDepth(DEPTH_FLOOR + 2);
     const FADE = 5;
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
