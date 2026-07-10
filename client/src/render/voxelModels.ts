@@ -1,27 +1,27 @@
 import Phaser from 'phaser';
 import { mixPalette, PALETTE_INT } from '@shared/palette';
-import { bakeVoxelModel, box, type Voxel } from './voxel';
+import { MATERIALS } from './materials';
+import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
 /**
- * The checkpoint set: ground tile, crate, stall, planter, Spark.
- * Every color is a palette blend; one neon accent per asset where earned.
+ * The core set: ground tile, crate, stall, planter, Spark. Built from real
+ * MATERIALS (rust/gunmetal/wood/paint/concrete) — purple is not a material;
+ * neon accents stay plain light voxels.
  */
 
 function groundTileModel(): Voxel[] {
-  const c = mixPalette('duskSky', 'groundBase', 0.5);
-  return box(0, 0, 0, 8, 8, 1, c);
+  return mbox(0, 0, 0, 8, 8, 1, MATERIALS.concrete);
 }
 
 function crateModel(): Voxel[] {
-  const wood = mixPalette('groundAccent', 'warmGlow', 0.2);
-  const slat = mixPalette('groundAccent', 'structureMid', 0.35);
-  const post = mixPalette('structureMid', 'ink', 0.15);
+  // A rusted steel job crate: deep-rust corner posts, banded panels.
   const v: Voxel[] = [];
-  for (const vox of box(0, 0, 0, 5, 5, 5, wood)) {
-    const isPost =
-      (vox.x === 0 || vox.x === 4) && (vox.y === 0 || vox.y === 4) ? true : false;
-    const isSlat = (vox.z === 1 || vox.z === 3) && !isPost;
-    v.push({ ...vox, c: isPost ? post : isSlat ? slat : wood });
+  for (const vox of mbox(0, 0, 0, 5, 5, 5, MATERIALS.rust)) {
+    const isPost = (vox.x === 0 || vox.x === 4) && (vox.y === 0 || vox.y === 4);
+    const isBand = (vox.z === 1 || vox.z === 3) && !isPost;
+    if (isPost) v.push({ ...vox, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+    else if (isBand) v.push({ ...vox, c: shade(MATERIALS.rust.base, -0.14) });
+    else v.push(vox);
   }
   // Routing tag — the one neon accent.
   v.push({ x: 4, y: 3, z: 4, c: PALETTE_INT.neonAmber });
@@ -29,13 +29,14 @@ function crateModel(): Voxel[] {
 }
 
 function planterModel(): Voxel[] {
-  const barrel = mixPalette('groundAccent', 'ink', 0.3);
-  const rim = mixPalette('groundAccent', 'warmGlow', 0.25);
   const leafA = PALETTE_INT.solarGreen;
   const leafB = mixPalette('solarGreen', 'ink', 0.3);
   const v: Voxel[] = [];
-  for (const vox of box(0, 0, 0, 4, 4, 6, barrel)) {
-    v.push({ ...vox, c: vox.z === 5 ? rim : vox.z === 2 ? rim : barrel });
+  // A wooden barrel with rusted hoop rings.
+  for (const vox of mbox(0, 0, 0, 4, 4, 6, MATERIALS.wood)) {
+    const hoop = vox.z === 2 || vox.z === 5;
+    if (hoop) v.push({ ...vox, c: MATERIALS.rustDeep.base, mat: MATERIALS.rustDeep });
+    else v.push(vox);
   }
   // Bush — irregular, two greens.
   const bush: Array<[number, number, number, number]> = [
@@ -59,9 +60,6 @@ function planterModel(): Voxel[] {
 }
 
 function stallModel(variant: number): Voxel[] {
-  const counter = mixPalette('structureMid', 'groundAccent', 0.3);
-  const counterTop = mixPalette('groundAccent', 'warmGlow', 0.3);
-  const post = mixPalette('structureMid', 'ink', 0.25);
   const stripeHot = [
     mixPalette('neonRose', 'structureMid', 0.3),
     mixPalette('neonAmber', 'structureMid', 0.25),
@@ -70,19 +68,22 @@ function stallModel(variant: number): Voxel[] {
   ][variant % 4] as number;
   const stripePale = mixPalette('warmGlow', 'groundAccent', 0.35);
   const v: Voxel[] = [];
-  // Counter with a lighter top.
-  v.push(...box(2, 1, 0, 8, 5, 7, counter));
-  v.push(...box(2, 1, 7, 8, 5, 1, counterTop));
-  // Posts.
+  // Timber counter with a lighter worn top.
+  v.push(...mbox(2, 1, 0, 8, 5, 7, MATERIALS.wood));
+  for (const vox of mbox(2, 1, 7, 8, 5, 1, MATERIALS.wood)) {
+    v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  }
+  // Posts: deep timber.
   for (const [px, py] of [
     [1, 0],
     [10, 0],
     [1, 6],
     [10, 6],
   ] as const) {
-    v.push(...box(px, py, 0, 1, 1, 20, post));
+    v.push(...mbox(px, py, 0, 1, 1, 20, MATERIALS.woodDeep));
   }
-  // Awning: striped slab with a front drip edge.
+  // Awning: striped fabric slab with a front drip edge (fabric stays flat
+  // and colorful — the market's color lives in awnings and signs).
   for (let x = 0; x < 12; x++) {
     for (let y = 0; y < 8; y++) {
       v.push({ x, y, z: 20, c: x % 2 === 0 ? stripeHot : stripePale });
@@ -99,7 +100,7 @@ function stallModel(variant: number): Voxel[] {
   // Lantern voxel by the right post (glow sprite added at placement).
   v.push({ x: 10, y: 6, z: 14, c: PALETTE_INT.warmGlow });
   // Crates under the counter for life.
-  v.push(...box(3, 6, 0, 2, 1, 4, mixPalette('groundAccent', 'warmGlow', 0.15)));
+  v.push(...mbox(3, 6, 0, 2, 1, 4, MATERIALS.rust));
   return v;
 }
 
@@ -137,7 +138,12 @@ function sparkModel(facing: 'se' | 'ne'): Voxel[] {
 
 /** Bake the checkpoint set (call from BootScene). */
 export function bakeCoreVoxelModels(scene: Phaser.Scene): void {
-  bakeVoxelModel(scene, { name: 'ground-tile', voxels: groundTileModel(), outline: false });
+  bakeVoxelModel(scene, {
+    name: 'ground-tile',
+    voxels: groundTileModel(),
+    outline: false,
+    grounding: false,
+  });
   bakeVoxelModel(scene, { name: 'crate', voxels: crateModel() });
   bakeVoxelModel(scene, { name: 'planter', voxels: planterModel() });
   for (let i = 0; i < 4; i++) {

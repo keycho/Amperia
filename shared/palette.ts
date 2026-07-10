@@ -72,3 +72,42 @@ export function mixPalette(a: PaletteKey, b: PaletteKey, t: number): number {
   const bl = mix(ca & 0xff, cb & 0xff);
   return (r << 16) | (g << 8) | bl;
 }
+
+/**
+ * MATERIAL BASE COLORS — the owner-directed materials pass (2026-07-10):
+ * every world object is built from a real material; purple/plum is reserved
+ * for unlit shadow sides, the night-air tint, and the void — it is no longer
+ * a material. These are the sanctioned hue-shifted derivations of the locked
+ * table (neons unchanged); like UI_TEXT_WARM they live here so palette.ts
+ * stays the single audit point for every color in the game.
+ */
+export const MATERIAL_COLORS = {
+  /** Rusted steel — crates, junk, old machines (warm brown-orange darks). */
+  rust: '#6E4A33',
+  rustDeep: '#513425',
+  /** Gunmetal — Dynamo housing, plating, pipes (cool grey-blue). */
+  gunmetal: '#525B6E',
+  gunmetalDeep: '#3B4252',
+  /** Wood / decking — stall frames, boardwalk, pallets (groundAccent tan). */
+  wood: '#9A8574',
+  woodDeep: '#75655A',
+  /** Painted panels — weathered, never candy. */
+  paintTeal: '#5E7A74',
+  paintOchre: '#96793F',
+  paintRose: '#96626E',
+  /** Concrete / pavement — neutral grey-mauve ground and curbs. */
+  concrete: '#6B6169',
+  concreteDeep: '#514A52',
+} as const;
+
+export type MaterialColorKey = keyof typeof MATERIAL_COLORS;
+
+/** Material base colors as 0xRRGGBB integers. */
+export const MATERIAL_INT: Readonly<Record<MaterialColorKey, number>> = Object.freeze(
+  Object.fromEntries(
+    (Object.keys(MATERIAL_COLORS) as MaterialColorKey[]).map((k) => [
+      k,
+      hexToInt(MATERIAL_COLORS[k]),
+    ]),
+  ) as Record<MaterialColorKey, number>,
+);

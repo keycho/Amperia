@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE_INT } from '@shared/palette';
+import { voxelHash, type Material } from './materials';
 
 /**
  * "Kintara construction, Amperia palette" — the in-code voxel-sprite
@@ -29,6 +30,9 @@ export interface Voxel {
   y: number;
   z: number;
   c: number;
+  /** Material surface behavior (noise/wear/stains). Plain-color voxels
+   *  (neons, glow accents) omit it and render flat. */
+  mat?: Material;
 }
 
 export interface VoxelModel {
@@ -38,6 +42,8 @@ export interface VoxelModel {
   outline?: boolean;
   /** 1px warm rim along the top-left silhouette (characters pop). */
   warmRim?: boolean;
+  /** Darken material voxels toward the base for grounding (default true). */
+  grounding?: boolean;
 }
 
 export interface BakedVoxelSprite {
@@ -76,6 +82,24 @@ export function box(
     }
   }
   return out;
+}
+
+/** Rectangular solid built from a material. */
+export function mbox(
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  d: number,
+  h: number,
+  mat: Material,
+): Voxel[] {
+  return box(x, y, z, w, d, h, mat.base).map((v) => ({ ...v, mat }));
+}
+
+/** Tag a voxel list with a material (for per-voxel color patterns). */
+export function withMat(voxels: Voxel[], mat: Material): Voxel[] {
+  return voxels.map((v) => ({ ...v, mat }));
 }
 
 /** ±fraction value shade (the 3-tone face ramp). */
@@ -183,6 +207,93 @@ function drawCube(
   g.fillPath();
 }
 
+interface Exposure {
+  top: boolean;
+  left: boolean;
+  right: boolean;
+}
+
+/**
+ * Material-aware cube: per-face value noise, chipped top edges on worn
+ * materials, and stain streaks down exposed faces. Every face gets quiet
+ * variation — no large flat single-color fills (materials pass §A2).
+ */
+function drawMatCube(
+  g: Phaser.GameObjects.Graphics,
+  px: number,
+  py: number,
+  v: Voxel,
+  baseColor: number,
+  exp: Exposure,
+): void {
+  const mat = v.mat as Material;
+  const faceNoise = (salt: number) =>
+    (voxelHash(v.x, v.y, v.z, salt) - 0.5) * 2 * mat.noise;
+  const top = shade(baseColor, 0.2 + faceNoise(3));
+  const left = shade(baseColor, faceNoise(5));
+  const right = shade(baseColor, -0.2 + faceNoise(7));
+  // Faces.
+  g.fillStyle(top, 1);
+  g.beginPath();
+  g.moveTo(px, py - HALF_H);
+  g.lineTo(px + HALF_W, py);
+  g.lineTo(px, py + HALF_H);
+  g.lineTo(px - HALF_W, py);
+  g.closePath();
+  g.fillPath();
+  g.fillStyle(left, 1);
+  g.beginPath();
+  g.moveTo(px - HALF_W, py);
+  g.lineTo(px, py + HALF_H);
+  g.lineTo(px, py + HALF_H + SIDE_H);
+  g.lineTo(px - HALF_W, py + SIDE_H);
+  g.closePath();
+  g.fillPath();
+  g.fillStyle(right, 1);
+  g.beginPath();
+  g.moveTo(px + HALF_W, py);
+  g.lineTo(px, py + HALF_H);
+  g.lineTo(px, py + HALF_H + SIDE_H);
+  g.lineTo(px + HALF_W, py + SIDE_H);
+  g.closePath();
+  g.fillPath();
+  // Edge wear: a light chipped line along an exposed top edge.
+  if (exp.top && voxelHash(v.x, v.y, v.z, 13) < mat.wearChance) {
+    const chipLeft = voxelHash(v.x, v.y, v.z, 17) < 0.5;
+    g.lineStyle(1.4, shade(baseColor, 0.5), 0.9);
+    g.beginPath();
+    if (chipLeft) {
+      g.moveTo(px - HALF_W, py);
+      g.lineTo(px, py - HALF_H);
+    } else {
+      g.moveTo(px, py - HALF_H);
+      g.lineTo(px + HALF_W, py);
+    }
+    g.strokePath();
+  }
+  // Stains: a darker streak running down an exposed tall face.
+  if (exp.left && voxelHash(v.x, v.y, v.z, 19) < mat.stainChance) {
+    const t = 0.2 + voxelHash(v.x, v.y, v.z, 23) * 0.6;
+    const sx = px - HALF_W + t * HALF_W;
+    const sy = py + t * HALF_H;
+    g.lineStyle(2, shade(left, -0.32), 0.55);
+    g.beginPath();
+    g.moveTo(sx, sy + 1);
+    g.lineTo(sx, sy + SIDE_H * (0.5 + voxelHash(v.x, v.y, v.z, 29) * 0.5));
+    g.strokePath();
+  }
+  if (exp.right && voxelHash(v.x, v.y, v.z, 31) < mat.stainChance) {
+    const t = 0.2 + voxelHash(v.x, v.y, v.z, 37) * 0.6;
+    const sx = px + t * HALF_W;
+    const sy = py + HALF_H - t * HALF_H;
+    g.lineStyle(2, shade(right, -0.32), 0.55);
+    g.beginPath();
+    g.moveTo(sx, sy + 1);
+    g.lineTo(sx, sy + SIDE_H * (0.5 + voxelHash(v.x, v.y, v.z, 41) * 0.5));
+    g.strokePath();
+  }
+}
+
 /** Bake a model to a texture ('vox-<name>') and register its anchor. */
 export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVoxelSprite {
   const key = `vox-${model.name}`;
@@ -231,8 +342,25 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
     }
   }
 
+  // Grounding gradient: material voxels darken slightly toward the base so
+  // objects sit in the scene instead of floating (materials pass §A3).
+  // Neon/accent voxels are light, not material — they never darken.
+  const zMax = Math.max(1, ...model.voxels.map((v) => v.z));
+  const grounding = model.grounding !== false;
   for (const p of proj.points) {
-    drawCube(g, p.px + ox, p.py + oy, p.v.c);
+    const v = p.v;
+    if (v.mat !== undefined) {
+      const ground = grounding ? -0.1 * (1 - Math.min(1, v.z / zMax)) : 0;
+      const base = shade(v.c, ground);
+      const exp: Exposure = {
+        top: !occupied.has(`${v.x},${v.y},${v.z + 1}`),
+        left: !occupied.has(`${v.x},${v.y + 1},${v.z}`),
+        right: !occupied.has(`${v.x + 1},${v.y},${v.z}`),
+      };
+      drawMatCube(g, p.px + ox, p.py + oy, v, base, exp);
+    } else {
+      drawCube(g, p.px + ox, p.py + oy, v.c);
+    }
   }
 
   g.generateTexture(key, w, h);

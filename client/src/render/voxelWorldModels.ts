@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { mixPalette, PALETTE_INT } from '@shared/palette';
-import { bakeVoxelModel, box, type Voxel } from './voxel';
+import { MATERIALS } from './materials';
+import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
 /**
  * Mass-convert set: resource nodes (hero-budget per §12A.8), containers,
@@ -119,37 +120,37 @@ function antennaModel(): Voxel[] {
 // ── Containers & drums (the block replacements) ───────────────────────────
 
 function containerModel(variant: number): Voxel[] {
-  const bodies = [
-    mixPalette('structureMid', 'duskSky', 0.25),
-    mixPalette('structureMid', 'groundAccent', 0.3),
-    mixPalette('duskSky', 'groundBase', 0.5),
-  ];
-  const body = bodies[variant % 3] as number;
-  const ridge = mixPalette('structureMid', 'ink', 0.3);
+  // Weathered painted-panel shipping boxes: teal-grey, ochre, dusty rose.
+  const mat = [MATERIALS.paintTeal, MATERIALS.paintOchre, MATERIALS.paintRose][
+    variant % 3
+  ] as (typeof MATERIALS)['paintTeal'];
   const v: Voxel[] = [];
-  for (const vox of box(0, 0, 0, 6, 4, 5, body)) {
+  for (const vox of mbox(0, 0, 0, 6, 4, 5, mat)) {
     // Corrugation: alternating darker columns on long faces.
     const ridged = vox.x % 2 === 1 && (vox.y === 0 || vox.y === 3);
-    v.push({ ...vox, c: ridged ? ridge : body });
+    v.push(ridged ? { ...vox, c: shade(mat.base, -0.16) } : vox);
   }
-  // Stencil chip accent.
+  // Rusted top rail + stencil chip accent.
+  for (const vox of mbox(0, 0, 4, 6, 1, 1, MATERIALS.rustDeep)) v.push(vox);
   v.push({ x: 5, y: 2, z: 3, c: PALETTE_INT.neonAmber });
   return v;
 }
 
 function drumsModel(): Voxel[] {
-  const drumA = mixPalette('structureMid', 'groundAccent', 0.45);
-  const drumB = mixPalette('groundAccent', 'ink', 0.3);
-  const band = mixPalette('structureMid', 'ink', 0.25);
+  // Rusted fuel drums with gunmetal bands; one repainted ochre.
   const v: Voxel[] = [];
-  const drum = (x: number, y: number, c: number) => {
-    for (const vox of box(x, y, 0, 3, 3, 5, c)) {
-      v.push({ ...vox, c: vox.z === 2 ? band : c });
+  const drum = (x: number, y: number, mat: (typeof MATERIALS)['rust']) => {
+    for (const vox of mbox(x, y, 0, 3, 3, 5, mat)) {
+      if (vox.z === 2) {
+        v.push({ ...vox, c: MATERIALS.gunmetalDeep.base, mat: MATERIALS.gunmetalDeep });
+      } else {
+        v.push(vox);
+      }
     }
   };
-  drum(0, 0, drumA);
-  drum(3, 2, drumB);
-  drum(1, 3, drumA);
+  drum(0, 0, MATERIALS.rust);
+  drum(3, 2, MATERIALS.paintOchre);
+  drum(1, 3, MATERIALS.rustDeep);
   return v;
 }
 
@@ -235,19 +236,18 @@ function heatlampModel(): Voxel[] {
 // ── The Great Dynamo (hero model — the biggest light in the city) ─────────
 
 function dynamoModel(): Voxel[] {
-  const housing = mixPalette('structureMid', 'ink', 0.3);
-  const housingLight = mixPalette('structureMid', 'duskSky', 0.15);
-  const core = mixPalette('duskSky', 'ink', 0.3);
+  const housing = MATERIALS.gunmetal;
+  const housingDeep = MATERIALS.gunmetalDeep;
   const ringHot = PALETTE_INT.neonAmber;
   const ringGlow = mixPalette('neonAmber', 'warmGlow', 0.55);
   const v: Voxel[] = [];
 
   // Base skirt 30×30×4 (hollow) with vent slots.
-  for (const vox of box(0, 0, 0, 30, 30, 4, housing)) {
+  for (const vox of mbox(0, 0, 0, 30, 30, 4, housing)) {
     const inner = vox.x > 2 && vox.x < 27 && vox.y > 2 && vox.y < 27 && vox.z < 3;
     if (inner) continue;
     const vent = vox.z === 1 && (vox.x + vox.y) % 3 === 0 && (vox.y === 0 || vox.x === 29);
-    v.push({ ...vox, c: vent ? core : housing });
+    v.push(vent ? { ...vox, c: housingDeep.base, mat: housingDeep } : vox);
   }
   // Cable stubs at the corners.
   for (const [cx, cy] of [
@@ -256,7 +256,7 @@ function dynamoModel(): Voxel[] {
     [1, 26],
     [26, 26],
   ] as const) {
-    v.push(...box(cx, cy, 4, 3, 3, 2, core));
+    v.push(...mbox(cx, cy, 4, 3, 3, 2, housingDeep));
   }
 
   // Housing pillars (4), leaving big open sightlines to the core.
@@ -266,19 +266,23 @@ function dynamoModel(): Voxel[] {
     [2, 24],
     [24, 24],
   ] as const) {
-    v.push(...box(px, py, 4, 4, 4, 34, housing));
-    v.push(...box(px, py, 38, 4, 4, 2, housingLight));
+    v.push(...mbox(px, py, 4, 4, 4, 34, housing));
+    for (const vox of mbox(px, py, 38, 4, 4, 2, housing)) {
+      v.push({ ...vox, c: shade(housing.base, 0.14) });
+    }
   }
   // Top ring beam connecting the pillars.
-  for (const vox of box(2, 2, 40, 26, 26, 3, housing)) {
+  for (const vox of mbox(2, 2, 40, 26, 26, 3, housing)) {
     const inner = vox.x > 5 && vox.x < 24 && vox.y > 5 && vox.y < 24;
     if (!inner) v.push(vox);
   }
 
-  // Turbine core: hollow column.
-  for (const vox of box(10, 10, 2, 10, 10, 44, core)) {
+  // Turbine core: hollow deep-gunmetal column with lighter service bands.
+  for (const vox of mbox(10, 10, 2, 10, 10, 44, housingDeep)) {
     const inner = vox.x > 11 && vox.x < 18 && vox.y > 11 && vox.y < 18;
-    if (!inner) v.push({ ...vox, c: vox.z % 8 === 0 ? mixPalette('duskSky', 'ink', 0.15) : core });
+    if (!inner) {
+      v.push(vox.z % 8 === 0 ? { ...vox, c: shade(housingDeep.base, 0.12) } : vox);
+    }
   }
 
   // Three glowing coil rings around the core (the hero light).
@@ -292,8 +296,10 @@ function dynamoModel(): Voxel[] {
   }
 
   // Cap + teal beacon.
-  v.push(...box(9, 9, 46, 12, 12, 2, housingLight));
-  v.push(...box(13, 13, 48, 4, 4, 2, housing));
+  for (const vox of mbox(9, 9, 46, 12, 12, 2, housing)) {
+    v.push({ ...vox, c: shade(housing.base, 0.14) });
+  }
+  v.push(...mbox(13, 13, 48, 4, 4, 2, housing));
   v.push(...box(14, 14, 50, 2, 2, 4, PALETTE_INT.neonTeal));
 
   return v;
