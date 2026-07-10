@@ -20,6 +20,7 @@ import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
 import { BankPanel } from '../ui/BankPanel';
 import { GoalPanel } from '../ui/GoalPanel';
+import { WorldMapPanel } from '../ui/WorldMapPanel';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 
@@ -51,6 +52,7 @@ export class UIScene extends Phaser.Scene {
   private manifestPanel!: ManifestPanel;
   private goalPanel!: GoalPanel;
   private bankPanel!: BankPanel;
+  private worldMapPanel!: WorldMapPanel;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
@@ -157,6 +159,7 @@ export class UIScene extends Phaser.Scene {
     this.manifestPanel = new ManifestPanel(this);
     this.goalPanel = new GoalPanel(this);
     this.bankPanel = new BankPanel(this);
+    this.worldMapPanel = new WorldMapPanel(this);
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
     this.restedText = this.add.text(12, 58, '', {
@@ -440,6 +443,13 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-M', () => {
       this.manifestPanel.toggle();
     });
+    // TAB = the world map (D4a). Captured so the browser keeps focus.
+    kb.addCapture('TAB');
+    kb.on('keydown-TAB', () => {
+      if (typing()) return;
+      sound.uiClick();
+      this.worldMapPanel.toggle();
+    });
     kb.on('keydown-G', () => {
       this.goalPanel.toggle();
     });
@@ -463,6 +473,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
+      else if (this.worldMapPanel.visible) this.worldMapPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;
