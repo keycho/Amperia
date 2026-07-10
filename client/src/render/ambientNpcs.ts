@@ -54,6 +54,12 @@ const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
     { code: '1:4:3:3:1:0', tile: [20, 9], dir: 'ne', turns: ['ne', 'nw'] }, // roofline browser
     { code: '1:2:0:5:2:0', tile: [21, 10], dir: 'se' }, // vista watcher
   ],
+  terrarium: [
+    // Gardeners at their beds — the gentlest shift in the city.
+    { code: '1:1:2:2:3:0', tile: [17, 13], dir: 'ne', pose: 'magclaw' }, // digging a bed
+    { code: '1:3:5:0:2:2', tile: [29, 20], dir: 'nw', turns: ['nw', 'ne'] }, // trellis keeper
+    { code: '1:0:1:5:0:1', tile: [9, 19], dir: 'se', turns: ['se', 'sw'] }, // promenade stroller
+  ],
 };
 
 /** Bake + place the district's citizens. Call once from world setup. */

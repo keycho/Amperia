@@ -435,12 +435,7 @@ export class FilamentRoom extends Room<FilamentState> {
         data: { sink: 'tramToll', bolts: toll, to: this.districtId, via: 'join' },
       });
     }
-    const gate: TilePoint =
-      this.districtId === 'tangle'
-        ? CONFIG.travel.tangleSpawn
-        : this.districtId === 'stacks'
-          ? CONFIG.travel.stacksSpawn
-          : CONFIG.player.spawn;
+    const gate: TilePoint = this.gateSpawn(CONFIG.player.spawn);
     const spawn: TilePoint =
       character.district === this.districtId &&
       character.tile !== null &&
@@ -2822,9 +2817,18 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   /** Deterministic spawn seats: spaced walkable tiles in the home box. */
+  /** The district's arrival tile (home districts fall back to `fallback`). */
+  protected gateSpawn(fallback: TilePoint): TilePoint {
+    if (this.districtId === 'tangle') return CONFIG.travel.tangleSpawn;
+    if (this.districtId === 'stacks') return CONFIG.travel.stacksSpawn;
+    if (this.districtId === 'terrarium') return CONFIG.travel.terrariumSpawn;
+    return fallback;
+  }
+
   private spawnMobs(): void {
-    // The Stacks is where people LIVE — no ferals in the canyon (D1).
-    if (this.districtId === 'stacks') return;
+    // The Stacks and the Terrarium are where people LIVE — no ferals
+    // in the canyon, none in the gardens (D1/D2).
+    if (this.districtId === 'stacks' || this.districtId === 'terrarium') return;
     const packs: Array<{ kind: MobKind; count: number; box: { x0: number; y0: number; x1: number; y1: number } }> =
       this.districtId === 'tangle'
         ? [
@@ -3064,11 +3068,7 @@ export class FilamentRoom extends Room<FilamentState> {
       if (client !== undefined) client.send(MSG.inventory, this.inventorySync(rt));
     }
     const spawn =
-      this.districtId === 'tangle'
-        ? CONFIG.travel.tangleSpawn
-        : this.districtId === 'stacks'
-          ? CONFIG.travel.stacksSpawn
-          : CONFIG.combat.player.respawnTile;
+      this.gateSpawn(CONFIG.combat.player.respawnTile);
     rt.move = makeMoveState(spawn);
     rt.hp = CONFIG.combat.player.maxHp;
     ps.tileX = spawn.x;

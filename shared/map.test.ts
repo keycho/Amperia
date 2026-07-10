@@ -1,6 +1,70 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type NodeKind } from './config';
-import { buildStacksMap, buildTangleMap, buildWorldMap, reachableTiles } from './map';
+import { buildStacksMap, buildTangleMap, buildTerrariumMap, buildWorldMap, reachableTiles } from './map';
+
+describe('buildTerrariumMap', () => {
+  const t = buildTerrariumMap();
+
+  it('is deterministic and marked as the terrarium', () => {
+    expect(buildTerrariumMap().props).toEqual(t.props);
+    expect(t.district).toBe('terrarium');
+  });
+
+  it('every walkable tile is reachable across all three terrace bands', () => {
+    const spawn = CONFIG.travel.terrariumSpawn;
+    const reached = reachableTiles(t, spawn.x, spawn.y);
+    let walkableCount = 0;
+    for (const row of t.walkable) for (const w of row) if (w) walkableCount++;
+    expect(reached.size).toBe(walkableCount);
+    // At least one reachable tile on each band.
+    for (const level of [0, 1, 2]) {
+      const found = [...reached].some((key) => {
+        const y = Math.floor(key / t.size);
+        const x = key % t.size;
+        return (t.elevation[y]?.[x] ?? -1) === level;
+      });
+      expect(found).toBe(true);
+    }
+  });
+
+  it('the Mother Trellis stands and the berths are clear 3×3 pads', () => {
+    expect(t.props.filter((p) => p.kind === 'mothertrellis').length).toBe(1);
+    expect(t.loftberths.length).toBeGreaterThanOrEqual(4);
+    for (const b of t.loftberths) {
+      for (let dy = 0; dy < 3; dy++) {
+        for (let dx = 0; dx < 3; dx++) {
+          expect(t.walkable[b.y + dy]?.[b.x + dx]).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('compost heaps hit the config count, all gatherable', () => {
+    const heaps = t.nodes.filter((n) => n.kind === 'junkHeap');
+    expect(heaps.length).toBe(CONFIG.terrarium.compostCount);
+    for (const n of heaps) {
+      const adjacent = [
+        [n.x + 1, n.y],
+        [n.x - 1, n.y],
+        [n.x, n.y + 1],
+        [n.x, n.y - 1],
+      ].some(([x, y]) => t.walkable[y as number]?.[x as number] === true);
+      expect(adjacent).toBe(true);
+    }
+  });
+
+  it('blocks every prop footprint and grows real garden mass', () => {
+    for (const p of t.props) {
+      for (let dy = 0; dy < p.h; dy++) {
+        for (let dx = 0; dx < p.w; dx++) {
+          expect(t.walkable[p.y + dy]?.[p.x + dx]).toBe(false);
+        }
+      }
+    }
+    expect(t.props.filter((p) => p.kind === 'gardenbed').length).toBeGreaterThanOrEqual(12);
+    expect(t.props.filter((p) => p.kind === 'toolshed').length).toBeGreaterThanOrEqual(3);
+  });
+});
 
 describe('buildStacksMap', () => {
   const stacks = buildStacksMap();

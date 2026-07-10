@@ -191,6 +191,20 @@ export class WorldScene extends Phaser.Scene {
     this.placeAntennaCables();
     this.placeTangleCables();
     this.placeStacksOverhead();
+    // D2: the Terrarium breathes fireflies — the gentlest light in the city.
+    if (this.map.district === 'terrarium') {
+      for (const [fx2, fy2] of [
+        [8, 10], [10, 24], [17, 6], [18, 30], [22, 14], [28, 20], [31, 8], [30, 33], [35, 15],
+      ] as const) {
+        const w = tileToWorld(fx2, fy2);
+        addEmberMotes(this, w.x, w.y - 16, depthForWorldY(w.y) + 3, {
+          count: 3,
+          radius: 46,
+          rise: 22,
+          tint: PALETTE_INT.solarGreen,
+        });
+      }
+    }
     this.placeStringLights();
     this.placeCanalLife();
     this.spawnAmbientBots();
@@ -1054,7 +1068,7 @@ export class WorldScene extends Phaser.Scene {
       let view: NodeView;
       switch (n.kind) {
         case 'junkHeap': {
-          const node = new JunkHeapNode(this, n.id, n.x, n.y);
+          const node = new JunkHeapNode(this, n.id, n.x, n.y, this.map.district === 'terrarium');
           node.glintImage.on(
             'pointerdown',
             clickGuard(() => {
@@ -1377,6 +1391,10 @@ export class WorldScene extends Phaser.Scene {
         if (rugVariant !== undefined) {
           kind = 'rug';
           seed = rugVariant;
+        } else if (this.map.district === 'terrarium') {
+          // D2: the garden tier is WARM WOOD underfoot (§12B) — decked
+          // terraces, plated entry apron, never asphalt, never lawn.
+          kind = (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'deck' : 'plating';
         } else if (inLane || onBoardwalk) kind = 'deck';
         else if (onStepRing) kind = 'paverLight';
         else if (inPlaza) kind = 'paver';
@@ -2116,6 +2134,55 @@ export class WorldScene extends Phaser.Scene {
           lamp.setAlpha(bloom(0.4));
           lamp.setDepth(img.depth + 1);
           addFlicker(this, lamp, bloom(0.4), 0.14);
+          break;
+        }
+        // ── D2 THE TERRARIUM ─────────────────────────────────────────────
+        case 'mothertrellis': {
+          const img = this.propSprite('mothertrellis', x, y);
+          // Glow-fruit clusters breathe soft amber-green — the district's
+          // lamps — and fireflies drift around the frame.
+          for (const [gx, gy, s] of [
+            [-38, -84, 0.07], [30, -122, 0.08], [-26, -108, 0.06],
+            [22, -158, 0.07], [-2, -168, 0.08], [-30, -60, 0.06],
+          ] as const) {
+            const fruit = this.add.image(x + gx, y + gy, 'fx-glow');
+            fruit.setTint(blendInt(PALETTE_INT.neonAmber, PALETTE_INT.solarGreen, 0.35));
+            fruit.setBlendMode(Phaser.BlendModes.ADD);
+            fruit.setScale(s);
+            fruit.setAlpha(bloom(0.5));
+            fruit.setDepth(img.depth + 1);
+            this.tweens.add({
+              targets: fruit,
+              alpha: { from: bloom(0.3), to: bloom(0.6) },
+              duration: 2400 + Math.abs(gx) * 20,
+              yoyo: true,
+              repeat: -1,
+              ease: 'sine.inout',
+            });
+            this.occlusion.attach(img, [fruit]);
+          }
+          addEmberMotes(this, x, y - 70, img.depth + 2, {
+            count: 5,
+            radius: 60,
+            rise: 30,
+            tint: PALETTE_INT.solarGreen,
+          });
+          this.addGroundPool(x, y - 4, PALETTE_INT.solarGreen, 0.25);
+          break;
+        }
+        case 'gardenbed': {
+          this.propSprite(`gardenbed-${p.variant % 3}`, x, y);
+          break;
+        }
+        case 'toolshed': {
+          const img = this.propSprite(`toolshed-${p.variant % 2}`, x, y);
+          const win = this.add.image(x + 14, y - 12, 'fx-glow');
+          win.setTint(PALETTE_INT.warmGlow);
+          win.setBlendMode(Phaser.BlendModes.ADD);
+          win.setScale(0.05);
+          win.setAlpha(bloom(0.35));
+          win.setDepth(img.depth + 1);
+          addFlicker(this, win, bloom(0.35), 0.08);
           break;
         }
         // V2 round-ish — the water tank's level-marker lamp.

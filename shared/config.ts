@@ -402,6 +402,16 @@ export const CONFIG = {
     tangleSpawn: { x: 4, y: 20 },
     /** Stacks gate + arrival tile (districts block D1). */
     stacksSpawn: { x: 4, y: 20 },
+    /** Terrarium gate + arrival tile (districts block D2). */
+    terrariumSpawn: { x: 4, y: 20 },
+  },
+
+  /** THE TERRARIUM — the hanging-garden tier (districts block D2). */
+  terrarium: {
+    /** Compost heaps (the peaceful scavenge; Scavving tool rules apply). */
+    compostCount: 8,
+    /** Loftpod berth pads are 3×3; the count comes from the map. */
+    berthSize: 3,
   },
 
   /** THE STACKS — the vertical quarter (districts block D1, §12B brief). */

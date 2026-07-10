@@ -77,7 +77,12 @@ export type PropKind =
   | 'noodlecart'
   | 'treeplanter'
   /** D1 — a rooftop tarp shanty (2×2, Roofline furniture). */
-  | 'shanty';
+  | 'shanty'
+  /** D2 THE TERRARIUM — the Mother Trellis (4×4 XL, glow-fruit lights). */
+  | 'mothertrellis'
+  /** D2 — a raised crop bed (2×1) and the gardeners' tool shed (2×2). */
+  | 'gardenbed'
+  | 'toolshed';
 
 export interface Prop {
   kind: PropKind;
@@ -98,7 +103,7 @@ export interface GatherNode {
   y: number;
 }
 
-export type DistrictId = 'filament' | 'tangle' | 'stacks';
+export type DistrictId = 'filament' | 'tangle' | 'stacks' | 'terrarium';
 
 export interface WorldMap {
   district: DistrictId;
@@ -127,6 +132,9 @@ export interface WorldMap {
   bankInterior: TilePoint[];
   /** V5: raised footbridge deck tiles (the client rails their edges). */
   footbridges: TilePoint[];
+  /** D2: Loftpod berth pads (nw corner of each 3×3 walkable pad).
+   *  Server-managed occupancy (D2b); empty outside the Terrarium. */
+  loftberths: TilePoint[];
   /**
    * Rentable player shop stalls (the Nightstalls come alive — E2), in a
    * FIXED deterministic order: the stall id is the index here, and the
@@ -838,7 +846,7 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { x: 20, y: 27 },
     { x: 27, y: 20 },
   ];
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior, footbridges };
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior, footbridges, loftberths: [] };
 }
 
 /**
@@ -1133,7 +1141,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
 
   // One pool at the gate — arrivals get their entrance moment even here.
   const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [] };
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
 }
 
 /**
@@ -1315,12 +1323,157 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
     { x: 13, y: 15 },
     { x: 25, y: 11 },
   ];
-  return { district: 'stacks', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [] };
+  return { district: 'stacks', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
+}
+
+/**
+ * THE TERRARIUM (districts block D2) — the hanging-garden tier, per the
+ * §12B brief: three stepped terrace bands rising east, greenery as
+ * INFRASTRUCTURE on built decking (never lawn), the MOTHER TRELLIS
+ * feeding every bed below, and the Loftpod berths — the city's housing
+ * showroom. The gentlest district: PvE-safe, NO mobs, no Scrapcache.
+ */
+export function buildTerrariumMap(seed: number = CONFIG.map.seed ^ 0x7e88): WorldMap {
+  const size = CONFIG.map.size;
+  const rng: Rng = makeRng(seed);
+  const walkable: boolean[][] = Array.from({ length: size }, () => Array(size).fill(true));
+  const canal: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const props: Prop[] = [];
+  const nodes: GatherNode[] = [];
+  const plaza = { cx: 31, cy: 17, radius: -1 }; // the Trellis court, no heal ring
+
+  const place = (kind: PropKind, x: number, y: number, w = 1, h = 1, variant = 0) => {
+    const p: Prop = { kind, x, y, w, h, variant };
+    props.push(p);
+    blockFootprint(walkable, p);
+  };
+
+  // ── the three terrace bands (elevation first — guards read it) ─────────
+  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  for (let ty = 0; ty < size; ty++) {
+    for (let tx = 14; tx <= 25; tx++) (elevation[ty] as number[])[tx] = 1;
+    for (let tx = 26; tx < size; tx++) (elevation[ty] as number[])[tx] = 2;
+  }
+  // Garden steps up each terrace face — generous, this is a stroll.
+  for (const ry of [6, 20, 32]) (ramp[ry] as boolean[])[14] = true;
+  for (const ry of [10, 24, 34]) (ramp[ry] as boolean[])[26] = true;
+  const onRamp = (x: number, y: number): boolean => ramp[y]?.[x] === true;
+  const nearRamp = (x: number, y: number): boolean =>
+    onRamp(x, y) || onRamp(x - 1, y) || onRamp(x + 1, y) || onRamp(x, y - 1) || onRamp(x, y + 1);
+
+  // ── the gate + the MOTHER TRELLIS ───────────────────────────────────────
+  place('tramgate', 1, 18, 2, 5);
+  place('mothertrellis', 30, 15, 4, 4);
+
+  // ── garden infrastructure: crop-bed rows, sheds, trees, green walls ────
+  const bedRows: Array<[number, number, number]> = [
+    // [x, y, count] — beds run east in a row, 2×1 each with walk gaps.
+    [15, 4, 3], [15, 12, 3], [16, 22, 3], [15, 28, 3], [16, 35, 3],
+    [27, 4, 3], [28, 12, 2], [27, 22, 2], [28, 28, 3], [27, 35, 3],
+    [5, 8, 2], [4, 26, 2], [6, 32, 2],
+  ];
+  for (const [bx, by, count] of bedRows) {
+    for (let i = 0; i < count; i++) {
+      const p: Prop = { kind: 'gardenbed', x: bx + i * 3, y: by, w: 2, h: 1, variant: (bx + i) % 3 };
+      if (!footprintWalkable(walkable, p)) continue;
+      let ramped = false;
+      for (let dx = 0; dx < p.w && !ramped; dx++) if (nearRamp(p.x + dx, p.y)) ramped = true;
+      if (ramped) continue;
+      if (wouldSealPocketRect(walkable, p.x, p.y, p.w, p.h, size)) continue;
+      props.push(p);
+      blockFootprint(walkable, p);
+    }
+  }
+  for (const [sx, sy] of [
+    [9, 14], [22, 8], [21, 30], [34, 8], [33, 30],
+  ] as const) {
+    if (!nearRamp(sx, sy)) {
+      const p: Prop = { kind: 'toolshed', x: sx, y: sy, w: 2, h: 2, variant: (sx + sy) % 2 };
+      if (footprintWalkable(walkable, p) && !wouldSealPocketRect(walkable, p.x, p.y, 2, 2, size)) {
+        props.push(p);
+        blockFootprint(walkable, p);
+      }
+    }
+  }
+  for (const [tx2, ty2] of [
+    [8, 5], [10, 29], [19, 17], [24, 26], [35, 21],
+  ] as const) {
+    const p: Prop = { kind: 'treeplanter', x: tx2, y: ty2, w: 2, h: 2, variant: 0 };
+    if (footprintWalkable(walkable, p) && !nearRamp(tx2, ty2) && !wouldSealPocketRect(walkable, tx2, ty2, 2, 2, size)) {
+      props.push(p);
+      blockFootprint(walkable, p);
+    }
+  }
+
+  // ── the Loftpod berths (D2b): 3×3 walkable pads, sightline-placed ──────
+  const loftberths: TilePoint[] = [];
+  for (const [bx, by] of [
+    [16, 8], [16, 24], [20, 32], [29, 8], [33, 25], [28, 31],
+  ] as const) {
+    let clear = true;
+    for (let dy = 0; dy < 3 && clear; dy++) {
+      for (let dx = 0; dx < 3 && clear; dx++) {
+        if (walkable[by + dy]?.[bx + dx] !== true) clear = false;
+        if (nearRamp(bx + dx, by + dy)) clear = false;
+      }
+    }
+    if (clear) loftberths.push({ x: bx, y: by });
+  }
+
+  // ── compost heaps: the peaceful scavenge (Scavving rules apply) ────────
+  scatterNodes(rng, walkable, nodes, 'junkHeap', CONFIG.terrarium.compostCount, 4, {
+    x0: 3, y0: 3, x1: size - 4, y1: size - 4,
+  }, (x, y) => {
+    if (nearRamp(x, y)) return false;
+    if (Math.abs(y - 20) <= 1 && x <= 8) return false; // gate approach
+    // Not on a berth pad — homes keep their yards.
+    return !loftberths.some((b) => x >= b.x - 1 && x <= b.x + 3 && y >= b.y - 1 && y <= b.y + 3);
+  });
+
+  // ── organic dressing: vine walls + wild bushes along terrace edges ─────
+  const decor: Prop[] = [
+    { kind: 'vinewall', x: 13, y: 12, w: 1, h: 1, variant: 0 },
+    { kind: 'vinewall', x: 13, y: 26, w: 1, h: 1, variant: 1 },
+    { kind: 'vinewall', x: 25, y: 16, w: 1, h: 1, variant: 0 },
+    { kind: 'vinewall', x: 25, y: 30, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 7, y: 17, w: 1, h: 1, variant: 0 },
+    { kind: 'wildbush', x: 18, y: 26, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 23, y: 5, w: 1, h: 1, variant: 2 },
+    { kind: 'wildbush', x: 31, y: 33, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 36, y: 12, w: 1, h: 1, variant: 0 },
+    { kind: 'watertank', x: 35, y: 4, w: 2, h: 2, variant: 0 },
+    { kind: 'barrels', x: 10, y: 15, w: 1, h: 1, variant: 0 },
+    { kind: 'cablespool', x: 5, y: 12, w: 1, h: 1, variant: 1 },
+  ];
+  for (const prop of decor) {
+    if (!footprintWalkable(walkable, prop)) continue;
+    if (stealsNodeAccess(walkable, nodes, prop)) continue;
+    let ramped = false;
+    for (let dy = 0; dy < prop.h && !ramped; dy++) {
+      for (let dx = 0; dx < prop.w && !ramped; dx++) {
+        if (nearRamp(prop.x + dx, prop.y + dy)) ramped = true;
+      }
+    }
+    if (ramped) continue;
+    if (wouldSealPocketRect(walkable, prop.x, prop.y, prop.w, prop.h, size)) continue;
+    if (loftberths.some((b) => prop.x >= b.x - 1 && prop.x <= b.x + 3 && prop.y >= b.y - 1 && prop.y <= b.y + 3)) continue;
+    props.push(prop);
+    blockFootprint(walkable, prop);
+  }
+
+  // Catwalks: the gate landing + the Trellis court (housing showroom light).
+  const catwalks: TilePoint[] = [
+    { x: 4, y: 20 },
+    { x: 29, y: 19 },
+  ];
+  return { district: 'terrarium', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {
   if (district === 'tangle') return buildTangleMap();
   if (district === 'stacks') return buildStacksMap();
+  if (district === 'terrarium') return buildTerrariumMap();
   return buildWorldMap();
 }
 

@@ -1884,6 +1884,144 @@ function shantyModel(): Voxel[] {
   return v;
 }
 
+// ── D2 THE TERRARIUM: the Mother Trellis, crop beds, sheds, compost ──────
+
+/**
+ * The MOTHER TRELLIS — a towering vine-wrapped irrigation frame with
+ * glow-fruit strung through the lattice. The district's heart and lamp.
+ */
+function mothertrellisModel(): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.35);
+  const fruit = mixPalette('neonAmber', 'solarGreen', 0.35);
+  const v: Voxel[] = [];
+  // Deck plinth + four heavy timber legs.
+  v.push(...mbox(2, 2, 0, 28, 28, 2, MATERIALS.wood));
+  for (const [lx, ly] of [
+    [4, 4], [25, 4], [4, 25], [25, 25],
+  ] as const) {
+    v.push(...mbox(lx, ly, 2, 3, 3, 42, MATERIALS.woodDeep));
+  }
+  // Cross-beams every eight courses + the crown cistern.
+  for (const bz of [12, 22, 32, 42]) {
+    v.push(...mbox(4, 4, bz, 24, 3, 2, MATERIALS.woodDeep));
+    v.push(...mbox(4, 25, bz, 24, 3, 2, MATERIALS.woodDeep));
+    v.push(...mbox(4, 7, bz, 3, 18, 2, MATERIALS.woodDeep));
+    v.push(...mbox(25, 7, bz, 3, 18, 2, MATERIALS.woodDeep));
+  }
+  v.push(...mbox(10, 10, 44, 12, 12, 5, MATERIALS.gunmetal)); // the cistern
+  v.push(...mbox(9, 9, 49, 14, 14, 1, MATERIALS.gunmetalDeep));
+  // Drip lines falling from the cistern to the beds below.
+  for (const [dx2, dy2] of [
+    [12, 14], [19, 14], [14, 19], [17, 17],
+  ] as const) {
+    for (let z = 12; z < 44; z += 2) v.push({ x: dx2, y: dy2, z, c: MATERIALS.gunmetalDeep.base });
+  }
+  // THE VINES: climbing every leg and beam, hash-scattered.
+  for (const [lx, ly] of [
+    [4, 4], [25, 4], [4, 25], [25, 25],
+  ] as const) {
+    for (let z = 2; z < 44; z++) {
+      const h = voxelHash(lx + z, ly, 51);
+      if (h < 0.6) {
+        const side = h < 0.3 ? -1 : 3;
+        v.push({ x: lx + (side === -1 ? -1 : 3), y: ly + (z % 3), z, c: z % 2 === 0 ? leafA : leafB });
+      }
+    }
+  }
+  for (const bz of [12, 22, 32, 42]) {
+    for (let x = 5; x < 27; x += 2) {
+      if (voxelHash(x, bz, 52) < 0.55) {
+        v.push({ x, y: 4 + (x % 3), z: bz + 2, c: (x + bz) % 2 === 0 ? leafA : leafB });
+        // Hanging tendrils off the beams.
+        if (voxelHash(x, bz, 53) < 0.3) {
+          for (let d = 1; d <= 2 + (x % 3); d++) v.push({ x, y: 5, z: bz - d, c: leafB });
+        }
+      }
+    }
+  }
+  // GLOW-FRUIT clusters — the district's lamps (glows land at placement).
+  for (const [fx2, fy2, fz2] of [
+    [8, 5, 20], [24, 6, 30], [6, 24, 26], [22, 26, 38], [15, 5, 41], [10, 26, 14],
+  ] as const) {
+    v.push({ x: fx2, y: fy2, z: fz2, c: fruit });
+    v.push({ x: fx2 + 1, y: fy2, z: fz2 - 1, c: fruit });
+    v.push({ x: fx2, y: fy2 + 1, z: fz2 - 2, c: mixPalette('neonAmber', 'solarGreen', 0.15) });
+  }
+  return v;
+}
+
+/** A raised crop bed (2×1): wood frame, dark soil, rows per variant. */
+function gardenbedModel(variant: number): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.3);
+  const v: Voxel[] = [];
+  for (const vox of mbox(0, 0, 0, 16, 8, 3, MATERIALS.wood)) {
+    const soil = vox.z === 2 && vox.x > 0 && vox.x < 15 && vox.y > 0 && vox.y < 7;
+    if (soil) v.push({ ...vox, c: shade(MATERIALS.woodDeep.base, -0.25) });
+    else v.push(vox);
+  }
+  for (let x = 2; x < 15; x += 2) {
+    for (const y of [2, 5]) {
+      if (variant === 0) {
+        v.push({ x, y, z: 3, c: (x + y) % 4 === 0 ? leafA : leafB }); // sprouts
+      } else if (variant === 1) {
+        v.push({ x, y, z: 3, c: leafB }); // leafy rows
+        v.push({ x, y, z: 4, c: leafA });
+      } else {
+        v.push({ x, y, z: 3, c: leafA }); // flowering (one warm head each)
+        if ((x + y) % 6 === 0) v.push({ x, y, z: 4, c: mixPalette('neonAmber', 'solarGreen', 0.3) });
+      }
+    }
+  }
+  return v;
+}
+
+/** The gardeners' tool shed (2×2): slant roof, door, pots at the side. */
+function toolshedModel(variant: number): Voxel[] {
+  const v: Voxel[] = [];
+  for (const vox of mbox(1, 1, 0, 13, 11, 8, MATERIALS.wood)) {
+    v.push(vox);
+  }
+  // Slant roof falling front-ward.
+  for (let y = 0; y < 13; y++) {
+    const z = 10 - Math.floor(y / 4);
+    for (let x = 0; x < 15; x++) {
+      v.push({
+        x, y, z,
+        c: variant === 0 ? MATERIALS.gunmetalDeep.base : MATERIALS.rustDeep.base,
+        mat: variant === 0 ? MATERIALS.gunmetalDeep : MATERIALS.rustDeep,
+      });
+    }
+  }
+  v.push(...mbox(5, 11, 0, 3, 1, 6, MATERIALS.woodDeep)); // door
+  v.push(...box(10, 11, 3, 2, 1, 2, mixPalette('warmGlow', 'structureMid', 0.35))); // small window
+  // Pots + a watering can at the side.
+  v.push(...mbox(0, 3, 0, 1, 2, 2, MATERIALS.rust));
+  v.push({ x: 0, y: 3, z: 2, c: PALETTE_INT.solarGreen });
+  v.push(...mbox(0, 7, 0, 1, 1, 1, MATERIALS.gunmetal)); // the can
+  return v;
+}
+
+/** A compost heap — the Terrarium's peaceful scavenge node look. */
+function compostHeapModel(depleted: boolean): Voxel[] {
+  const leafA = PALETTE_INT.solarGreen;
+  const leafB = mixPalette('solarGreen', 'ink', 0.35);
+  const v = junkHeapModel(depleted, 0);
+  // Moss takes the pile; a sprout crowns it while it's full.
+  for (const vox of v) {
+    if (vox.z >= 2 && voxelHash(vox.x, vox.y, 54) < 0.4) {
+      vox.c = (vox.x + vox.y) % 2 === 0 ? leafA : leafB;
+      delete vox.mat;
+    }
+  }
+  if (!depleted) {
+    v.push({ x: 4, y: 3, z: 7, c: leafA });
+    v.push({ x: 4, y: 4, z: 6, c: leafB });
+  }
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -1976,6 +2114,15 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'noodlecart', voxels: noodlecartModel() });
   bakeVoxelModel(scene, { name: 'treeplanter', voxels: treeplanterModel() });
   bakeVoxelModel(scene, { name: 'shanty', voxels: shantyModel() });
+  // D2 the Terrarium: the Trellis, beds, sheds, and the compost look.
+  bakeVoxelModel(scene, { name: 'mothertrellis', voxels: mothertrellisModel() });
+  for (const i of [0, 1, 2]) {
+    bakeVoxelModel(scene, { name: `gardenbed-${i}`, voxels: gardenbedModel(i) });
+  }
+  bakeVoxelModel(scene, { name: 'toolshed-0', voxels: toolshedModel(0) });
+  bakeVoxelModel(scene, { name: 'toolshed-1', voxels: toolshedModel(1) });
+  bakeVoxelModel(scene, { name: 'junk-heap-c', voxels: compostHeapModel(false) });
+  bakeVoxelModel(scene, { name: 'junk-heap-c-depleted', voxels: compostHeapModel(true) });
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });

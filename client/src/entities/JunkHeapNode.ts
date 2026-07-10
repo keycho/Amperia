@@ -19,20 +19,21 @@ export class JunkHeapNode {
   readonly glintImage: Phaser.GameObjects.Image;
   private readonly glintHalo: Phaser.GameObjects.Image;
   private readonly scene: Phaser.Scene;
-  /** V1: which of the three baked silhouettes this heap wears (by tile hash). */
-  private readonly look: number;
+  /** V1/D2: the baked texture family this heap wears. */
+  private readonly texBase: string;
   depleted = false;
   private glintTween: Phaser.Tweens.Tween | null = null;
 
-  constructor(scene: Phaser.Scene, id: number, tx: number, ty: number) {
+  constructor(scene: Phaser.Scene, id: number, tx: number, ty: number, compost = false) {
     this.scene = scene;
     this.id = id;
     this.tile = { x: tx, y: ty };
-    this.look = Math.floor(voxelHash(tx, ty, 0, 97) * 3);
+    // D2: the Terrarium's heaps are mossy COMPOST — one shared look.
+    this.texBase = compost ? 'junk-heap-c' : `junk-heap-${Math.floor(voxelHash(tx, ty, 0, 97) * 3)}`;
     const { x, y } = tileToWorld(tx, ty);
     const anchorY = y + TILE_H / 2;
 
-    this.image = addVoxelSprite(scene, `junk-heap-${this.look}`, x, anchorY);
+    this.image = addVoxelSprite(scene, this.texBase, x, anchorY);
     const wt = worldSpriteTint();
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(anchorY));
@@ -109,7 +110,7 @@ export class JunkHeapNode {
 
   setDepleted(depleted: boolean): void {
     this.depleted = depleted;
-    applyVoxelTexture(this.image, depleted ? `junk-heap-${this.look}-depleted` : `junk-heap-${this.look}`);
+    applyVoxelTexture(this.image, depleted ? `${this.texBase}-depleted` : this.texBase);
     if (depleted) {
       this.hideGlint();
       this.image.disableInteractive();
