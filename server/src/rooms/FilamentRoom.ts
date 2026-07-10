@@ -263,7 +263,14 @@ export class FilamentRoom extends Room<FilamentState> {
   onCreate(): void {
     this.state = new FilamentState();
     this.map = buildDistrictMap(this.districtId);
-    this.grid = { size: this.map.size, walkable: this.map.walkable };
+    // Level-aware grid (R4): ±1 steps cross only at ramp/stair tiles —
+    // platform edges are real geometry for players AND mobs.
+    this.grid = {
+      size: this.map.size,
+      walkable: this.map.walkable,
+      elevation: this.map.elevation,
+      ramp: this.map.ramp,
+    };
     for (const n of this.map.nodes) {
       this.state.nodes.set(String(n.id), new NodeState());
     }

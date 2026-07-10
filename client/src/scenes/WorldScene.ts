@@ -51,7 +51,9 @@ import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
   depthForWorldY,
+  ELEV_PX,
   mapWorldBounds,
+  setElevationLookup,
   TILE_H,
   TILE_W,
   tileToWorld,
@@ -137,6 +139,9 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.map = buildDistrictMap(this.district);
+    // Elevation-aware projection (R4): every tile-derived world position
+    // lifts by the tile's level from here on.
+    setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
     makeSkylineTexture(this);
     this.drawFloor();
     this.placeProps();
@@ -1020,6 +1025,58 @@ export class WorldScene extends Phaser.Scene {
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(0.5);
         tile.setDepth(DEPTH_FLOOR);
+
+        // Platform edge faces (R4b): where this tile stands above its two
+        // screen-front neighbors, drop a material face to their level and
+        // throw a shadow band onto the lower ground.
+        {
+          const e = this.map.elevation[ty]?.[tx] ?? 0;
+          const drawFace = (
+            x1: number,
+            y1: number,
+            x2: number,
+            y2: number,
+            drop: number,
+            color: number,
+          ) => {
+            g.fillStyle(color, 1);
+            g.beginPath();
+            g.moveTo(x1, y1);
+            g.lineTo(x2, y2);
+            g.lineTo(x2, y2 + drop);
+            g.lineTo(x1, y1 + drop);
+            g.closePath();
+            g.fillPath();
+            // Concrete lip on the exposed top edge.
+            g.lineStyle(2, this.lerpColor(color, PALETTE_INT.warmGlow, 0.28), 0.8);
+            g.lineBetween(x1, y1, x2, y2);
+            // Shade at the foot of the face.
+            g.fillStyle(PALETTE_INT.ink, 0.3);
+            g.beginPath();
+            g.moveTo(x1, y1 + drop);
+            g.lineTo(x2, y2 + drop);
+            g.lineTo(x2, y2 + drop + 5);
+            g.lineTo(x1, y1 + drop + 5);
+            g.closePath();
+            g.fillPath();
+          };
+          const eSE = this.map.elevation[ty]?.[tx + 1];
+          if (eSE !== undefined && eSE < e) {
+            drawFace(
+              x, y + TILE_H / 2, x + TILE_W / 2, y,
+              (e - eSE) * ELEV_PX,
+              this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.3),
+            );
+          }
+          const eSW = this.map.elevation[ty + 1]?.[tx];
+          if (eSW !== undefined && eSW < e) {
+            drawFace(
+              x - TILE_W / 2, y, x, y + TILE_H / 2,
+              (e - eSW) * ELEV_PX,
+              MATERIAL_INT.concreteDeep,
+            );
+          }
+        }
 
         // Step-ring lip: a bright leading edge + shadow line under it.
         if (onStepRing) {

@@ -1,4 +1,5 @@
 import { CONFIG, type NodeKind } from './config';
+import { canStep } from './pathfinding';
 import { makeRng, randInt, type Rng } from './rng';
 
 /**
@@ -51,6 +52,14 @@ export interface WorldMap {
   walkable: boolean[][];
   /** canal[y][x] — true = coolant channel (blocked, rendered as coolant). */
   canal: boolean[][];
+  /**
+   * Terrain elevation (R4): integer level per tile. The plaza rides +1
+   * behind its step ring, the canal sinks to −1 below deck level, docks
+   * and platforms step up. Movement crosses levels only at ramp tiles.
+   */
+  elevation: number[][];
+  /** ramp[y][x] — stair/ramp tiles where a ±1 level step is walkable. */
+  ramp: boolean[][];
   props: Prop[];
   /** All gather nodes (blocked tiles; gathered from adjacent). */
   nodes: GatherNode[];
@@ -516,7 +525,34 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     .filter((p) => p.kind === 'stall')
     .map((p, i) => ({ id: i, x: p.x, y: p.y, w: p.w, h: p.h }));
 
-  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls };
+  // ── Terrain elevation (R4) ───────────────────────────────────────────
+  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  for (let ty = 0; ty < size; ty++) {
+    for (let tx = 0; tx < size; tx++) {
+      const d = Math.max(Math.abs(tx - c), Math.abs(ty - c));
+      // The Dynamo plaza rides +1; its step ring is the stair all around.
+      if (d < plaza.radius) (elevation[ty] as number[])[tx] = 1;
+      else if (d === plaza.radius) (ramp[ty] as boolean[])[tx] = true;
+      // The canal sinks below deck level (water under the bridges).
+      if (canal[ty]?.[tx] === true) (elevation[ty] as number[])[tx] = -1;
+    }
+  }
+  // Loading dock strip along the north wall (+1, two stair tiles).
+  for (let tx = 8; tx <= 18; tx++) {
+    for (let ty = 3; ty <= 4; ty++) {
+      (elevation[ty] as number[])[tx] = 1;
+    }
+  }
+  (ramp[4] as boolean[])[11] = true;
+  (ramp[4] as boolean[])[16] = true;
+  // Raised tram platform: arrivals step off above the lane, then down.
+  for (const ty of [19, 20, 21]) {
+    (elevation[ty] as number[])[35] = 1;
+    (ramp[ty] as boolean[])[35] = true;
+  }
+
+  return { district: 'filament', size, walkable, canal, props, nodes, plaza, shopStalls, elevation, ramp };
 }
 
 /**
@@ -644,7 +680,11 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
     (x, y) => Math.min(x, y, size - 1 - x, size - 1 - y) <= 6,
   );
 
-  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [] };
+  // Flat for now — Part B's maze rebuild terraces it.
+  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+
+  return { district: 'tangle', size, walkable, canal, props, nodes, plaza, shopStalls: [], elevation, ramp };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {
@@ -656,6 +696,7 @@ export function reachableTiles(map: WorldMap, sx: number, sy: number): Set<numbe
   const seen = new Set<number>();
   const key = (x: number, y: number) => y * map.size + x;
   if (!map.walkable[sy]?.[sx]) return seen;
+  const grid = { size: map.size, walkable: map.walkable, elevation: map.elevation, ramp: map.ramp };
   const stack: Array<[number, number]> = [[sx, sy]];
   seen.add(key(sx, sy));
   while (stack.length > 0) {
@@ -668,7 +709,7 @@ export function reachableTiles(map: WorldMap, sx: number, sy: number): Set<numbe
     ] as const) {
       const nx = x + dx;
       const ny = y + dy;
-      if (map.walkable[ny]?.[nx] === true && !seen.has(key(nx, ny))) {
+      if (canStep(grid, x, y, nx, ny) && !seen.has(key(nx, ny))) {
         seen.add(key(nx, ny));
         stack.push([nx, ny]);
       }

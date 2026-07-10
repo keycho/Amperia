@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findPath, findPathAdjacent, type PathGrid } from './pathfinding';
+import { canStep, findPath, findPathAdjacent, type PathGrid } from './pathfinding';
 
 function gridFrom(rows: string[]): PathGrid {
   return {
@@ -102,5 +102,51 @@ describe('findPathAdjacent', () => {
       '.....',
     ]);
     expect(findPathAdjacent(sealed, { x: 0, y: 0 }, { x: 2, y: 2, w: 1, h: 1 })).toBeNull();
+  });
+});
+
+describe('terrain elevation (R4)', () => {
+  // A 5×5 yard with a raised 2×2 platform at (2..3, 1..2) and one stair
+  // tile at (1,1): cliff edges block, the stair carries traffic.
+  const elev = [
+    [0, 0, 0, 0, 0],
+    [0, 0, 1, 1, 0],
+    [0, 0, 1, 1, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+  ];
+  const ramp = [
+    [false, false, false, false, false],
+    [false, true, false, false, false],
+    [false, false, false, false, false],
+    [false, false, false, false, false],
+    [false, false, false, false, false],
+  ];
+  const g = {
+    size: 5,
+    walkable: Array.from({ length: 5 }, () => Array(5).fill(true) as boolean[]),
+    elevation: elev,
+    ramp,
+  };
+
+  it('canStep crosses a level only over a ramp', () => {
+    expect(canStep(g, 1, 1, 2, 1)).toBe(true); // ramp → platform
+    expect(canStep(g, 2, 1, 1, 1)).toBe(true); // platform → ramp
+    expect(canStep(g, 2, 0, 2, 1)).toBe(false); // cliff edge from the north
+    expect(canStep(g, 3, 3, 3, 2)).toBe(false); // cliff edge from the south
+    expect(canStep(g, 0, 0, 1, 0)).toBe(true); // flat ground unaffected
+  });
+
+  it('A* routes over the stair, never up a cliff face', () => {
+    const p = findPath(g, { x: 4, y: 3 }, { x: 3, y: 2 });
+    expect(p).not.toBeNull();
+    const path = p as { x: number; y: number }[];
+    // The path must pass through the stair tile (1,1).
+    expect(path.some((t) => t.x === 1 && t.y === 1)).toBe(true);
+  });
+
+  it('a platform with no ramp is unreachable', () => {
+    const noRamp = { ...g, ramp: undefined };
+    expect(findPath(noRamp, { x: 0, y: 0 }, { x: 2, y: 1 })).toBeNull();
   });
 });

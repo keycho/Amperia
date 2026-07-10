@@ -3,12 +3,31 @@
  * structurally rules out corner-cutting through blocked tiles and gives the
  * chunky, readable movement the iso view wants. Pure and deterministic so the
  * server can validate the same paths later.
+ *
+ * TERRAIN ELEVATION (R4): tiles carry an integer level. Walking between
+ * levels is allowed ONLY across a one-step difference where either tile is
+ * a ramp/stair — cliff edges block like walls, so a raised platform's edge
+ * is real geometry, not decoration.
  */
 
 export interface PathGrid {
   size: number;
   /** walkable[y][x] */
   walkable: boolean[][];
+  /** elevation[y][x] — integer levels (default 0 everywhere). */
+  elevation?: number[][];
+  /** ramp[y][x] — true where a ±1 level step is walkable (stairs). */
+  ramp?: boolean[][];
+}
+
+/** May a Spark step from tile a to orthogonally-adjacent tile b? */
+export function canStep(grid: PathGrid, ax: number, ay: number, bx: number, by: number): boolean {
+  if (grid.walkable[by]?.[bx] !== true) return false;
+  const ea = grid.elevation?.[ay]?.[ax] ?? 0;
+  const eb = grid.elevation?.[by]?.[bx] ?? 0;
+  if (ea === eb) return true;
+  if (Math.abs(ea - eb) !== 1) return false;
+  return grid.ramp?.[ay]?.[ax] === true || grid.ramp?.[by]?.[bx] === true;
 }
 
 export interface TilePoint {
@@ -130,7 +149,7 @@ export function findPath(
     for (const [dx, dy] of DIRS) {
       const nx = cur.x + dx;
       const ny = cur.y + dy;
-      if (!inBounds(nx, ny) || walkable[ny]?.[nx] !== true) continue;
+      if (!inBounds(nx, ny) || !canStep(grid, cur.x, cur.y, nx, ny)) continue;
       const nk = key(nx, ny);
       if (closed.has(nk)) continue;
       const g = cur.g + 1;

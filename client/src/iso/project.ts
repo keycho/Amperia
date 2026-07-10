@@ -7,15 +7,43 @@ import { CONFIG } from '@shared/config';
 export const TILE_W = CONFIG.tile.width;
 export const TILE_H = CONFIG.tile.height;
 
-/** World position of a tile's diamond center. */
+/**
+ * TERRAIN ELEVATION (R4): raised tiles render higher on screen. A scene
+ * registers its map's elevation lookup here once, and every world
+ * position derived from tiles (floors, props, entities, effects) lifts by
+ * the level automatically. Depth stays anchored to the BASE tile Y so
+ * sorting never disagrees across levels.
+ */
+export const ELEV_PX = 10;
+
+let elevationAt: (tx: number, ty: number) => number = () => 0;
+
+export function setElevationLookup(fn: ((tx: number, ty: number) => number) | null): void {
+  elevationAt = fn ?? (() => 0);
+}
+
+/** Screen lift (px) for a tile's elevation level. */
+export function elevOffset(tx: number, ty: number): number {
+  return elevationAt(tx, ty) * ELEV_PX;
+}
+
+/** World position of a tile's diamond center (elevation-lifted). */
 export function tileToWorld(tx: number, ty: number): { x: number; y: number } {
+  return {
+    x: ((tx - ty) * TILE_W) / 2,
+    y: ((tx + ty) * TILE_H) / 2 - elevOffset(tx, ty),
+  };
+}
+
+/** A tile's BASE (level-0) world position — depth math uses this. */
+export function tileToWorldBase(tx: number, ty: number): { x: number; y: number } {
   return {
     x: ((tx - ty) * TILE_W) / 2,
     y: ((tx + ty) * TILE_H) / 2,
   };
 }
 
-/** Fractional tile coordinates under a world position. */
+/** Fractional tile coordinates under a BASE world position. */
 export function worldToTile(wx: number, wy: number): { tx: number; ty: number } {
   return {
     tx: wy / TILE_H + wx / TILE_W,
@@ -23,8 +51,17 @@ export function worldToTile(wx: number, wy: number): { tx: number; ty: number } 
   };
 }
 
-/** Integer tile under a world position. */
+/**
+ * Integer tile under a world position, elevation-aware: tries levels top
+ * down and returns the first tile whose registered level matches the
+ * assumed lift (a click on a platform top selects the platform tile).
+ */
 export function worldToTileFloor(wx: number, wy: number): { tx: number; ty: number } {
+  for (const e of [2, 1]) {
+    const { tx, ty } = worldToTile(wx, wy + e * ELEV_PX);
+    const t = { tx: Math.round(tx), ty: Math.round(ty) };
+    if (elevationAt(t.tx, t.ty) === e) return t;
+  }
   const { tx, ty } = worldToTile(wx, wy);
   return { tx: Math.round(tx), ty: Math.round(ty) };
 }
