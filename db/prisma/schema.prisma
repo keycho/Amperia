@@ -119,6 +119,30 @@ model StallReturn {
   @@index([accountId])
 }
 
+/// One UTC day's economy rollup (E4) — the data spine of the future City
+/// Ledger. Written by the nightly job; /metrics renders live + history.
+model EconomySummary {
+  date            String   @id
+  faucetsJson     Json     @default("{}")
+  sinksJson       Json     @default("{}")
+  faucetBolts     Int      @default(0)
+  sinkBolts       Int      @default(0)
+  netBolts        Int      @default(0)
+  /// Total Bolts in player hands (+ stall cashboxes) at rollup time.
+  supplyBolts     Int      @default(0)
+  growthPct       Float    @default(0)
+  medianBolts     Int      @default(0)
+  p90Bolts        Int      @default(0)
+  tradeCount      Int      @default(0)
+  tradeVolumeEst  Int      @default(0)
+  anomalyCount    Int      @default(0)
+  shopVolumeBolts Int      @default(0)
+  chargeAmperite  Int      @default(0)
+  /// Per-resource NPC band position { resource: { unit, floor, ceiling } }.
+  bandsJson       Json     @default("{}")
+  createdAt       DateTime @default(now())
+}
+
 model LedgerEvent {
   id        BigInt   @id @default(autoincrement())
   ts        DateTime @default(now())
