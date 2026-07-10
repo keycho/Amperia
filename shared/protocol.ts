@@ -26,6 +26,10 @@ export const MSG = {
   travel: 'travel',
   travelGo: 'travelGo',
   reclaim: 'reclaim',
+  ptrade: 'ptrade',
+  tradeAsk: 'tradeAsk',
+  tradeSync: 'tradeSync',
+  tradeEnd: 'tradeEnd',
   selectSlot: 'selectSlot',
   moveStack: 'moveStack',
   chat: 'chat',
@@ -219,6 +223,49 @@ export interface TravelGo {
 /** Player → server: reclaim your Scrapcache (owner-only, small fee). */
 export interface ReclaimIntent {
   cacheId: string;
+}
+
+/**
+ * Player → server: direct trade flow. Staging references PACK slots (the
+ * server snapshots itemId/durability itself — quantities and identities are
+ * never client-trusted). Any offer change resets BOTH confirmations.
+ */
+export type PlayerTradeIntent =
+  | { action: 'request'; targetSessionId: string }
+  | { action: 'accept'; tradeId: string }
+  | { action: 'decline'; tradeId: string }
+  | { action: 'stage'; tradeId: string; bolts: number; items: Array<{ slot: number; qty: number }> }
+  | { action: 'confirm'; tradeId: string }
+  | { action: 'unconfirm'; tradeId: string }
+  | { action: 'cancel'; tradeId: string };
+
+/** Server → the invited player: someone offers to trade. */
+export interface TradeAskEvent {
+  tradeId: string;
+  fromSessionId: string;
+  fromName: string;
+}
+
+/** One side of a trade window as the client renders it. */
+export interface TradeSideView {
+  bolts: number;
+  items: Array<{ itemId: ItemId; qty: number; durability?: number }>;
+  confirmed: boolean;
+}
+
+/** Server → both traders: full window snapshot after every change. */
+export interface TradeSyncEvent {
+  tradeId: string;
+  partnerName: string;
+  you: TradeSideView;
+  them: TradeSideView;
+}
+
+/** Server → both traders: the window closed (and why). */
+export interface TradeEndEvent {
+  tradeId: string;
+  outcome: 'completed' | 'declined' | 'cancelled' | 'timeout' | 'disconnected' | 'failed';
+  text: string;
 }
 
 /** Mirror of the synced CacheState schema (client-side typing only). */

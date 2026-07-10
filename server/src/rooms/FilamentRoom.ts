@@ -58,12 +58,15 @@ import {
   type MoveStackIntent,
   type NodeActionIntent,
   type NodeEventPayload,
+  type PlayerTradeIntent,
   type SelectSlotIntent,
   type CraftIntent,
   type DonateIntent,
   type QuestIntent,
   type ReclaimIntent,
   type RepairIntent,
+  type TradeEndEvent,
+  type TradeSideView,
   type TravelIntent,
   type TradeIntent,
   type UseItemIntent,
@@ -71,6 +74,15 @@ import {
 import { makeRng, type Rng } from '@shared/rng';
 import { recipeById, repairQuote, toolSpeedMult, weaponDamageMult } from '@shared/crafting';
 import { dailySaleHeadroom } from '@shared/economy';
+import {
+  emptyOffer,
+  estimateOfferValue,
+  isLopsided,
+  itemIsTradeable,
+  settleTrade,
+  validateOffer,
+  type TradeOffer,
+} from '@shared/trade';
 import { ledger } from '../services/ledger.js';
 import { merchant } from '../services/merchant.js';
 import { verifyToken } from '../services/auth.js';
@@ -153,6 +165,24 @@ interface PlayerRuntime {
   glintReactionsMs: number[];
 }
 
+/**
+ * One live trade window. The server escrows nothing up front — offers are
+ * snapshots; the atomic swap re-validates BOTH sides against live packs and
+ * commits in one synchronous step (settleTrade), so no path can dupe.
+ */
+interface PlayerTradeState {
+  id: string;
+  /** Requester's sessionId. */
+  a: string;
+  /** Invited Spark's sessionId. */
+  b: string;
+  /** False until the invited side accepts (no staging before then). */
+  accepted: boolean;
+  offers: Record<string, TradeOffer>;
+  confirmed: Record<string, boolean>;
+  lastActivityMs: number;
+}
+
 type MobKind = 'scuttlebot' | 'junkhound';
 
 /** Server-side per-mob runtime (never synced). */
@@ -203,6 +233,14 @@ export class FilamentRoom extends Room<FilamentState> {
   private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private persistTicker = 0;
+  /** Live trade windows, by trade id. */
+  private trades = new Map<string, PlayerTradeState>();
+  /** sessionId → tradeId for anyone in (or invited to) a trade. */
+  private tradeBySession = new Map<string, string>();
+  private tradeSeq = 0;
+  /** Config timeout, overridable by env for integration probes only. */
+  private readonly tradeTimeoutMs =
+    Number(process.env.TRADE_TIMEOUT_SECONDS ?? CONFIG.economy.trade.timeoutSeconds) * 1000;
 
   onCreate(): void {
     this.state = new FilamentState();
@@ -234,6 +272,9 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
     this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
     this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
+    this.onMessage<PlayerTradeIntent>(MSG.ptrade, (client, msg) =>
+      this.handlePlayerTrade(client, msg),
+    );
     this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
@@ -329,6 +370,9 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   async onLeave(client: Client): Promise<void> {
+    // A vanished trader closes the window; the swap either fully happened
+    // before this or not at all (settleTrade commits synchronously).
+    this.cancelTradeFor(client.sessionId, 'disconnected', 'The other Spark left mid-trade.');
     const rt = this.runtimes.get(client.sessionId);
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
@@ -569,9 +613,24 @@ export class FilamentRoom extends Room<FilamentState> {
         from: rt.sparkName,
         emote: 'wave',
       });
+    } else if (cmd === '/trade') {
+      const name = text.slice(cmd.length).trim().toLowerCase();
+      if (name === '') {
+        client.send(MSG.notice, { text: 'Usage: /trade <Spark name>' });
+        return;
+      }
+      let targetSid: string | null = null;
+      for (const [sid, other] of this.runtimes) {
+        if (sid !== client.sessionId && other.sparkName.toLowerCase() === name) targetSid = sid;
+      }
+      if (targetSid === null) {
+        client.send(MSG.notice, { text: `No Spark called "${name}" here.` });
+        return;
+      }
+      this.requestTrade(client, rt, targetSid);
     } else if (cmd === '/help') {
       client.send(MSG.notice, {
-        text: `Commands: /near /wave /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
+        text: `Commands: /near /wave /trade <name> /help. Press H to rivet a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage).`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
@@ -603,6 +662,7 @@ export class FilamentRoom extends Room<FilamentState> {
     this.tickMobs(dt);
     this.tickHealing(dt);
     this.tickCaches();
+    this.tickTrades();
 
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
@@ -874,6 +934,303 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       client.send(MSG.notice, { text: `Bought 1 ${ware.itemId} for ${ware.price} Bolts.` });
     }
+  }
+
+  // ── player↔player direct trade (E1) ─────────────────────────────────────
+
+  /**
+   * The trade window flow: request → accept → both stage → both confirm →
+   * atomic swap. All value decisions run server-side against live packs;
+   * clients only reference their own pack slots.
+   */
+  private handlePlayerTrade(client: Client, msg: PlayerTradeIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+
+    if (msg.action === 'request') {
+      if (typeof msg.targetSessionId !== 'string') return;
+      this.requestTrade(client, rt, msg.targetSessionId);
+      return;
+    }
+
+    if (typeof msg.tradeId !== 'string') return;
+    const trade = this.trades.get(msg.tradeId);
+    if (trade === undefined) return;
+    if (trade.a !== client.sessionId && trade.b !== client.sessionId) return;
+    trade.lastActivityMs = Date.now();
+
+    switch (msg.action) {
+      case 'accept': {
+        if (client.sessionId !== trade.b || trade.accepted) return;
+        trade.accepted = true;
+        this.syncTrade(trade);
+        break;
+      }
+      case 'decline': {
+        if (client.sessionId !== trade.b || trade.accepted) return;
+        this.endTrade(trade, 'declined', 'The trade was declined.');
+        break;
+      }
+      case 'cancel': {
+        this.endTrade(trade, 'cancelled', 'The trade was called off.');
+        break;
+      }
+      case 'stage': {
+        if (!trade.accepted) return;
+        const offer = this.buildOffer(rt, msg.bolts, msg.items);
+        if (offer === null) {
+          client.send(MSG.notice, { text: 'That offer does not match your Pack.' });
+          return;
+        }
+        trade.offers[client.sessionId] = offer;
+        // Any change to either side un-confirms BOTH — nobody swaps on
+        // goods they haven't re-read.
+        trade.confirmed[trade.a] = false;
+        trade.confirmed[trade.b] = false;
+        this.syncTrade(trade);
+        break;
+      }
+      case 'unconfirm': {
+        if (!trade.accepted) return;
+        trade.confirmed[client.sessionId] = false;
+        this.syncTrade(trade);
+        break;
+      }
+      case 'confirm': {
+        if (!trade.accepted) return;
+        trade.confirmed[client.sessionId] = true;
+        if (trade.confirmed[trade.a] === true && trade.confirmed[trade.b] === true) {
+          this.executeTrade(trade);
+        } else {
+          this.syncTrade(trade);
+        }
+        break;
+      }
+    }
+  }
+
+  /** Open a trade window with a nearby Spark (also used by /trade). */
+  private requestTrade(client: Client, rt: PlayerRuntime, targetSessionId: string): void {
+    const cfg = CONFIG.economy.trade;
+    if (targetSessionId === client.sessionId) return;
+    const target = this.runtimes.get(targetSessionId);
+    const targetClient = this.clients.find((c) => c.sessionId === targetSessionId);
+    if (target === undefined || targetClient === undefined || target.hp <= 0) {
+      client.send(MSG.notice, { text: 'No such Spark to trade with here.' });
+      return;
+    }
+    if (this.tradeBySession.has(client.sessionId)) {
+      client.send(MSG.notice, { text: 'You already have a trade window open.' });
+      return;
+    }
+    if (this.tradeBySession.has(targetSessionId)) {
+      client.send(MSG.notice, { text: `${target.sparkName} is already trading.` });
+      return;
+    }
+    if (chebyshev(rt.move.tile, target.move.tile) > cfg.requestRadiusTiles) {
+      client.send(MSG.notice, { text: `Step closer to ${target.sparkName} to trade.` });
+      return;
+    }
+    const trade: PlayerTradeState = {
+      id: `trade-${this.tradeSeq++}`,
+      a: client.sessionId,
+      b: targetSessionId,
+      accepted: false,
+      offers: { [client.sessionId]: emptyOffer(), [targetSessionId]: emptyOffer() },
+      confirmed: { [client.sessionId]: false, [targetSessionId]: false },
+      lastActivityMs: Date.now(),
+    };
+    this.trades.set(trade.id, trade);
+    this.tradeBySession.set(client.sessionId, trade.id);
+    this.tradeBySession.set(targetSessionId, trade.id);
+    targetClient.send(MSG.tradeAsk, {
+      tradeId: trade.id,
+      fromSessionId: client.sessionId,
+      fromName: rt.sparkName,
+    });
+    client.send(MSG.notice, { text: `Trade offered to ${target.sparkName}…` });
+  }
+
+  /**
+   * Turn client slot references into a server-snapshotted offer: itemIds,
+   * quantities and durabilities all read from the live pack — the client
+   * never names an item, only points at its own slots.
+   */
+  private buildOffer(
+    rt: PlayerRuntime,
+    bolts: number,
+    items: Array<{ slot: number; qty: number }>,
+  ): TradeOffer | null {
+    if (!Number.isInteger(bolts) || bolts < 0 || !Array.isArray(items)) return null;
+    if (items.length > rt.pack.slots.length) return null;
+    const offer: TradeOffer = { bolts, items: [] };
+    const seen = new Set<number>();
+    for (const line of items) {
+      if (!Number.isInteger(line.slot) || !Number.isInteger(line.qty) || line.qty <= 0) return null;
+      if (seen.has(line.slot)) return null;
+      seen.add(line.slot);
+      const slot = rt.pack.slots[line.slot];
+      if (slot === null || slot === undefined) return null;
+      if (!itemIsTradeable(slot.itemId)) return null;
+      if (slot.durability !== undefined) {
+        offer.items.push({ itemId: slot.itemId, qty: 1, durability: slot.durability });
+      } else {
+        offer.items.push({ itemId: slot.itemId, qty: Math.min(line.qty, slot.qty) });
+      }
+    }
+    if (validateOffer(rt.pack, rt.bolts, offer) !== null) return null;
+    return offer;
+  }
+
+  /** Push the full window snapshot to both traders (idempotent render). */
+  private syncTrade(trade: PlayerTradeState): void {
+    for (const [mine, theirs] of [
+      [trade.a, trade.b],
+      [trade.b, trade.a],
+    ] as const) {
+      const c = this.clients.find((cl) => cl.sessionId === mine);
+      const partner = this.runtimes.get(theirs);
+      if (c === undefined || partner === undefined) continue;
+      const view = (sid: string): TradeSideView => ({
+        bolts: trade.offers[sid]?.bolts ?? 0,
+        items: trade.offers[sid]?.items ?? [],
+        confirmed: trade.confirmed[sid] === true,
+      });
+      c.send(MSG.tradeSync, {
+        tradeId: trade.id,
+        partnerName: partner.sparkName,
+        you: view(mine),
+        them: view(theirs),
+      });
+    }
+  }
+
+  /**
+   * Both confirmed: run the escrowed atomic swap. settleTrade re-validates
+   * both offers against the LIVE packs/balances and computes the result on
+   * clones; we commit only a fully-successful swap, synchronously — the
+   * abort/timeout/disconnect paths can never leave half a trade applied.
+   */
+  private executeTrade(trade: PlayerTradeState): void {
+    const rtA = this.runtimes.get(trade.a);
+    const rtB = this.runtimes.get(trade.b);
+    const clientA = this.clients.find((c) => c.sessionId === trade.a);
+    const clientB = this.clients.find((c) => c.sessionId === trade.b);
+    if (rtA === undefined || rtB === undefined || clientA === undefined || clientB === undefined) {
+      this.endTrade(trade, 'disconnected', 'The other Spark is gone.');
+      return;
+    }
+    const offerA = trade.offers[trade.a] ?? emptyOffer();
+    const offerB = trade.offers[trade.b] ?? emptyOffer();
+    const r = settleTrade(
+      rtA.pack,
+      rtA.bolts,
+      offerA,
+      rtB.pack,
+      rtB.bolts,
+      offerB,
+      CONFIG.inventory.stackMax,
+    );
+    if (!r.ok) {
+      // Nothing moved. Stale offers (pack changed since staging) come back
+      // for re-staging; full packs just need shuffling.
+      trade.confirmed[trade.a] = false;
+      trade.confirmed[trade.b] = false;
+      if (r.reason === 'aInvalid' || r.reason === 'bInvalid') {
+        const who = r.reason === 'aInvalid' ? trade.a : trade.b;
+        trade.offers[who] = emptyOffer();
+        const text = 'An offer went stale — stage it again.';
+        clientA.send(MSG.notice, { text });
+        clientB.send(MSG.notice, { text });
+      } else {
+        const text =
+          r.reason === 'aPackFull'
+            ? `${rtA.sparkName}'s Pack can't hold the goods.`
+            : `${rtB.sparkName}'s Pack can't hold the goods.`;
+        clientA.send(MSG.notice, { text });
+        clientB.send(MSG.notice, { text });
+      }
+      this.syncTrade(trade);
+      return;
+    }
+
+    rtA.pack = r.packA;
+    rtA.bolts = r.boltsA;
+    rtB.pack = r.packB;
+    rtB.bolts = r.boltsB;
+
+    // Ledger rows for BOTH sides with the estimated (NPC-band) valuation —
+    // this is what trade-anomaly detection reads later (E1b).
+    const valueA = estimateOfferValue(offerA);
+    const valueB = estimateOfferValue(offerB);
+    const row = (giver: PlayerRuntime, taker: PlayerRuntime, gave: TradeOffer, gaveValue: number, gotValue: number) =>
+      ledger.log({
+        type: 'trade',
+        account: giver.accountId,
+        data: {
+          side: 'playerTrade',
+          tradeId: trade.id,
+          counterpartyAccount: taker.accountId,
+          gaveBolts: gave.bolts,
+          gaveItems: gave.items,
+          gaveEstValue: gaveValue,
+          gotEstValue: gotValue,
+        },
+      });
+    row(rtA, rtB, offerA, valueA, valueB);
+    row(rtB, rtA, offerB, valueB, valueA);
+
+    // Lopsided-trade flag (E1d): instrumentation only — never blocks.
+    if (isLopsided(valueA, valueB, CONFIG.economy.trade.lopsidedFactor)) {
+      ledger.log({
+        type: 'anomaly',
+        account: valueA > valueB ? rtA.accountId : rtB.accountId,
+        data: {
+          kind: 'lopsidedTrade',
+          tradeId: trade.id,
+          accountA: rtA.accountId,
+          accountB: rtB.accountId,
+          estValueA: valueA,
+          estValueB: valueB,
+          factor: CONFIG.economy.trade.lopsidedFactor,
+        },
+      });
+    }
+
+    clientA.send(MSG.inventory, this.inventorySync(rtA));
+    clientB.send(MSG.inventory, this.inventorySync(rtB));
+    this.endTrade(trade, 'completed', 'Trade complete — a fair swap under the string lights.');
+  }
+
+  /** Close a trade window for both sides (nothing has moved unless completed). */
+  private endTrade(trade: PlayerTradeState, outcome: TradeEndEvent['outcome'], text: string): void {
+    this.trades.delete(trade.id);
+    this.tradeBySession.delete(trade.a);
+    this.tradeBySession.delete(trade.b);
+    const payload: TradeEndEvent = { tradeId: trade.id, outcome, text };
+    for (const sid of [trade.a, trade.b]) {
+      const c = this.clients.find((cl) => cl.sessionId === sid);
+      c?.send(MSG.tradeEnd, payload);
+    }
+  }
+
+  /** Called from tick(): idle trade windows close themselves. */
+  private tickTrades(): void {
+    if (this.trades.size === 0) return;
+    const now = Date.now();
+    for (const trade of [...this.trades.values()]) {
+      if (now - trade.lastActivityMs > this.tradeTimeoutMs) {
+        this.endTrade(trade, 'timeout', 'The trade window gathered dust and closed.');
+      }
+    }
+  }
+
+  /** Cancel whatever trade a departing/downed Spark was in. */
+  private cancelTradeFor(sessionId: string, outcome: TradeEndEvent['outcome'], text: string): void {
+    const tradeId = this.tradeBySession.get(sessionId);
+    if (tradeId === undefined) return;
+    const trade = this.trades.get(tradeId);
+    if (trade !== undefined) this.endTrade(trade, outcome, text);
   }
 
   /** Consumables from the Pack (Warmcup now; Cellwax lands with durability). */
@@ -1514,6 +1871,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client !== undefined) this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
+    this.cancelTradeFor(sessionId, 'cancelled', 'The trade fell apart in the scuffle.');
     // Tangle death has teeth: carried resources + Bolts drop where you
     // fell. The Filament stays free (Game Bible B7 cozy death).
     if (this.districtId === 'tangle') {

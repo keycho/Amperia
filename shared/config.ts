@@ -224,6 +224,61 @@ export const CONFIG = {
     warmcupHeal: 10,
     /** Cellwax durability restored on use (lands with gear durability). */
     cellwaxDurability: 40,
+
+    /**
+     * Player↔player direct trade. The guardrails ship with GENEROUS
+     * defaults on purpose — the MECHANISM (young-account gates, per-day
+     * caps, lopsided flags, both-sides ledger valuation) is the point:
+     * it's the anti-RMT instrumentation the token layer depends on later.
+     */
+    trade: {
+      /** Both Sparks must stand within this reach of each other. */
+      requestRadiusTiles: 6,
+      /** Accounts younger than this can't trade at all. */
+      minAccountAgeHours: 24,
+      /** Accounts younger than this many days trade under the value cap. */
+      youngAccountDays: 7,
+      /** Max estimated Bolts value a young account may trade per UTC day. */
+      youngDailyValueCapBolts: 2000,
+      /** Max completed trades per account per UTC day (all ages). */
+      dailyTradeCountCap: 40,
+      /** One side staging more than this × the other = anomaly row. */
+      lopsidedFactor: 8,
+      /** An untouched trade window closes itself after this long. */
+      timeoutSeconds: 90,
+      /**
+       * Ledger valuation for non-resource items (resources price at their
+       * NPC-band midpoint). Stable config numbers, not live prices — the
+       * anomaly pass needs consistent readings week to week.
+       */
+      valuationBolts: {
+        warmcup: 12,
+        cellwax: 18,
+        magclaw: 40,
+        drillhammer: 60,
+        skimnet: 60,
+        tuner: 80,
+        riveter: 50,
+        sparkwrench: 50,
+        brassMagclaw: 60,
+        coilMagclaw: 180,
+        brassDrillhammer: 70,
+        coilDrillhammer: 200,
+        brassSkimnet: 65,
+        coilSkimnet: 190,
+        brassTuner: 80,
+        coilTuner: 220,
+        brassSparkwrench: 90,
+        coilSparkwrench: 240,
+        gildedScrap: 40,
+        blueHotBrass: 60,
+        prismaticGlowkoi: 60,
+        ghostFrequency: 80,
+        dentedCrest: 60,
+      } as Record<string, number>,
+      /** Fallback estimated value for anything not listed above. */
+      valuationDefaultBolts: 5,
+    },
   },
 
   /**

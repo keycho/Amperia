@@ -25,6 +25,9 @@ import type {
   QuestsSync,
   NodeStateShape,
   PlayerStateShape,
+  TradeAskEvent,
+  TradeEndEvent,
+  TradeSyncEvent,
   TravelGo,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
@@ -427,6 +430,18 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),
     );
+
+    // Direct trade: the window lives in the UI scene; route the flow there.
+    room.onMessage(MSG.tradeAsk, (e: TradeAskEvent) =>
+      session.events.emit(SessionEvents.tradeAsk, e),
+    );
+    room.onMessage(MSG.tradeSync, (e: TradeSyncEvent) =>
+      session.events.emit(SessionEvents.tradeSync, e),
+    );
+    room.onMessage(MSG.tradeEnd, (e: TradeEndEvent) => {
+      session.events.emit(SessionEvents.tradeEnd, e);
+      session.events.emit(SessionEvents.notice, e.text);
+    });
 
     room.onLeave(() => {
       session.room = null;

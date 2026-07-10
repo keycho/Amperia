@@ -31,4 +31,8 @@ export const SessionEvents = {
   quests: 'quests',
   /** HUD tracker line for the first active quest (string). */
   questTracker: 'questTracker',
+  /** Direct trade flow (world → UI scene): payloads from @shared/protocol. */
+  tradeAsk: 'tradeAsk',
+  tradeSync: 'tradeSync',
+  tradeEnd: 'tradeEnd',
 } as const;
