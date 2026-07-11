@@ -16,7 +16,9 @@
     "lint": "npm run lint -w client",
     "format": "npm run format -w client",
     "db:generate": "node db/node_modules/prisma/build/index.js generate --schema db/prisma/schema.prisma",
-    "db:migrate": "node db/node_modules/prisma/build/index.js migrate dev --schema db/prisma/schema.prisma"
+    "db:migrate": "node db/node_modules/prisma/build/index.js migrate dev --schema db/prisma/schema.prisma",
+    "db:deploy": "node db/node_modules/prisma/build/index.js migrate deploy --schema db/prisma/schema.prisma",
+    "db:seed": "node server/dist/seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"

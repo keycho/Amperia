@@ -10,10 +10,8 @@
     "migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "studio": "prisma studio --schema prisma/schema.prisma"
   },
-  "devDependencies": {
-    "prisma": "^6.0.0"
-  },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "^6.19.3",
+    "prisma": "^6.0.0"
   }
 }
