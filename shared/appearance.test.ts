@@ -13,14 +13,14 @@ import {
 } from './appearance';
 
 describe('appearance option tables', () => {
-  it('meets the creator spec ranges (I2)', () => {
-    expect(SKIN_TONES.length).toBeGreaterThanOrEqual(4);
-    expect(SKIN_TONES.length).toBeLessThanOrEqual(6);
-    expect(HAIR_STYLES.length).toBeGreaterThanOrEqual(6);
-    expect(HAIR_STYLES.length).toBeLessThanOrEqual(8);
+  it('meets the creator spec ranges (I2, expanded by U2b)', () => {
+    expect(SKIN_TONES.length).toBeGreaterThanOrEqual(7);
+    expect(SKIN_TONES.length).toBeLessThanOrEqual(9);
+    expect(HAIR_STYLES.length).toBeGreaterThanOrEqual(10);
+    expect(HAIR_STYLES.length).toBeLessThanOrEqual(12);
     expect(HAIR_COLORS.length).toBeGreaterThanOrEqual(4);
-    expect(JACKET_COLORS.length).toBeGreaterThanOrEqual(4);
-    expect(ACCESSORIES.length).toBeGreaterThanOrEqual(2);
+    expect(JACKET_COLORS.length).toBeGreaterThanOrEqual(8);
+    expect(ACCESSORIES.length).toBeGreaterThanOrEqual(7);
   });
 
   it('index 0 everywhere is the mascot preset', () => {
