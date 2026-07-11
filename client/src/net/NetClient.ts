@@ -27,9 +27,33 @@ import type {
   SelectSlotIntent,
 } from '@shared/protocol';
 
-/** Server base URL (http; ws derives from it). */
-export const SERVER_URL: string =
-  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? 'http://localhost:2567';
+/**
+ * Server base URL (D6). Always from VITE_SERVER_URL in real deployments —
+ * the localhost fallback exists only in dev builds (import.meta.env.DEV is
+ * statically false in `vite build`, so the literal is tree-shaken out).
+ * colyseus.js derives ws:// from http:// and wss:// from https:// on its
+ * own, so one https URL configures both rails.
+ */
+function resolveServerUrl(): string {
+  const raw = (import.meta.env.VITE_SERVER_URL as string | undefined)?.trim().replace(/\/+$/, '');
+  if (raw !== undefined && raw !== '') {
+    // Accept ws(s):// values too — fetch and colyseus.js both want http(s).
+    let url = raw.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+    if (window.location.protocol === 'https:' && url.startsWith('http:')) {
+      // An https page cannot call an http backend (mixed content) — upgrade.
+      console.warn('[net] VITE_SERVER_URL is http on an https page — using https');
+      url = url.replace(/^http:/, 'https:');
+    }
+    return url;
+  }
+  if (import.meta.env.DEV) return 'http://localhost:2567';
+  throw new Error(
+    'AMPERIA client was built without VITE_SERVER_URL — set it in the Vercel project env and rebuild.',
+  );
+}
+
+/** Server base URL (http[s]; ws[s] derives from it). */
+export const SERVER_URL: string = resolveServerUrl();
 
 export interface AuthResponse {
   token: string;
