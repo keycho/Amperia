@@ -1,5 +1,63 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-11 U7 FINAL QA + WRAP — the U-block is done
+
+**Full playthrough probe (fresh account, real client, zero shortcuts):**
+register → creator (roll-a-name, slot-machine randomize, turn, confirm)
+→ intro cards → gather (auto-repeat worked the cluster) → merchant sell
+(Bolts credited) → tram to the Stacks (gate proximity + toll) → parcel
+run armed (Tower Anvil) → tram to the Terrarium → tended a bed (bloom
+landed, shared 1h) → tram to the Tangle → brawled a Scuttlebot → home
+to the Filament → relog. **Persistence exact across relog: district,
+tile, pack, Bolts. Final jank list: empty.** Two real defects were
+found and fixed on the way:
+
+1. **nearProp measured from a prop's origin, not its box** — a Spark
+   standing at the 2×5 tramgate's south face was told "the tram leaves
+   from the gate." Now distance-to-box (fixes tall/wide props for
+   travel, quests, deliveries, everything nearProp guards).
+2. **Minimap tick raced freshly hopped rooms** (fixed in U6, caught by
+   the same probing).
+
+Observation left as-is: a fresh spawn's viewport holds no gatherable
+heap — the Dispatcher chain walks new Sparks to one within seconds, so
+onboarding already covers it.
+
+**Marketing set re-shot at 1920×1080** (`docs/marketing/`):
+`title-screen.png` (poster drift + wordmark), `play-minimap.png` (the
+Filament plaza with HUD + corner minimap), `stacks-delivery.png` (lit
+towers, a parcel line in the log), `gardens-blooming.png` (terrace
+beds + a Spark among the planters).
+
+### DEPLOY CHECKLIST (the whole path to open doors)
+
+1. **Accounts**: Fly.io (or Railway) for the game server + economy
+   service · Supabase/Neon Postgres (**enable daily backups + PITR at
+   creation**) · Vercel for the client. ~15 min total.
+2. **Env vars (server)** — from `.env.example`:
+   `DATABASE_URL` (the managed Postgres URL) ·
+   `JWT_SECRET` (**a real random secret — never the dev default**) ·
+   `PORT` · `NODE_ENV=production` ·
+   `METRICS_KEY` (without it /metrics 404s in prod — set it so the
+   balance dashboard is reachable at `/metrics?key=…`) ·
+   `LOG_DIR`/`LOG_KEEP_DAYS` · `ALERT_WEBHOOK` (Slack/Discord POST
+   hook — restarts and uncaught errors reach a phone) ·
+   `AUTH_RATE_PER_MIN` (default 20 is right) ·
+   `ROOM_MAX_CLIENTS` (leave at 40 per the load test).
+3. **DB**: `npx prisma migrate deploy --schema db/prisma/schema.prisma`
+   against the production URL — applies all 17 migrations in one go.
+4. **CORS**: tighten the server's allowed origin to the Vercel domain
+   (and the client's server URL env to the Fly hostname).
+5. **Client env**: point the Vite build at the prod server
+   (`VITE_SERVER_URL` in the Vercel project).
+6. **Smoke test** (10 min, in order): register a real account → creator
+   → gather one heap → sell → tram hop (toll charged once) → relog
+   (state exact) → `/health` returns ok → `/metrics?key=…` renders →
+   kill a pod and watch ALERT_WEBHOOK fire + the client reconnect
+   banner ride it out.
+7. **Week one habit**: `npx tsx scripts/weekly-report.ts` every Monday;
+   one lever change per week max (Economy Design §5).
+
 ## Status after the 2026-07-11 U6 PERF & STABILITY
 
 - **FPS profile, Stacks, 20 bots + probe (21 Sparks in room)** — game
@@ -869,6 +927,12 @@ ring, amber/rose/teal bulbs); procedural stacked-city parallax skyline.
   rotate under LOG_DIR (default ./logs) on the instance disk.
 - NEW (U0): one more migration for production — `20260710210612_moderation`
   (Mute + Report tables); 11 unshipped total, same `prisma migrate deploy`.
+- NEW (U-block final): one more migration — `20260710222311_parity_caps`
+  (delivery/tending daily-cap columns). **That makes 17 migrations total
+  on first ship — the count is final for this block; the DEPLOY
+  CHECKLIST at the top of this file is the complete path.** Everything
+  else in the U-block (U1–U7) shipped code-side and needs nothing from
+  the account holder beyond that checklist.
 - Nothing else is blocked on accounts; no token/chain code exists (M4 gate).
 
 ## Next up

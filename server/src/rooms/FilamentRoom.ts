@@ -2948,7 +2948,12 @@ export class FilamentRoom extends Room<FilamentState> {
   private nearProp(rt: PlayerRuntime, kind: string, radius: number): boolean {
     const prop = this.map.props.find((p) => p.kind === kind);
     if (prop === undefined) return false;
-    return chebyshev(rt.move.tile, { x: prop.x, y: prop.y }) <= radius;
+    // Distance to the prop's BOX, not its origin — a 2×5 tramgate used to
+    // refuse Sparks standing at its south face (U7 playthrough finding).
+    const t = rt.move.tile;
+    const dx = Math.max(prop.x - t.x, 0, t.x - (prop.x + prop.w - 1));
+    const dy = Math.max(prop.y - t.y, 0, t.y - (prop.y + prop.h - 1));
+    return Math.max(dx, dy) <= radius;
   }
 
   /** Dispatcher quests: accept + turn in (rewards are Bolts ± a cosmetic). */
