@@ -1,5 +1,34 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-11 DEPLOY PREP block (D1–D8)
+
+The repo is production-deployable (nothing provisioned — needs the owner's
+accounts). Topology moved to **Supabase + Railway + Vercel**; DEPLOY.md is
+the complete click-through runbook (env table, migrate → seed → start,
+smoke tests, rollback) and supersedes the old Fly/Neon notes (fly.toml
+removed). Highlights:
+
+- **Fixed a broken production start:** the esbuild ESM bundle inlined the
+  CJS Prisma client and died at boot ('Dynamic require of node:fs'); the
+  generated client is now exposed via the @amperia/db package (external).
+  Dev mode (tsx) had masked this completely.
+- Fail-fast env validator (all missing vars in one message); .env.example
+  for server + client; Prisma directUrl split (pooled 6543 / direct 5432).
+- /healthz (db + redis + version/commit/uptime, 503 while draining);
+  graceful SIGTERM (rooms persist every Spark, 20s hard deadline) — proven
+  with a live player: gathered salvage survives a restart.
+- CORS_ORIGIN allow-list enforced on HTTP AND the WS upgrade; localhost
+  auto-allowed only outside production; prod validator refuses wildcards.
+- Optional Redis (ioredis, full REDIS_URL with auth) — wired for the
+  Railway topology + healthz; nothing gameplay reads it yet.
+- Idempotent seed (dist/seed.mjs) + `npm run db:deploy` / `db:seed`;
+  17-migration cold start proven on a scratch DB and inside the image.
+- node:20-alpine Dockerfile (non-root, prisma CLI included for the service
+  shell) — built and run for real: migrate+seed from container shell,
+  healthz green, docker stop → clean persist+exit 0.
+- tools/deploy-smoke.mjs drives the BUILT client through register → move →
+  gather → chat (+ optional local SIGTERM persistence leg).
+
 ## Status after the 2026-07-11 CLARITY PASS (post-U7)
 
 The diagnosis changed: texels were crisp but (a) objects lacked full
