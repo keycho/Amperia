@@ -4,6 +4,7 @@ import { PALETTE_INT } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
 import { depthForWorldY, tileToWorld } from '../iso/project';
 import { addVoxelSprite } from '../render/voxel';
+import { hoverTip } from '../ui/Tooltip';
 
 /**
  * A feral Scuttlebot, rendered from server truth: the server owns AI, HP,
@@ -48,6 +49,24 @@ export class Mob {
     this.image = addVoxelSprite(scene, TEX[kind] ?? 'scuttlebot-feral', x, y);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
+    // U3c: what am I looking at, and will it hurt me.
+    const TIPS: Record<string, { sub: string; line: string }> = {
+      scuttlebot: { sub: 'feral · bites up close', line: 'Put it down for Brawling. Wears a crest, sometimes.' },
+      junkhound: { sub: 'feral · fast and mean', line: 'It hunts in the open. Bring a wrench or bring friends.' },
+      sparkwisp: { sub: 'living charge · zaps on touch', line: 'Never chases far. Pops with a filament, sometimes.' },
+      draymule: { sub: 'rogue cargo bot · bring friends', line: 'Everyone who lands a hit shares the cargo.' },
+    };
+    const NAMES: Record<string, string> = {
+      scuttlebot: 'Feral Scuttlebot',
+      junkhound: 'Junkhound',
+      sparkwisp: 'Sparkwisp',
+      draymule: 'Rogue Draymule',
+    };
+    hoverTip(this.image, () => ({
+      title: NAMES[kind] ?? kind,
+      sub: TIPS[kind]?.sub ?? '',
+      lines: [TIPS[kind]?.line ?? ''],
+    }));
     this.baseScaleY = this.image.scaleY;
     this.eye = scene.add.image(x + 5, y - 8, 'fx-glow');
     this.eye.setTint(

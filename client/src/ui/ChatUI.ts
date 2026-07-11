@@ -3,6 +3,7 @@ import { CHAT_LIMITS, type ChatBroadcast } from '@shared/protocol';
 import { intToHex, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { swallowGameInput } from './domGuard';
 
 const MAX_LINES = 8;
 
@@ -112,6 +113,7 @@ export class ChatUI {
       'outline:none',
       'z-index:20',
     ].join(';');
+    swallowGameInput(el);
     el.onkeydown = (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') {

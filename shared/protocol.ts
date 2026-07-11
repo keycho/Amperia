@@ -429,7 +429,14 @@ export type CombatEvent =
   | { type: 'mobBite'; mobId: string; sessionId: string; damage: number; hp: number }
   | { type: 'playerDown'; sessionId: string }
   | { type: 'playerHit'; mobId: string; bySessionId: string; damage: number; hp: number }
-  | { type: 'mobDown'; mobId: string; bySessionId: string };
+  | { type: 'mobDown'; mobId: string; bySessionId: string }
+  | {
+      /** U3d: sent to the fallen Spark only — the death recap's facts. */
+      type: 'youDown';
+      district: DistrictId;
+      cacheBolts: number;
+      cacheStacks: number;
+    };
 
 /** Mirror of the synced LampState schema (client-side typing only). */
 export interface LampStateShape {

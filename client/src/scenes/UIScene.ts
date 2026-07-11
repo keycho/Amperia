@@ -22,6 +22,7 @@ import { BankPanel } from '../ui/BankPanel';
 import { GoalPanel } from '../ui/GoalPanel';
 import { HowToPlayPanel } from '../ui/HowToPlayPanel';
 import { WorldMapPanel } from '../ui/WorldMapPanel';
+import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 
@@ -65,6 +66,80 @@ export class UIScene extends Phaser.Scene {
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
   private hp = { hp: 0, maxHp: 0 };
+
+  /** U3d: a brief center overlay in the city's voice + respawn countdown.
+   *  The server already respawned us — the countdown is the BREATH the
+   *  moment deserves, not a gameplay wait. */
+  private showDeathRecap(e: { district: string; cacheBolts: number; cacheStacks: number }): void {
+    const w = 460;
+    const h = 150;
+    const wrap = this.add.container(
+      Math.round((this.scale.width - w) / 2),
+      Math.round(this.scale.height * 0.32),
+    );
+    wrap.setDepth(1300);
+    const bg = this.add.graphics();
+    bg.fillStyle(PALETTE_INT.ink, 0.94);
+    bg.fillRoundedRect(0, 0, w, h, 12);
+    bg.lineStyle(2, PALETTE_INT.neonRose, 0.7);
+    bg.strokeRoundedRect(0, 0, w, h, 12);
+    wrap.add(bg);
+    const tangle = e.district === 'tangle';
+    const title = this.add.text(w / 2, 26, tangle ? 'THE TANGLE GOT YOU' : 'KNOCKED FLAT', {
+      fontFamily: 'monospace',
+      fontSize: '19px',
+      fontStyle: 'bold',
+      color: PALETTE.neonRose,
+    });
+    title.setOrigin(0.5);
+    wrap.add(title);
+    const body = this.add.text(
+      w / 2,
+      62,
+      tangle
+        ? e.cacheBolts > 0 || e.cacheStacks > 0
+          ? `Your Scrapcache waits at the marker —\n${e.cacheBolts} Bolts and ${e.cacheStacks} stack${e.cacheStacks === 1 ? '' : 's'} of haul. Run back fast.`
+          : 'Pockets were empty — nothing dropped.\nSmall mercies.'
+        : 'The city caught you as you fell.\nNothing lost — catch your breath.',
+      {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: UI_TEXT_WARM,
+        align: 'center',
+        lineSpacing: 6,
+      },
+    );
+    body.setOrigin(0.5, 0);
+    wrap.add(body);
+    const count = this.add.text(w / 2, h - 24, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: PALETTE.groundAccent,
+    });
+    count.setOrigin(0.5);
+    wrap.add(count);
+    let left = 3;
+    count.setText(`back on your feet in ${left}…`);
+    const tickTimer = this.time.addEvent({
+      delay: 1000,
+      repeat: 2,
+      callback: () => {
+        left -= 1;
+        if (left > 0) count.setText(`back on your feet in ${left}…`);
+        else {
+          tickTimer.remove();
+          this.tweens.add({
+            targets: wrap,
+            alpha: 0,
+            duration: 420,
+            onComplete: () => wrap.destroy(),
+          });
+        }
+      },
+    });
+    wrap.setAlpha(0);
+    this.tweens.add({ targets: wrap, alpha: 1, duration: 250 });
+  }
 
   /** A soft chip that slides in top-center and fades — tram arrivals etc. */
   private showToast(text: string): void {
@@ -165,6 +240,12 @@ export class UIScene extends Phaser.Scene {
     this.howToPlayPanel = new HowToPlayPanel(this);
     // H1: brand-new Sparks get the intro right after the creator (once).
     session.events.on(SessionEvents.howToPlay, () => this.howToPlayPanel.maybeShowFirstTime());
+    // U3d: the death recap — what happened, what dropped, when you're back.
+    session.events.on(
+      SessionEvents.deathRecap,
+      (e: { district: string; cacheBolts: number; cacheStacks: number }) =>
+        this.showDeathRecap(e),
+    );
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
     this.restedText = this.add.text(12, 58, '', {
@@ -360,17 +441,19 @@ export class UIScene extends Phaser.Scene {
     placeHelp();
     this.scale.on('resize', placeHelp);
 
+    // U3b: the gear grew into the SETTINGS panel — volume, toggles, the
+    // grit pick (applies on reload), and the keybind reference. Persisted.
     const panel = this.add.container(0, 0);
     panel.setDepth(950);
     panel.setVisible(false);
-    const W = 200;
-    const H = 56;
+    const W = 250;
+    const H = 322;
     const bg = this.add.graphics();
-    bg.fillStyle(PALETTE_INT.ink, 0.88);
+    bg.fillStyle(PALETTE_INT.ink, 0.92);
     bg.fillRoundedRect(0, 0, W, H, 9);
     bg.lineStyle(1.5, PALETTE_INT.warmGlow, 0.5);
     bg.strokeRoundedRect(0, 0, W, H, 9);
-    const label = this.add.text(12, 8, 'sound', {
+    const label = this.add.text(12, 8, 'settings · sound', {
       fontFamily: 'monospace',
       fontSize: '12px',
       color: UI_TEXT_WARM,
@@ -404,7 +487,86 @@ export class UIScene extends Phaser.Scene {
       this.input.on('pointermove', onMove);
       this.input.once('pointerup', () => this.input.off('pointermove', onMove));
     });
-    panel.add([bg, label, track, hit]);
+    // Toggle rows + the grit pick + keybind reference (U3b).
+    const extras: Phaser.GameObjects.GameObject[] = [];
+    const toggleRow = (
+      y: number,
+      text: string,
+      get: () => boolean,
+      set: (v: boolean) => void,
+    ) => {
+      const t = this.add.text(12, y, '', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: UI_TEXT_WARM,
+      });
+      const refresh = () => t.setText(`${get() ? '[on ]' : '[off]'} ${text}`);
+      refresh();
+      t.setInteractive({ useHandCursor: true });
+      t.on('pointerdown', () => {
+        sound.uiClick();
+        set(!get());
+        refresh();
+      });
+      extras.push(t);
+    };
+    toggleRow(
+      58,
+      'nameplates',
+      () => settings().nameplates,
+      (v) => setSetting('nameplates', v),
+    );
+    toggleRow(
+      80,
+      'screen shake',
+      () => settings().shake,
+      (v) => setSetting('shake', v),
+    );
+    const gritLabel = this.add.text(12, 106, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: UI_TEXT_WARM,
+    });
+    const GRIT_OPTS: Array<'6' | '8' | 'none'> = ['6', '8', 'none'];
+    const gritName = (g: string) => (g === 'none' ? 'smooth' : `${g}px grit`);
+    const refreshGrit = () =>
+      gritLabel.setText(`[${gritName(settings().grit)}] texture (reload)`);
+    refreshGrit();
+    gritLabel.setInteractive({ useHandCursor: true });
+    gritLabel.on('pointerdown', () => {
+      sound.uiClick();
+      const cur = GRIT_OPTS.indexOf(settings().grit);
+      setSetting('grit', GRIT_OPTS[(cur + 1) % GRIT_OPTS.length] as '6' | '8' | 'none');
+      refreshGrit();
+    });
+    extras.push(gritLabel);
+    const keysHead = this.add.text(12, 136, 'keys', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: PALETTE.groundAccent,
+    });
+    const keys = this.add.text(
+      12,
+      152,
+      [
+        'click · walk / work / talk',
+        '1-6 · tool belt',
+        'I pack · K skills · G goals',
+        'M Manifest · TAB map',
+        'H rivet a Heatlamp',
+        'Enter · chat   ? · the intro',
+        '/help · everything else',
+      ].join('\n'),
+      {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: UI_TEXT_WARM,
+        lineSpacing: 6,
+      },
+    );
+    keys.setAlpha(0.85);
+    extras.push(keysHead, keys);
+    panel.add([bg, label, track, hit, ...extras]);
     const placePanel = () => panel.setPosition(this.scale.width - W - 12, 58);
     placePanel();
     this.scale.on('resize', placePanel);

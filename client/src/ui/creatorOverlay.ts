@@ -22,6 +22,7 @@ import { intToHex, PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { sound } from '../audio/sound';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
+import { swallowGameInput } from './domGuard';
 
 /** U2d: roll-a-name — seeds in the city's voice. */
 const NAME_HEADS = ['Weld', 'Volt', 'Flux', 'Brass', 'Coil', 'Ember', 'Socket', 'Dyna', 'Rivet', 'Amp'];
@@ -77,6 +78,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     'z-index:11',
     'font-family:monospace',
   ].join(';');
+  swallowGameInput(root);
 
   const panel = document.createElement('div');
   panel.style.cssText = [

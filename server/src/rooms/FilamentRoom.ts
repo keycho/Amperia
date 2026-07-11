@@ -3233,7 +3233,10 @@ export class FilamentRoom extends Room<FilamentState> {
    * (the hotbar) NEVER drops; nothing but the five resources leaves the
    * Pack. Filament death stays free (handled by the caller).
    */
-  private dropScrapcache(rt: PlayerRuntime, tile: TilePoint): void {
+  private dropScrapcache(
+    rt: PlayerRuntime,
+    tile: TilePoint,
+  ): { bolts: number; stacks: number } {
     const RESOURCES: ItemId[] = ['salvage', 'brass', 'amperite', 'glowkoi', 'signal'];
     const stacks: Array<{ itemId: ItemId; qty: number }> = [];
     for (const res of RESOURCES) {
@@ -3248,7 +3251,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     const bolts = rt.bolts;
     rt.bolts = 0;
-    if (stacks.length === 0 && bolts <= 0) return;
+    if (stacks.length === 0 && bolts <= 0) return { bolts: 0, stacks: 0 };
     const id = `cache-${this.cacheSeq++}`;
     this.caches.set(id, {
       tile: { ...tile },
@@ -3266,6 +3269,7 @@ export class FilamentRoom extends Room<FilamentState> {
       account: rt.accountId,
       data: { side: 'scrapcacheDrop', cacheId: id, bolts, stacks },
     });
+    return { bolts, stacks: stacks.length };
   }
 
   /** Owner reclaims a Scrapcache for the config fee (from its Bolts). */
@@ -3816,10 +3820,20 @@ export class FilamentRoom extends Room<FilamentState> {
     this.cancelTradeFor(sessionId, 'cancelled', 'The trade fell apart in the scuffle.');
     // Tangle death has teeth: carried resources + Bolts drop where you
     // fell. The Filament stays free (Game Bible B7 cozy death).
+    let cache = { bolts: 0, stacks: 0 };
     if (this.districtId === 'tangle') {
-      this.dropScrapcache(rt, rt.move.tile);
+      cache = this.dropScrapcache(rt, rt.move.tile);
       // The drop emptied the pockets — tell the owner right away.
       if (client !== undefined) client.send(MSG.inventory, this.inventorySync(rt));
+    }
+    // U3d: the fallen Spark gets the recap facts before the respawn snap.
+    if (client !== undefined) {
+      client.send(MSG.combat, {
+        type: 'youDown',
+        district: this.districtId,
+        cacheBolts: cache.bolts,
+        cacheStacks: cache.stacks,
+      });
     }
     const spawn =
       this.gateSpawn(CONFIG.combat.player.respawnTile);

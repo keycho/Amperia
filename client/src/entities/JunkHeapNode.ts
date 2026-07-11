@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { hoverTip } from '../ui/Tooltip';
 import { CONFIG } from '@shared/config';
 import { PALETTE_INT } from '@shared/palette';
 import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
@@ -38,6 +39,15 @@ export class JunkHeapNode {
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(anchorY));
     this.image.setInteractive({ useHandCursor: true });
+    hoverTip(this.image, () => ({
+      title: compost ? 'Compost Heap' : 'Junk Heap',
+      sub: 'Scavving · Magclaw',
+      lines: [
+        compost
+          ? 'The gardens keep what the beds lose. Watch for the glint.'
+          : 'Salvage under the mess. Watch for the glint.',
+      ],
+    }));
 
     this.glintHalo = scene.add.image(x, anchorY - 30, 'fx-glow');
     this.glintHalo.setTint(PALETTE_INT.neonTeal);

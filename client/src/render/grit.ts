@@ -34,10 +34,21 @@ export interface GritConfig {
 }
 
 function parseGrit(): GritConfig {
+  // Order: URL override → the settings panel's persisted pick → default.
+  let stored: string | null = null;
+  try {
+    const blob = JSON.parse(localStorage.getItem('amperia.settings') ?? '{}') as {
+      grit?: string;
+    };
+    stored = typeof blob.grit === 'string' ? blob.grit : null;
+  } catch {
+    stored = null;
+  }
   const raw =
     typeof window === 'undefined'
       ? GRIT_DEFAULT
       : (new URLSearchParams(window.location.search).get('grit')?.toLowerCase() ??
+        stored ??
         GRIT_DEFAULT);
   if (raw === '6') return { texelsPerVoxel: 6, factor: BAKE_TEXELS / 6, on: true };
   if (raw === '8') return { texelsPerVoxel: 8, factor: BAKE_TEXELS / 8, on: true };

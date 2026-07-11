@@ -59,4 +59,6 @@ export const SessionEvents = {
   bank: 'bank',
   /** H1: a brand-new Spark finished the creator — show the intro cards. */
   howToPlay: 'howToPlay',
+  /** U3d: you went down — payload the youDown combat event. */
+  deathRecap: 'deathRecap',
 } as const;

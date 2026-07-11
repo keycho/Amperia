@@ -3,6 +3,8 @@ import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type WorldMap } from '@shared/map';
 import { tramToll } from '@shared/travel';
+import { settings } from '../settings';
+import { hoverTip } from '../ui/Tooltip';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
@@ -173,6 +175,8 @@ export class WorldScene extends Phaser.Scene {
   private bloomViews = new Map<string, Phaser.GameObjects.GameObject[]>();
   /** U1b: bed index of the live tend channel (cue clicks route to it). */
   private tendingBed: number | null = null;
+  /** U3e: true while a leave is intentional (tram hops, shutdown). */
+  private expectLeave = false;
   /** Puddle-decal budget per map (R5b). */
   private puddleCount = 0;
   private spatialAt = 0;
@@ -208,6 +212,7 @@ export class WorldScene extends Phaser.Scene {
     this.deliveryMarker = [];
     this.bloomViews = new Map();
     this.tendingBed = null;
+    this.expectLeave = false;
     this.puddleCount = 0;
   }
 
@@ -467,8 +472,8 @@ export class WorldScene extends Phaser.Scene {
     this.nameFadeAcc += deltaMs;
     if (this.nameFadeAcc >= 160) {
       this.nameFadeAcc = 0;
-      if (this.photoMode !== null && !this.photoMode.nameplates) {
-        // Photo mode: player nameplates drop unless explicitly kept.
+      if ((this.photoMode !== null && !this.photoMode.nameplates) || !settings().nameplates) {
+        // Photo mode / the settings toggle: nameplates stand down.
         for (const [, spark] of this.sparks) spark.setNameFade(0);
       } else {
         const cfg = CONFIG.nameplates;
@@ -769,6 +774,7 @@ export class WorldScene extends Phaser.Scene {
         terrarium: 'The Terrarium stop — you can smell the green from here.',
       };
       session.events.emit(SessionEvents.notice, lines[to]);
+      this.expectLeave = true;
       void room.leave().finally(() => {
         this.scene.restart({ token: this.token, district: to });
       });
@@ -918,6 +924,9 @@ export class WorldScene extends Phaser.Scene {
     room.onLeave(() => {
       session.room = null;
       this.room = null;
+      // U3e: an unexpected drop is not a shrug — flicker, then re-light.
+      if (!this.expectLeave) this.reconnectFlow();
+      this.expectLeave = false;
     });
 
     // Tram hops restart this scene while the HUD stays up — relaunching an
@@ -1075,9 +1084,13 @@ export class WorldScene extends Phaser.Scene {
         floatText(this, spark.image.x, spark.image.y - 64, `-${e.damage}`, PALETTE.neonRose);
       }
       if (e.sessionId === room.sessionId) {
-        this.cameras.main.shake(110, 0.0035);
+        if (settings().shake) this.cameras.main.shake(110, 0.0035);
         sound.hurtThud();
       }
+      return;
+    }
+    if (e.type === 'youDown') {
+      session.events.emit(SessionEvents.deathRecap, e);
       return;
     }
     if (e.type === 'playerDown') {
@@ -2374,6 +2387,11 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'ledgerhouse': {
           const img = this.propSprite('ledgerhouse', x, y);
+          hoverTip(img, () => ({
+            title: 'The Ledgerhouse',
+            sub: 'bank · safe from every fall',
+            lines: ['Bolts behind the counter stay yours, whatever the Tangle does.'],
+          }));
           // Warm hall light + the door lamp — the bank glows like books.
           const hall = tileToWorld(p.x + 2, p.y + 2);
           addLayeredGlow(this, hall.x, hall.y - 24, PALETTE_INT.warmGlow, 0.6, img.depth + 1, 0.4);
@@ -2398,6 +2416,12 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'fortunecoil': {
           const img = this.propSprite('fortunecoil', x, y);
+          img.setInteractive({ useHandCursor: true });
+          hoverTip(img, () => ({
+            title: 'The Fortune Coil',
+            sub: 'one free spin a day',
+            lines: ['Cosmetic prizes, nothing else. The wheel owes nobody.'],
+          }));
           this.placeCoilFace(p, img);
           break;
         }
@@ -2474,6 +2498,11 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'dispatchpost': {
           const img = this.propSprite('dispatchpost', x, y);
+          hoverTip(img, () => ({
+            title: 'Dispatch Post',
+            sub: 'parcel runs · the Stacks',
+            lines: ['Take a parcel, find the tower, reach the landing.'],
+          }));
           // U1a: parcels post here. Click = take one (or hear your status).
           img.setInteractive({ useHandCursor: true });
           img.on(
@@ -2510,6 +2539,11 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'tramgate': {
           const img = this.propSprite('tramgate', x, y);
+          hoverTip(img, () => ({
+            title: 'Tramgate',
+            sub: 'every stop on the line',
+            lines: ['Tolls charge per hop. Click for the stop board.'],
+          }));
           // Ride the tram (D3): click opens the stop board — every other
           // district on the line, tolls charged per hop server-side.
           img.setInteractive({ useHandCursor: true });
@@ -2557,6 +2591,11 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'merchant': {
           const img = this.propSprite('merchant', x, y);
+          hoverTip(img, () => ({
+            title: 'Nightstalls Merchant',
+            sub: 'buys the five resources',
+            lines: ['Published bands, honest scales. Daily cap applies.'],
+          }));
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -2596,6 +2635,11 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'tinkerbench': {
           const img = this.propSprite('tinkerbench', x, y);
+          hoverTip(img, () => ({
+            title: 'The Tinkerbench',
+            sub: 'craft · repair',
+            lines: ['Builds gear, mends what broke. Nothing is ever lost for good.'],
+          }));
           img.setInteractive({ useHandCursor: true });
           img.on(
             'pointerdown',
@@ -3574,6 +3618,85 @@ export class WorldScene extends Phaser.Scene {
    * Compose a frame: camera to `tile` at `zoom`, all UI hidden.
    * `nameplates: true` keeps player nameplates (default: hidden).
    */
+  /**
+   * U3e connection UX: a banner while we knock, a clean full-screen state
+   * if the city stays dark. Never a silent freeze, never raw error text.
+   */
+  private reconnectFlow(): void {
+    const banner = document.createElement('div');
+    banner.id = 'amperia-reconnect';
+    banner.textContent = 'the city flickered — re-lighting…';
+    banner.style.cssText = [
+      'position:fixed',
+      'top:14px',
+      'left:50%',
+      'transform:translateX(-50%)',
+      'padding:9px 18px',
+      `background:${PALETTE.ink}E6`,
+      `color:${PALETTE.warmGlow}`,
+      `border:1px solid ${PALETTE.neonAmber}`,
+      'border-radius:9px',
+      'font-family:monospace',
+      'font-size:13px',
+      'z-index:30',
+    ].join(';');
+    document.body.append(banner);
+    const tryJoin = (attempt: number): void => {
+      if (attempt > 5) {
+        banner.remove();
+        const dark = document.createElement('div');
+        dark.style.cssText = [
+          'position:fixed',
+          'inset:0',
+          `background:${PALETTE.ink}F5`,
+          'display:flex',
+          'flex-direction:column',
+          'align-items:center',
+          'justify-content:center',
+          'gap:14px',
+          'z-index:31',
+          'font-family:monospace',
+        ].join(';');
+        const line = document.createElement('div');
+        line.textContent = 'The city flickered out.';
+        line.style.cssText = `color:${PALETTE.warmGlow};font-size:20px;letter-spacing:2px;`;
+        const sub2 = document.createElement('div');
+        sub2.textContent = 'The Dynamo is still turning somewhere — knock again.';
+        sub2.style.cssText = `color:${UI_TEXT_WARM};opacity:.8;font-size:13px;`;
+        const knock = document.createElement('button');
+        knock.textContent = 'Knock again';
+        knock.style.cssText = [
+          'margin-top:8px',
+          'padding:11px 30px',
+          `background:${PALETTE.neonAmber}`,
+          `color:${PALETTE.ink}`,
+          'border:none',
+          'border-radius:9px',
+          'font-family:monospace',
+          'font-size:15px',
+          'font-weight:bold',
+          'cursor:pointer',
+        ].join(';');
+        knock.onclick = () => window.location.reload();
+        dark.append(line, sub2, knock);
+        document.body.append(dark);
+        return;
+      }
+      window.setTimeout(
+        () => {
+          fetch(`${location.protocol}//${location.hostname}:2567/health`)
+            .then(() => {
+              banner.remove();
+              this.scene.restart({ token: this.token, district: this.district });
+            })
+            .catch(() => tryJoin(attempt + 1));
+        },
+        Math.min(8000, 900 * attempt * attempt),
+      );
+    };
+    tryJoin(1);
+  }
+
   enterPhotoMode(opts: { tile: { x: number; y: number }; zoom?: number; nameplates?: boolean }): void {
     this.photoMode = { nameplates: opts.nameplates === true };
     this.scene.setVisible(false, 'ui');

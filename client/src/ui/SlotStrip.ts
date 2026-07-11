@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS, type ItemDef } from '@shared/items';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
-import type { Inventory } from '@shared/inventory';
+import { fullDurability, type Inventory } from '@shared/inventory';
 import { itemThumbKey } from '../render/itemThumbs';
+import { gameState } from '../state/GameState';
+import { tooltip } from './Tooltip';
 
 export const SLOT_SIZE = 52;
 export const SLOT_GAP = 7;
@@ -34,6 +36,7 @@ function rarityGlow(def: ItemDef): number | null {
 export class SlotStrip {
   readonly container: Phaser.GameObjects.Container;
   readonly source: 'inventory' | 'hotbar';
+  private readonly sceneRef: Phaser.Scene;
   private readonly opts: SlotStripOptions;
   private bg!: Phaser.GameObjects.Graphics;
   private readonly hitZone: Phaser.GameObjects.Zone;
@@ -50,6 +53,7 @@ export class SlotStrip {
     onPointerDown: (strip: SlotStrip, pointer: Phaser.Input.Pointer) => void,
   ) {
     this.source = source;
+    this.sceneRef = scene;
     this.opts = opts;
     this.slotCount = opts.cols * opts.rows;
     this.container = scene.add.container(0, 0);
@@ -109,6 +113,35 @@ export class SlotStrip {
         onPointerDown(this, pointer);
       },
     );
+    // U3c: hovering a stocked slot shows the item card.
+    this.hitZone.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      const idx = this.slotIndexAt(pointer.x, pointer.y);
+      const inv = this.source === 'inventory' ? gameState.inventory : gameState.hotbar;
+      const stack = idx === null ? null : (inv.slots[idx] ?? null);
+      if (stack === null) {
+        tooltip.hide();
+        return;
+      }
+      const def = ITEMS[stack.itemId];
+      const mx = pointer.event instanceof MouseEvent ? pointer.event.clientX : pointer.x;
+      const my = pointer.event instanceof MouseEvent ? pointer.event.clientY : pointer.y;
+      const full = fullDurability(stack.itemId);
+      const sub =
+        def.toolKind !== undefined
+          ? `tool · ${def.toolKind}${stack.durability !== undefined && full !== undefined ? ` · ${stack.durability}/${full}` : ''}`
+          : def.rare === true
+            ? 'rare — the Manifest remembers'
+            : stack.qty > 1
+              ? `×${stack.qty}`
+              : undefined;
+      tooltip.show(mx, my, {
+        title: def.name,
+        ...(sub !== undefined ? { sub } : {}),
+        lines: [def.flavor],
+        thumb: { scene: this.sceneRef, key: itemThumbKey(def) },
+      });
+    });
+    this.hitZone.on('pointerout', () => tooltip.hide());
     this.container.add(this.hitZone);
 
     for (let i = 0; i < this.slotCount; i++) {

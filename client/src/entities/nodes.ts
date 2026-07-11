@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { hoverTip } from '../ui/Tooltip';
 import { CONFIG, type NodeKind } from '@shared/config';
 import { targetFrequencyAt, tensionValue } from '@shared/minigames';
 import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
@@ -46,6 +47,11 @@ export class BrassSeamNode implements NodeView {
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
+    hoverTip(this.image, () => ({
+      title: 'Brass Seam',
+      sub: 'Delving · Drillhammer',
+      lines: ['Follow the live fork. Some seams never cooled.'],
+    }));
 
     const mkFork = (side: 0 | 1): Phaser.GameObjects.Image => {
       const fx = scene.add.image(x + (side === 0 ? -26 : 26), y - 26, 'fx-spark');
@@ -127,6 +133,11 @@ export class AmperiteNode implements NodeView {
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
+    hoverTip(this.image, () => ({
+      title: 'Amperite Node',
+      sub: 'Delving · Drillhammer',
+      lines: ['Strike on the pulse — it keeps its own time.'],
+    }));
 
     this.glow = scene.add.image(x, y - 34, 'fx-glow');
     this.glow.setTint(PALETTE_INT.neonTeal);
@@ -218,6 +229,11 @@ export class KoiSpotNode implements NodeView {
     this.image.setScale(TEX_SCALE);
     this.image.setDepth(depthForWorldY(y) + 1);
     this.image.setInteractive({ useHandCursor: true });
+    hoverTip(this.image, () => ({
+      title: 'Glowkoi Water',
+      sub: 'Skimming · Skimnet',
+      lines: ['Cast on the shadow, reel in the sweet zone.'],
+    }));
 
     this.shadow = scene.add.image(x, y, 'tex-koi-shadow');
     this.shadow.setScale(0.8);
@@ -352,6 +368,11 @@ export class AntennaNode implements NodeView {
     if (wt !== null) this.image.setTint(wt);
     this.image.setDepth(depthForWorldY(y));
     this.image.setInteractive({ useHandCursor: true });
+    hoverTip(this.image, () => ({
+      title: 'Antenna Mast',
+      sub: 'Tuning · Tuner',
+      lines: ['Hold the needle on the drift. The static talks.'],
+    }));
 
     // Beacon in the glow language (addendum b): hot core + teal bloom;
     // the breathing tween rides the mid layer.
