@@ -107,7 +107,6 @@ import {
   addBadFlicker,
   addFilmGrain,
   addGodRays,
-  addHaze,
   addHueCycle,
   addLampCone,
 } from '../render/atmosphere';
@@ -279,14 +278,9 @@ export class WorldScene extends Phaser.Scene {
         ease: 'sine.inout',
       });
     }
-    // Atmosphere (R5c): warm haze over the dense light clusters + a film
-    // of grain over the whole frame to kill banding.
-    if (this.dynamoWorld.x !== 0) {
-      addHaze(this, this.dynamoWorld.x, this.dynamoWorld.y + 40, PALETTE_INT.warmGlow, 2.6);
-    }
-    if (this.stallsWorld.x !== 0) {
-      addHaze(this, this.stallsWorld.x + 60, this.stallsWorld.y + 40, PALETTE_INT.neonAmber, 2.1);
-    }
+    // CLARITY: the mid-frame ambient hazes are gone — non-emissive
+    // surfaces render pure nearest texels; atmosphere lives at the void
+    // rim (rimShade) and in the film grain, which stays.
     addFilmGrain(this);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
@@ -2023,10 +2017,13 @@ export class WorldScene extends Phaser.Scene {
     tint: number,
     scale: number,
   ): Phaser.GameObjects.Image {
-    const pool = this.add.image(x, y, 'fx-glow');
+    // CLARITY: fx-pool has a steep falloff so the pool's EDGE reads and
+    // the texels inside stay countable (fx-glow washed whole regions).
+    // 2.8 ≈ the old footprint × 0.7 across the 512→128px texture swap.
+    const pool = this.add.image(x, y, 'fx-pool');
     pool.setTint(tint);
     pool.setBlendMode(Phaser.BlendModes.ADD);
-    pool.setScale(scale, scale * 0.42);
+    pool.setScale(scale * 2.8, scale * 2.8 * 0.42);
     pool.setAlpha(0.24);
     pool.setDepth(DEPTH_FLOOR + 4);
     return pool;

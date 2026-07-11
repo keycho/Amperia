@@ -52,8 +52,11 @@ export function addLayeredGlow(
     img.setDepth(depth);
     return img;
   };
-  const outer = mk(scale * 2.4, 0.14, tint);
-  const mid = mk(scale, 0.5, tint);
+  // CLARITY: halos halved (outer 2.4→1.2, mid 1→0.7) and the skirt's
+  // alpha dropped so overlapping sources can't wash a region — the hot
+  // core is untouched; bloom belongs to emissive pixels, not the street.
+  const outer = mk(scale * 1.2, 0.09, tint);
+  const mid = mk(scale * 0.7, 0.5, tint);
   const core = mk(scale * 0.42, 0.95, toWhite(tint, 0.26));
   return {
     core,

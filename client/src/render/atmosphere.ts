@@ -25,6 +25,21 @@ export function makeAtmosphereTextures(scene: Phaser.Scene): void {
     g.generateTexture('fx-shaft', W, H);
     g.destroy();
   }
+  if (!scene.textures.exists('fx-pool')) {
+    // CLARITY: the ground light pool — a much steeper falloff than the
+    // soft fx-glow so pool EDGES read and texels inside stay countable.
+    const R = 64;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    for (let i = 20; i >= 1; i--) {
+      const t = i / 20; // 1 at rim → 0 at center
+      const a = Math.pow(1 - t, 1.8) * 0.12;
+      if (a <= 0) continue;
+      g.fillStyle(0xffffff, a);
+      g.fillCircle(R, R, R * t);
+    }
+    g.generateTexture('fx-pool', R * 2, R * 2);
+    g.destroy();
+  }
   if (!scene.textures.exists('fx-grain')) {
     const S = 192;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
