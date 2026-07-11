@@ -168,8 +168,10 @@ gameServer.define('tangle', TangleRoom);
 gameServer.define('stacks', StacksRoom);
 gameServer.define('terrarium', TerrariumRoom);
 
-httpServer.listen(PORT, () => {
-  console.log(`[amperia] server listening on :${PORT} — keep the city lit`);
+// Railway (and most PaaS) assign PORT and route to all interfaces; binding
+// 0.0.0.0 explicitly keeps this from ever resolving to loopback-only.
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`[amperia] server listening on 0.0.0.0:${PORT} — keep the city lit`);
 });
 
 // The nightly economy rollup (E4b): one EconomySummary row per UTC day —
