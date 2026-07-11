@@ -4,6 +4,7 @@ import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import cors from 'cors';
 import express from 'express';
+import { SPARK_NAME_RE } from '@shared/appearance';
 import { authRateOk, initOps } from './services/ops.js';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
@@ -122,6 +123,22 @@ const post = (path: string, handler: Handler) => {
     })();
   });
 };
+
+// U2d: live name availability for the creator (rate-limited with /auth).
+app.get('/auth/name-check', (req, res) => {
+  void (async () => {
+    const name = String(req.query.name ?? '').trim();
+    if (!SPARK_NAME_RE.test(name)) {
+      res.json({ available: false });
+      return;
+    }
+    const hit = await prisma.character.findFirst({
+      where: { sparkName: { equals: name, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    res.json({ available: hit === null });
+  })().catch(() => res.status(500).json({ available: false }));
+});
 
 post('/auth/register', (b) =>
   registerEmail(String(b.email ?? ''), String(b.password ?? ''), String(b.sparkName ?? '')),

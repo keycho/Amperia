@@ -19,8 +19,19 @@ import {
   ownedForSlot,
 } from '@shared/cosmetics';
 import { intToHex, PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { sound } from '../audio/sound';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
+
+/** U2d: roll-a-name — seeds in the city's voice. */
+const NAME_HEADS = ['Weld', 'Volt', 'Flux', 'Brass', 'Coil', 'Ember', 'Socket', 'Dyna', 'Rivet', 'Amp'];
+const NAME_TAILS = ['a', 'ka', 'ric', 'low', 'mira', 'tin', 'na', 'wick', 'ette', 'bolt', 'sy', 'ler'];
+function rollName(): string {
+  const head = NAME_HEADS[Math.floor(Math.random() * NAME_HEADS.length)] as string;
+  const tail = NAME_TAILS[Math.floor(Math.random() * NAME_TAILS.length)] as string;
+  const n = Math.random() < 0.35 ? `-${Math.floor(10 + Math.random() * 90)}` : '';
+  return `${head}${tail}${n}`;
+}
 
 /**
  * The character creator (I2) — first login (full: name + look) and
@@ -81,6 +92,9 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   // ── live preview: the real baked sprite on a lit pedestal ──────────────
   const previewWrap = document.createElement('div');
   previewWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;';
+  // U2a: the pedestal faces the camera (mascot angle) and can rotate.
+  const FACINGS = ['sw', 'se', 'ne', 'nw'] as const;
+  let facing = 0;
   const canvas = document.createElement('canvas');
   canvas.width = 240;
   canvas.height = 330;
@@ -88,13 +102,30 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   const caption = document.createElement('div');
   caption.style.cssText = `color:${UI_TEXT_WARM};opacity:.7;font-size:11px;`;
   caption.textContent = 'as seen in the lanes';
-  previewWrap.append(canvas, caption);
+  const rotateBtn = document.createElement('button');
+  rotateBtn.textContent = '↻ turn';
+  rotateBtn.style.cssText = [
+    'padding:5px 12px',
+    `background:${PALETTE.ink}`,
+    `color:${UI_TEXT_WARM}`,
+    `border:1px solid ${PALETTE.groundBase}`,
+    'border-radius:7px',
+    'font-family:monospace',
+    'font-size:11px',
+    'cursor:pointer',
+  ].join(';');
+  rotateBtn.onclick = () => {
+    facing = (facing + 1) % FACINGS.length;
+    sound.uiClick();
+    drawPreview();
+  };
+  previewWrap.append(canvas, rotateBtn, caption);
 
   const drawPreview = () => {
     const code = encodeAppearance(a);
     const wire = encodeEquipped(eq);
     bakeSparkAppearance(opts.scene, code, { previewOnly: true, equipped: wire });
-    const baked = voxelSprite(`spark@${code}#${equipKey(eq)}-sw`);
+    const baked = voxelSprite(`spark@${code}#${equipKey(eq)}-${FACINGS[facing]}`);
     const src = opts.scene.game.textures.get(baked.key).getSourceImage() as HTMLCanvasElement;
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const W = canvas.width;
@@ -145,13 +176,18 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   msg.style.cssText = `color:${PALETTE.neonRose};font-size:11px;min-height:14px;`;
 
   let nameInput: HTMLInputElement | null = null;
+  let nameRow: HTMLDivElement | null = null;
+  let nameHint: HTMLDivElement | null = null;
   if (opts.mode === 'first') {
+    nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display:flex;gap:6px;align-items:center;';
     nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.value = opts.currentName;
     nameInput.maxLength = 16;
     nameInput.placeholder = 'Spark name';
     nameInput.style.cssText = [
+      'flex:1',
       'padding:8px 10px',
       `background:${PALETTE.ink}`,
       `color:${UI_TEXT_WARM}`,
@@ -162,6 +198,60 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
       'outline:none',
     ].join(';');
     nameInput.onkeydown = (e) => e.stopPropagation();
+    const rollBtn = document.createElement('button');
+    rollBtn.textContent = '⚂ roll';
+    rollBtn.title = 'roll a name';
+    rollBtn.style.cssText = [
+      'padding:8px 10px',
+      `background:${PALETTE.ink}`,
+      `color:${UI_TEXT_WARM}`,
+      `border:1px solid ${PALETTE.groundBase}`,
+      'border-radius:8px',
+      'font-family:monospace',
+      'font-size:12px',
+      'cursor:pointer',
+    ].join(';');
+    rollBtn.onclick = () => {
+      if (nameInput === null) return;
+      nameInput.value = rollName();
+      sound.uiClick();
+      nameInput.dispatchEvent(new Event('input'));
+    };
+    nameRow.append(nameInput, rollBtn);
+    // U2d: live availability — debounced check against the city's records.
+    nameHint = document.createElement('div');
+    nameHint.style.cssText = `font-size:10px;min-height:12px;color:${UI_TEXT_WARM};opacity:.75;`;
+    let checkTimer = 0;
+    let checkSeq = 0;
+    nameInput.addEventListener('input', () => {
+      if (nameInput === null || nameHint === null) return;
+      const wanted = nameInput.value.trim();
+      window.clearTimeout(checkTimer);
+      if (wanted === opts.currentName || wanted === '') {
+        nameHint.textContent = '';
+        return;
+      }
+      if (!SPARK_NAME_RE.test(wanted)) {
+        nameHint.textContent = '3–16 letters, digits, spaces, - or _';
+        nameHint.style.color = PALETTE.neonRose;
+        return;
+      }
+      nameHint.textContent = 'checking…';
+      nameHint.style.color = UI_TEXT_WARM;
+      const seq = (checkSeq += 1);
+      checkTimer = window.setTimeout(() => {
+        void fetch(
+          `${location.protocol}//${location.hostname}:2567/auth/name-check?name=${encodeURIComponent(wanted)}`,
+        )
+          .then((r2) => r2.json())
+          .then((res: { available?: boolean }) => {
+            if (seq !== checkSeq || nameHint === null) return;
+            nameHint.textContent = res.available === true ? 'free — it suits you' : 'taken already';
+            nameHint.style.color = res.available === true ? PALETTE.neonTeal : PALETTE.neonRose;
+          })
+          .catch(() => undefined);
+      }, 350);
+    });
   }
 
   const rowLabel = (text: string) => {
@@ -269,13 +359,35 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   };
 
   const randomBtn = button('Randomize', false);
+  // U2c: slot-machine shuffle — the reels settle left to right over ~1s.
+  let spinning = false;
   randomBtn.onclick = () => {
-    a.skin = Math.floor(Math.random() * SKIN_TONES.length);
-    a.hair = Math.floor(Math.random() * HAIR_STYLES.length);
-    a.hairColor = Math.floor(Math.random() * HAIR_COLORS.length);
-    a.jacket = Math.floor(Math.random() * JACKET_COLORS.length);
-    a.accessory = Math.floor(Math.random() * ACCESSORIES.length);
-    refreshAll();
+    if (spinning) return;
+    spinning = true;
+    const order: Array<keyof Appearance> = ['skin', 'hair', 'hairColor', 'jacket', 'accessory'];
+    const sizes: Record<keyof Appearance, number> = {
+      skin: SKIN_TONES.length,
+      hair: HAIR_STYLES.length,
+      hairColor: HAIR_COLORS.length,
+      jacket: JACKET_COLORS.length,
+      accessory: ACCESSORIES.length,
+    };
+    const TICKS = 13;
+    let tick = 0;
+    const spin = window.setInterval(() => {
+      tick += 1;
+      const locked = Math.max(0, Math.floor((tick - 4) / 2));
+      for (let i = locked; i < order.length; i++) {
+        const f = order[i] as keyof Appearance;
+        a[f] = Math.floor(Math.random() * sizes[f]);
+      }
+      sound.uiClick();
+      refreshAll();
+      if (tick >= TICKS) {
+        window.clearInterval(spin);
+        spinning = false;
+      }
+    }, 75);
   };
   const confirmBtn = button(opts.mode === 'first' ? 'Step into the city' : 'Wear it', true);
   confirmBtn.onclick = () => {
@@ -342,7 +454,8 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   };
 
   controls.append(title, sub, msg);
-  if (nameInput !== null) controls.append(nameInput);
+  if (nameRow !== null) controls.append(nameRow);
+  if (nameHint !== null) controls.append(nameHint);
   controls.append(
     swatchRow('Skin', SKIN_TONES, 'skin'),
     chipRow('Hair', HAIR_STYLES, 'hair'),

@@ -334,6 +334,50 @@ function buildHair(
       v.push({ x: 3, y: tailY, z: 7 + lift, c: t.hairDeep, mat: cloth });
       break;
     }
+    case 'undercut': {
+      // Shaved sides (skin shows), a proud slab on top leaning forward.
+      hairSlab(v, t, 0, lean - 1, z, 6, 4, 1, 1, false);
+      for (let dy = 0; dy < 4; dy++) {
+        v.push({ x: 2, y: lean - 1 + dy, z: z + 2, c: t.hairLight, mat: cloth });
+        v.push({ x: 3, y: lean - 1 + dy, z: z + 2, c: t.hairMain, mat: cloth });
+      }
+      break;
+    }
+    case 'braid': {
+      // Full crown, one long braid falling down the back to the belt.
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, true);
+      const braidY = back ? lean + 3 : lean - 2;
+      for (let dz = 0; dz < 9; dz++) {
+        const c = dz % 2 === 0 ? t.hairMain : t.hairDeep;
+        v.push({ x: 2 + (dz % 2), y: braidY, z: 13 + lift - dz, c, mat: cloth });
+      }
+      v.push({ x: 2, y: braidY, z: 4 + lift, c: t.hairLight, mat: cloth }); // tie
+      break;
+    }
+    case 'slick': {
+      // Combed flat and back — low dome, a bright combline, no spill.
+      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 0, true);
+      for (let dy = 0; dy < 5; dy++) {
+        v.push({ x: 1, y: lean - 2 + dy, z: z + 1, c: t.hairLight, mat: cloth });
+        v.push({ x: 4, y: lean - 2 + dy, z: z + 1, c: t.hairDeep, mat: cloth });
+      }
+      break;
+    }
+    case 'frizz': {
+      // A storm cloud: wide, tall, ragged at every edge.
+      hairSlab(v, t, -2, lean - 3, z, 10, 8, 2, 1, true);
+      for (let dx = 0; dx < 10; dx++) {
+        for (let dy = 0; dy < 8; dy++) {
+          if (voxelHash(dx, dy, 91) < 0.3) {
+            v.push({ x: -2 + dx, y: lean - 3 + dy, z: z + 2, c: t.hairMain, mat: cloth });
+          }
+          if (voxelHash(dx, dy, 93) < 0.14) {
+            v.push({ x: -2 + dx, y: lean - 3 + dy, z: z + 3, c: t.hairLight, mat: cloth });
+          }
+        }
+      }
+      break;
+    }
     default: {
       // The mascot mop: spills one voxel over the proud band, jagged, domed.
       hairSlab(v, t, -1, lean - 2, z, 8, 6, 2, 1, true);
@@ -552,6 +596,18 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     } else if (acc === 3) {
       v.push({ x: 1, y: lean + 2, z: 6 + lift, c: MATERIAL_INT.paintTeal }); // teal patch
       v.push({ x: 2, y: lean + 2, z: 6 + lift, c: MATERIAL_INT.paintTeal });
+    } else if (acc === 4) {
+      // Ear cuff: two brass glints stacked on the ear line.
+      v.push({ x: 6, y: lean + 2, z: 11 + lift, c: PALETTE_INT.neonAmber });
+      v.push({ x: 6, y: lean + 2, z: 10 + lift, c: BODY_COLORS.toolMetal });
+    } else if (acc === 5) {
+      // Cheek smudge: a working day's grease, off-center.
+      v.push({ x: 5, y: lean + 2, z: 9 + lift, c: blendInt(PALETTE_INT.ink, MATERIAL_INT.skin, 0.35) });
+      v.push({ x: 5, y: lean + 2, z: 8 + lift, c: blendInt(PALETTE_INT.ink, MATERIAL_INT.skin, 0.5) });
+    } else if (acc === 6) {
+      // Brow scar: a pale notch through the brow line.
+      v.push({ x: 2, y: lean + 2, z: 12 + lift, c: blendInt(MATERIAL_INT.skin, PALETTE_INT.warmGlow, 0.75) });
+      v.push({ x: 2, y: lean + 2, z: 11 + lift, c: blendInt(MATERIAL_INT.skin, PALETTE_INT.warmGlow, 0.6) });
     }
   }
   return v;
@@ -606,12 +662,15 @@ export function bakeSparkAppearance(
   const equipped = decodeEquipped(opts.equipped ?? '');
   const key = `spark@${code}#${equipKey(equipped)}`;
   if (opts.previewOnly === true) {
-    bakeVoxelModel(scene, {
-      name: `${key}-sw`,
-      voxels: dirVoxels('sw', { frame: 'idle', appearance, equipped }),
-      warmRim: true,
-      shadow: false,
-    });
+    // U2a: the creator can rotate — bake all four idle facings.
+    for (const dir of SPARK_DIRS) {
+      bakeVoxelModel(scene, {
+        name: `${key}-${dir}`,
+        voxels: dirVoxels(dir, { frame: 'idle', appearance, equipped }),
+        warmRim: true,
+        shadow: false,
+      });
+    }
     return;
   }
   for (const dir of SPARK_DIRS) {

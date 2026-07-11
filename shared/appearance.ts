@@ -16,6 +16,9 @@ export const SKIN_TONES: readonly number[] = [
   blendInt(MATERIAL_INT.skin, PALETTE_INT.groundAccent, 0.55),
   blendInt(MATERIAL_INT.skin, MATERIAL_INT.rust, 0.55),
   blendInt(blendInt(MATERIAL_INT.skin, MATERIAL_INT.rustDeep, 0.72), PALETTE_INT.ink, 0.12),
+  // U2b: pale lamplight + deep umber round out the range.
+  blendInt(MATERIAL_INT.skin, PALETTE_INT.warmGlow, 0.68),
+  blendInt(blendInt(MATERIAL_INT.skin, MATERIAL_INT.rustDeep, 0.85), PALETTE_INT.ink, 0.3),
 ];
 
 export interface HairStyleDef {
@@ -31,6 +34,11 @@ export const HAIR_STYLES: readonly HairStyleDef[] = [
   { id: 'crest', label: 'The Crest' },
   { id: 'bowl', label: 'Bellhousing' },
   { id: 'tail', label: 'Cable Tail' },
+  // U2b: four more silhouettes, each distinct at play zoom.
+  { id: 'undercut', label: 'Undercut' },
+  { id: 'braid', label: 'Long Braid' },
+  { id: 'slick', label: 'Slicked Back' },
+  { id: 'frizz', label: 'Wild Frizz' },
 ];
 
 /** Hair colors (main tone; light/deep derive in the model builder). */
@@ -50,6 +58,10 @@ export const JACKET_COLORS: readonly number[] = [
   blendInt(MATERIAL_INT.paintTeal, PALETTE_INT.structureMid, 0.15),
   blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.structureMid, 0.15),
   blendInt(MATERIAL_INT.paintRose, PALETTE_INT.structureMid, 0.15),
+  // U2b: gunmetal work coat, garden green, ember bomber.
+  blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.structureMid, 0.25),
+  blendInt(PALETTE_INT.solarGreen, PALETTE_INT.structureMid, 0.4),
+  blendInt(PALETTE_INT.emberOrange, PALETTE_INT.structureMid, 0.45),
 ];
 
 export interface AccessoryDef {
@@ -62,6 +74,10 @@ export const ACCESSORIES: readonly AccessoryDef[] = [
   { id: 'stud', label: 'Amber Stud' },
   { id: 'pin', label: 'Antenna Pin' },
   { id: 'patch', label: 'Teal Patch' },
+  // U2b: three more bits of face flair.
+  { id: 'cuff', label: 'Ear Cuff' },
+  { id: 'smudge', label: 'Cheek Smudge' },
+  { id: 'scar', label: 'Brow Scar' },
 ];
 
 /** Numeric indices into the tables above. */
