@@ -1,5 +1,33 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-11 U6 PERF & STABILITY
+
+- **FPS profile, Stacks, 20 bots + probe (21 Sparks in room)** — game
+  logic per frame: **p50 1.0ms · p95 2.1ms · max 10.1ms against the
+  16.7ms/60fps budget**. The whole 20-Spark crowd adds ~5% frame time
+  over an empty district. **No hotspots above noise — sprite pooling is
+  not warranted by evidence** (churn objects are a handful of floaters
+  per second). Note: headless absolute FPS reads ~10 because the
+  container renders WebGL on CPU (SwiftShader) with a throttled rAF —
+  measured render WORK is 8.8ms p50, a headless artifact, not a client
+  cost. Watch item: each distinct Spark appearance bakes its texture
+  set once (~2MB); heap grew +50MB with 21 distinct appearances —
+  bounded per session, revisit only if crowds of hundreds of uniques
+  become real.
+- **Memory sweep, 20 tram hops** — heap peaks 81.8MB while first-
+  visiting all four districts (texture bakes), then **plateaus at
+  67–70MB for hops 4–20** with zero growth trend. **Fixed the one real
+  leak-class bug it surfaced**: the minimap's 250ms tick read
+  `room.state.mobs` on a freshly hopped room before its first state
+  patch → uncaught TypeError every ~9th hop (which the new error
+  boundary would have turned into a visible reload). Now it skips the
+  beat until the state lands.
+- **Client error boundary** — uncaught errors/rejections log to the
+  console (ops-greppable), drop an in-voice veil ('The city
+  hiccupped.'), and soft-reload once; a guard parks on the 3rd crash
+  inside 5 minutes with a manual 'Knock again' instead of loop-
+  reloading. Never a white screen. All three paths verified live.
+
 ## Status after the 2026-07-11 U3–U4 (professional frame + QoL)
 
 U3 — the professional frame, all five pieces verified live:

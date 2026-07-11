@@ -128,7 +128,9 @@ export class Minimap {
   private tick(): void {
     if (!this.container.visible) return;
     const room = session.room;
-    if (room === null) {
+    // A freshly hopped room has no state until its first patch — skip the
+    // beat rather than read into the void (U6b found this the hard way).
+    if (room === null || room.state?.players === undefined || room.state?.mobs === undefined) {
       this.blips.clear();
       return;
     }

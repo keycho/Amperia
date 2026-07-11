@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { MATERIAL_COLORS } from '@shared/palette';
+import { installErrorBoundary } from './errorBoundary';
 import { STYLE } from './render/styleConfig';
 import { BootScene } from './scenes/BootScene';
 import { LoginScene } from './scenes/LoginScene';
@@ -31,6 +32,9 @@ declare global {
     };
   }
 }
+
+// U6c: never a white screen — errors log, veil, and re-light.
+installErrorBoundary();
 
 // Style C: low internal resolution with nearest-neighbour upscale.
 const pixelScale =
