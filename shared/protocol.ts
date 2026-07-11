@@ -454,10 +454,15 @@ export interface MobStateShape {
   ai: string;
 }
 
+/** The social flourishes (U4b) — pure presentation, no gameplay effect. */
+export type EmoteId = 'wave' | 'sit' | 'cheer' | 'point';
+
+export const EMOTE_IDS: readonly EmoteId[] = ['wave', 'sit', 'cheer', 'point'];
+
 export interface EmoteBroadcast {
   sessionId: string;
   from: string;
-  emote: 'wave';
+  emote: EmoteId;
 }
 
 export interface NoticeEvent {

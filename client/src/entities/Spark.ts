@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { TilePoint } from '@shared/pathfinding';
+import type { EmoteId } from '@shared/protocol';
 import { DEPTH_SHADOW, depthForWorldY, TILE_H, TILE_W, tileToWorld } from '../iso/project';
 import { DEFAULT_APPEARANCE_CODE } from '@shared/appearance';
 import { decodeEquipped } from '@shared/cosmetics';
@@ -41,6 +42,8 @@ export class Spark {
   /** Alternates which leg strides first on each step (A vs B). */
   private strideParity = false;
   private pose: string | null = null;
+  /** U4b /sit: dipped into the deck until the next step or pose. */
+  private sitting = false;
   private shadow: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
@@ -162,6 +165,7 @@ export class Spark {
    */
   setPose(id: string | null): void {
     if (id === this.pose) return;
+    if (id !== null) this.standIfSitting();
     this.pose = id;
     this.applyTexture();
   }
@@ -329,6 +333,90 @@ export class Spark {
     });
   }
 
+  /** U4b: route a broadcast emote to its flourish. */
+  playEmote(kind: EmoteId): void {
+    if (kind === 'sit') {
+      this.sit();
+      return;
+    }
+    this.standIfSitting();
+    if (kind === 'wave') this.playWave();
+    else if (kind === 'cheer') this.playCheer();
+    else this.playPoint();
+  }
+
+  /** A pixel emote-bubble glyph floating up off the head. */
+  private emoteBubble(tex: string): void {
+    const img = this.scene.add.image(
+      this.image.x + 10,
+      this.image.y - this.image.displayHeight - 4,
+      tex,
+    );
+    img.setScale(1);
+    img.setDepth(this.image.depth + 3);
+    this.scene.tweens.add({
+      targets: img,
+      y: img.y - 12,
+      alpha: { from: 1, to: 0 },
+      delay: 950,
+      duration: 420,
+      ease: 'quad.in',
+      onComplete: () => img.destroy(),
+    });
+  }
+
+  /** /sit: settle into the deck until the next step (or a working pose). */
+  private sit(): void {
+    if (this.sitting) return;
+    this.sitting = true;
+    this.image.y += 4;
+    this.image.setDepth(depthForWorldY(this.image.y));
+    this.syncLabel();
+    this.emoteBubble('emote-sit');
+  }
+
+  private standIfSitting(): void {
+    if (!this.sitting) return;
+    this.sitting = false;
+    this.image.y -= 4;
+    this.image.setDepth(depthForWorldY(this.image.y));
+    this.syncLabel();
+  }
+
+  /** /cheer: a big double hop + a stars bubble. */
+  private playCheer(): void {
+    this.scene.tweens.add({
+      targets: this.image,
+      y: this.image.y - 11,
+      duration: 170,
+      yoyo: true,
+      repeat: 2,
+      ease: 'quad.out',
+      onUpdate: () => this.syncLabel(),
+    });
+    this.emoteBubble('emote-cheer');
+  }
+
+  /** /point: a sharp lean toward the current facing + a "look!" bubble. */
+  private playPoint(): void {
+    const d = { se: { x: 1, y: 0 }, nw: { x: -1, y: 0 }, sw: { x: 0, y: 1 }, ne: { x: 0, y: -1 } }[
+      this.dir
+    ];
+    const here = tileToWorld(this.tile.x, this.tile.y);
+    const there = tileToWorld(this.tile.x + d.x, this.tile.y + d.y);
+    this.scene.tweens.add({
+      targets: this.image,
+      x: this.image.x + (there.x - here.x) * 0.22,
+      y: this.image.y + (there.y - here.y) * 0.22,
+      duration: 140,
+      yoyo: true,
+      repeat: 1,
+      ease: 'quad.out',
+      onUpdate: () => this.syncLabel(),
+    });
+    this.emoteBubble('emote-point');
+  }
+
   /** The /wave emote: a friendly double hop + a little hand flourish. */
   playWave(): void {
     this.scene.tweens.add({
@@ -368,6 +456,7 @@ export class Spark {
 
   /** Snap instantly to a tile (server drift correction). */
   snapTo(tile: TilePoint): void {
+    this.sitting = false;
     this.stepTween?.stop();
     this.stepTween = null;
     this.stepTarget = null;
@@ -429,6 +518,8 @@ export class Spark {
       return;
     }
     this.stepTarget = next;
+    // Stepping is standing — the walk tween takes over the dipped y anyway.
+    this.sitting = false;
     const to = tileToWorld(next.x, next.y);
     this.face(next.x - this.tile.x, next.y - this.tile.y);
     // Walk cycle with weight: stride (A/B alternating legs) for the first

@@ -23,6 +23,7 @@ import { GoalPanel } from '../ui/GoalPanel';
 import { HowToPlayPanel } from '../ui/HowToPlayPanel';
 import { WorldMapPanel } from '../ui/WorldMapPanel';
 import { Minimap } from '../ui/Minimap';
+import { EmoteWheel } from '../ui/EmoteWheel';
 import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
@@ -58,6 +59,7 @@ export class UIScene extends Phaser.Scene {
   private worldMapPanel!: WorldMapPanel;
   private howToPlayPanel!: HowToPlayPanel;
   private minimap!: Minimap;
+  private emoteWheel!: EmoteWheel;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
@@ -241,6 +243,12 @@ export class UIScene extends Phaser.Scene {
     this.worldMapPanel = new WorldMapPanel(this);
     this.howToPlayPanel = new HowToPlayPanel(this);
     this.minimap = new Minimap(this);
+    // U4b: hold E for the wheel; picks route through the chat commands so
+    // the server stays the single emote authority.
+    this.emoteWheel = new EmoteWheel(this, (emote) => {
+      sound.uiClick();
+      if (session.room !== null) send.chat(session.room, { text: `/${emote}` });
+    });
     // H1: brand-new Sparks get the intro right after the creator (once).
     session.events.on(SessionEvents.howToPlay, () => this.howToPlayPanel.maybeShowFirstTime());
     // U3d: the death recap — what happened, what dropped, when you're back.
@@ -557,6 +565,7 @@ export class UIScene extends Phaser.Scene {
         'I pack · K skills · G goals',
         'J Manifest · M minimap · TAB map',
         'H rivet a Heatlamp',
+        'hold E · emotes',
         'Enter · chat   ? · the intro',
         '/help · everything else',
       ].join('\n'),
@@ -642,6 +651,14 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-J', () => {
       this.manifestPanel.toggle();
     });
+    // U4b: hold E = the emote wheel; release plays the highlighted glyph.
+    kb.on('keydown-E', (ev: KeyboardEvent) => {
+      if (typing() || ev.repeat) return;
+      this.emoteWheel.open();
+    });
+    kb.on('keyup-E', () => {
+      this.emoteWheel.release();
+    });
     // TAB = the world map (D4a). Captured so the browser keeps focus.
     kb.addCapture('TAB');
     kb.on('keydown-TAB', () => {
@@ -662,7 +679,8 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-ESC', () => {
       if (typing()) return;
-      if (this.tradePanel.visible) {
+      if (this.emoteWheel.visible) this.emoteWheel.close();
+      else if (this.tradePanel.visible) {
         // Esc = walk away: the server closes both windows.
         this.tradePanel.requestCancel();
       } else if (this.shopPanel.visible) this.shopPanel.setVisible(false);

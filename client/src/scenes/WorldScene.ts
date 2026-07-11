@@ -896,8 +896,11 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(m.sessionId)?.showChatBubble(m.text);
     });
     room.onMessage(MSG.emote, (e: EmoteBroadcast) => {
-      this.sparks.get(e.sessionId)?.playWave();
-      session.events.emit(SessionEvents.notice, `${e.from} waves.`);
+      this.sparks.get(e.sessionId)?.playEmote(e.emote);
+      const line = { wave: 'waves.', sit: 'settles in.', cheer: 'cheers!', point: 'points.' }[
+        e.emote
+      ];
+      session.events.emit(SessionEvents.notice, `${e.from} ${line ?? 'waves.'}`);
     });
     room.onMessage(MSG.notice, (n: NoticeEvent) =>
       session.events.emit(SessionEvents.notice, n.text),

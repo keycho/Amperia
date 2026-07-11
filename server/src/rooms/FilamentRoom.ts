@@ -108,6 +108,7 @@ import {
   type UseItemIntent,
   type DeliveryIntent,
   type TendIntent,
+  type EmoteId,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { recipeById, repairQuote, toolSpeedMult, weaponDamageMult } from '@shared/crafting';
@@ -1275,11 +1276,12 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.notice, {
         text: near.length > 0 ? `Nearby Sparks: ${near.join(', ')}` : 'No Sparks nearby.',
       });
-    } else if (cmd === '/wave') {
+    } else if (cmd === '/wave' || cmd === '/sit' || cmd === '/cheer' || cmd === '/point') {
+      // U4b: the social flourishes — broadcast-only, no gameplay effect.
       this.broadcast(MSG.emote, {
         sessionId: client.sessionId,
         from: rt.sparkName,
-        emote: 'wave',
+        emote: cmd.slice(1) as EmoteId,
       });
     } else if (cmd === '/trade') {
       const name = text.slice(cmd.length).trim().toLowerCase();
@@ -1440,7 +1442,7 @@ export class FilamentRoom extends Room<FilamentState> {
           'The city in four breaths — 1) Click to walk; click a glowing node to work it; watch for the glint. ' +
           '2) Right tool in hand (1–6); Mastery levels as you work; the Tinkerbench crafts and mends. ' +
           '3) Goals G · Manifest M · skills K · map TAB · bank at the Ledgerhouse · the Coil spins free daily. ' +
-          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /trade <name> /charge /pod /haul <berth> /mute <name> /unmute <name> /report <name> <reason> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
+          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /sit /cheer /point /trade <name> /charge /pod /haul <berth> /mute <name> /unmute <name> /report <name> <reason> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });
