@@ -6,6 +6,7 @@ import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type Worl
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
 import { hoverTip } from '../ui/Tooltip';
+import { playTramTransition } from '../ui/tramTransition';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
@@ -54,6 +55,7 @@ import type {
   MoveIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
+import { levelForXp, type SkillId } from '@shared/mastery';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
 import { JunkHeapNode } from '../entities/JunkHeapNode';
 import { Mob } from '../entities/Mob';
@@ -221,6 +223,8 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.map = buildDistrictMap(this.district);
+    // U5a: the district's ambient bed (crossfades if we rode in on a tram).
+    sound.setDistrictAmbient(this.district);
     // Elevation-aware projection (R4): every tile-derived world position
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
@@ -610,7 +614,8 @@ export class WorldScene extends Phaser.Scene {
       session.events.emit(SessionEvents.presence, this.sparks.size);
       if (sessionId === room.sessionId) {
         this.cameraCtl.followTarget(spark.image);
-        spark.onStep = () => sound.footstep();
+        // U5d: what's underfoot decides the step sound.
+        spark.onStep = () => sound.footstep(this.surfaceAt(spark.tile.x, spark.tile.y));
         session.events.emit(SessionEvents.hp, { hp: p.hp, maxHp: p.maxHp });
         proxy(p).listen('hp', (v: number) =>
           session.events.emit(SessionEvents.hp, { hp: v, maxHp: p.maxHp }),
@@ -777,6 +782,8 @@ export class WorldScene extends Phaser.Scene {
         terrarium: 'The Terrarium stop — you can smell the green from here.',
       };
       session.events.emit(SessionEvents.notice, lines[to]);
+      // U5b: the tram beat — vignette + name card riding over the rebuild.
+      playTramTransition(to);
       this.expectLeave = true;
       void room.leave().finally(() => {
         this.scene.restart({ token: this.token, district: to });
@@ -870,6 +877,25 @@ export class WorldScene extends Phaser.Scene {
       if (e.qty > 0) {
         floatText(this, nx, ny, `+${e.qty} ${ITEMS[e.itemId].name}`);
         sound.gatherChirp();
+        // U5c: a quick spark burst off the node as the haul lands.
+        if (node !== undefined) {
+          for (let i = 0; i < 4; i++) {
+            const p = this.add.image(nx, ny + 40, 'fx-spark');
+            p.setTint(i % 2 === 0 ? PALETTE_INT.warmGlow : PALETTE_INT.neonTeal);
+            p.setBlendMode(Phaser.BlendModes.ADD);
+            p.setScale(0.05 + Math.random() * 0.04);
+            p.setDepth(node.image.depth + 2);
+            this.tweens.add({
+              targets: p,
+              x: nx + (Math.random() - 0.5) * 56,
+              y: ny + 14 - Math.random() * 44,
+              alpha: 0,
+              duration: 260 + Math.random() * 90,
+              ease: 'quad.out',
+              onComplete: () => p.destroy(),
+            });
+          }
+        }
       } else {
         floatText(this, nx, ny, 'Pack is full!', PALETTE.neonRose);
       }
@@ -889,7 +915,39 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.quests, (sync: QuestsSync) =>
       session.events.emit(SessionEvents.quests, sync),
     );
-    room.onMessage(MSG.skills, (sync: SkillsSync) => gameState.applySkills(sync));
+    room.onMessage(MSG.skills, (sync: SkillsSync) => {
+      // U5c: a Mastery level landing gets its beat — fanfare + light beam.
+      const before = { ...gameState.skills };
+      gameState.applySkills(sync);
+      const own = this.sparks.get(room.sessionId);
+      for (const [skill, xp] of Object.entries(gameState.skills)) {
+        const prev = before[skill as SkillId];
+        if (prev === undefined || xp <= prev) continue;
+        const level = levelForXp(xp);
+        if (level <= levelForXp(prev)) continue;
+        sound.levelUpFanfare();
+        if (own !== undefined) {
+          const label = skill.charAt(0).toUpperCase() + skill.slice(1);
+          floatText(this, own.image.x, own.image.y - 92, `${label} ${level}!`, PALETTE.neonAmber);
+          const beam = this.add.image(own.image.x, own.image.y - 40, 'fx-glow');
+          beam.setTint(PALETTE_INT.neonAmber);
+          beam.setBlendMode(Phaser.BlendModes.ADD);
+          beam.setScale(0.05, 0.4);
+          beam.setAlpha(0.9);
+          beam.setDepth(own.image.depth + 2);
+          this.tweens.add({
+            targets: beam,
+            scaleY: 0.7,
+            scaleX: 0.02,
+            y: beam.y - 40,
+            alpha: 0,
+            duration: 620,
+            ease: 'quad.out',
+            onComplete: () => beam.destroy(),
+          });
+        }
+      }
+    });
     room.onMessage(MSG.xpGain, (e: XpGainEvent) => {
       const own = this.sparks.get(room.sessionId);
       if (own !== undefined) {
@@ -1447,6 +1505,25 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ── presentation (unchanged from M0) ───────────────────────────────────
+
+  /** U5d: what's underfoot at a tile — mirrors drawFloor's zone rules
+   *  (deck/boardwalk lanes = decking, fringe = plating, pavers/asphalt =
+   *  stone; the Terrarium is warm wood up top, plated at the apron). */
+  private surfaceAt(tx: number, ty: number): 'plating' | 'decking' | 'stone' {
+    const { plaza, size } = this.map;
+    if (this.map.district === 'terrarium') {
+      return (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'decking' : 'plating';
+    }
+    const isTangle = this.map.district === 'tangle';
+    const inLane = !isTangle && ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
+    const onBoardwalk = !isTangle && tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
+    if (inLane || onBoardwalk) return 'decking';
+    const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
+    if (plaza.radius > 0 && plazaDist <= plaza.radius) return 'stone';
+    const distToEdge = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
+    if (distToEdge <= 6 || (!isTangle && tx >= 27 && ty >= 28)) return 'plating';
+    return 'stone';
+  }
 
   /** neonTeal click feedback pulse at a tile. */
   private pulseTile(tx: number, ty: number): void {

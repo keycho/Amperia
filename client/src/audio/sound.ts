@@ -19,6 +19,10 @@ class SoundEngine {
 
   private humGain: GainNode | null = null;
   private murmurGain: GainNode | null = null;
+  /** U5a: the per-district ambient bed (crossfaded on tram hops). */
+  private bed: { gain: GainNode; stop: () => void; district: string } | null = null;
+  private bedTimer: ReturnType<typeof setInterval> | null = null;
+  private pendingDistrict: string | null = null;
   private tuner: {
     noiseGain: GainNode;
     noiseSrc: AudioBufferSourceNode;
@@ -61,6 +65,8 @@ class SoundEngine {
     const data = this.noiseBuffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     this.startLoops();
+    // The scene may have named a district before the first gesture.
+    if (this.pendingDistrict !== null) this.setDistrictAmbient(this.pendingDistrict);
   }
 
   setVolume(v: number): void {
@@ -133,6 +139,131 @@ class SoundEngine {
     murmurLfo.start();
   }
 
+  // ── U5a: district ambient beds ───────────────────────────────────────────
+
+  /**
+   * Crossfade to a district's ambient bed (~1.5s, riding the tram card).
+   * filament keeps its dynamo hum + murmur; the bed adds the quarter's own
+   * weather: wind and far creaks in the Stacks, chirps and leaf-hiss in the
+   * Terrarium, a low rumble with stray drips in the Tangle.
+   */
+  setDistrictAmbient(district: string): void {
+    this.pendingDistrict = district;
+    if (this.ctx === null) return; // unlock() replays the pending district
+    if (this.bed?.district === district) return;
+    const ctx = this.ctx;
+    const old = this.bed;
+    this.bed = null;
+    if (this.bedTimer !== null) {
+      clearInterval(this.bedTimer);
+      this.bedTimer = null;
+    }
+    if (old !== null) {
+      old.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.45);
+      setTimeout(() => old.stop(), 1800);
+    }
+    const built = this.buildBed(district);
+    if (built === null) return;
+    this.bed = { ...built, district };
+    built.gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    built.gain.gain.setTargetAtTime(built.level, ctx.currentTime + 0.35, 0.5);
+  }
+
+  /** One filtered-noise layer + a sparse one-shot flourish per district. */
+  private buildBed(
+    district: string,
+  ): { gain: GainNode; stop: () => void; level: number } | null {
+    if (this.ctx === null || this.master === null || this.noiseBuffer === null) return null;
+    const ctx = this.ctx;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.master);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    src.connect(filter);
+    filter.connect(gain);
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.connect(lfoGain);
+    lfoGain.connect(filter.frequency);
+    let level = 0.05;
+    let flourish: (() => void) | null = null;
+    switch (district) {
+      case 'stacks': {
+        // Rooftop wind + the occasional far-off metal creak.
+        filter.type = 'bandpass';
+        filter.frequency.value = 700;
+        filter.Q.value = 0.5;
+        lfo.frequency.value = 0.09;
+        lfoGain.gain.value = 260;
+        level = 0.075;
+        flourish = () => {
+          if (Math.random() < 0.4) this.blip('sine', 340 + Math.random() * 120, 210, 0.5, 0.018);
+        };
+        break;
+      }
+      case 'terrarium': {
+        // Leaf-hiss + little glasshouse chirps.
+        filter.type = 'highpass';
+        filter.frequency.value = 2600;
+        lfo.frequency.value = 0.16;
+        lfoGain.gain.value = 500;
+        level = 0.028;
+        flourish = () => {
+          if (Math.random() < 0.55) {
+            const f = 2100 + Math.random() * 1400;
+            this.blip('sine', f, f * 1.22, 0.07, 0.02);
+            this.blip('sine', f * 1.1, f * 0.9, 0.05, 0.014, 0.11);
+          }
+        };
+        break;
+      }
+      case 'tangle': {
+        // A low rumble; sometimes a drip or a stray spark snaps.
+        filter.type = 'lowpass';
+        filter.frequency.value = 180;
+        lfo.frequency.value = 0.06;
+        lfoGain.gain.value = 50;
+        level = 0.09;
+        flourish = () => {
+          const r = Math.random();
+          if (r < 0.3) this.blip('sine', 1150, 480, 0.09, 0.03);
+          else if (r < 0.42) this.blip('square', 2900, 2100, 0.03, 0.012);
+        };
+        break;
+      }
+      default: {
+        // The Filament: a faint warm crackle under the dynamo/murmur pair.
+        filter.type = 'bandpass';
+        filter.frequency.value = 3400;
+        filter.Q.value = 2.2;
+        lfo.frequency.value = 0.21;
+        lfoGain.gain.value = 700;
+        level = 0.014;
+        break;
+      }
+    }
+    src.start();
+    lfo.start();
+    if (flourish !== null) this.bedTimer = setInterval(flourish, 3800);
+    const stop = () => {
+      try {
+        src.stop();
+        lfo.stop();
+      } catch {
+        // already stopped
+      }
+      src.disconnect();
+      lfo.disconnect();
+      filter.disconnect();
+      lfoGain.disconnect();
+      gain.disconnect();
+    };
+    return { gain, stop, level };
+  }
+
   /** Distance-driven loop levels; call a few times a second from the scene. */
   updateSpatial(distToDynamoPx: number, distToStallsPx: number): void {
     if (this.ctx === null) return;
@@ -198,7 +329,9 @@ class SoundEngine {
     this.blip('sine', 1319, 1319, 0.42, 0.1, 0.18);
   }
 
-  footstep(): void {
+  /** U5d: footsteps carry the surface — metal plating rings a little,
+   *  decking knocks woody, stone keeps the dry thud. */
+  footstep(surface: 'plating' | 'decking' | 'stone' = 'stone'): void {
     if (this.ctx === null || this.master === null || this.noiseBuffer === null) return;
     const ctx = this.ctx;
     this.stepFlip = !this.stepFlip;
@@ -206,11 +339,27 @@ class SoundEngine {
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
     const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = this.stepFlip ? 340 : 300;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.09, t0);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
+    if (surface === 'plating') {
+      f.type = 'bandpass';
+      f.frequency.value = this.stepFlip ? 620 : 540;
+      f.Q.value = 1.4;
+      g.gain.setValueAtTime(0.085, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+      // The faint metallic ring under the scuff.
+      this.blip('sine', this.stepFlip ? 470 : 430, 380, 0.06, 0.02);
+    } else if (surface === 'decking') {
+      f.type = 'lowpass';
+      f.frequency.value = this.stepFlip ? 500 : 440;
+      g.gain.setValueAtTime(0.1, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+      this.blip('triangle', this.stepFlip ? 190 : 165, 120, 0.045, 0.03);
+    } else {
+      f.type = 'lowpass';
+      f.frequency.value = this.stepFlip ? 340 : 300;
+      g.gain.setValueAtTime(0.09, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
+    }
     src.connect(f);
     f.connect(g);
     g.connect(this.master);
@@ -220,6 +369,54 @@ class SoundEngine {
       f.disconnect();
       g.disconnect();
     };
+  }
+
+  // ── U5c: the celebrations (all ≲0.3s — juice, never fanfare fatigue) ─────
+
+  /** A Mastery level landed: a rising three-note flourish. */
+  levelUpFanfare(): void {
+    this.blip('triangle', 523, 523, 0.12, 0.12);
+    this.blip('triangle', 659, 659, 0.12, 0.12, 0.09);
+    this.blip('triangle', 784, 1046, 0.22, 0.14, 0.18);
+  }
+
+  /** A quest page stamped done. */
+  questStamp(): void {
+    this.blip('sine', 240, 90, 0.09, 0.2);
+    this.blip('square', 1720, 1240, 0.05, 0.04, 0.05);
+  }
+
+  /** Bolts changed hands at a counter. */
+  kaching(): void {
+    this.blip('square', 1560, 1560, 0.05, 0.05);
+    this.blip('sine', 2093, 2093, 0.16, 0.08, 0.045);
+  }
+
+  /** A donation whooshed into the Citywide Charge. */
+  donationWhoosh(): void {
+    if (this.ctx === null || this.master === null || this.noiseBuffer === null) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(500, t0);
+    f.frequency.exponentialRampToValueAtTime(3200, t0 + 0.24);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.001, t0);
+    g.gain.linearRampToValueAtTime(0.1, t0 + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+    src.connect(f);
+    f.connect(g);
+    g.connect(this.master);
+    src.start(t0, Math.random(), 0.3);
+    src.onended = () => {
+      src.disconnect();
+      f.disconnect();
+      g.disconnect();
+    };
+    this.blip('sine', 880, 1318, 0.14, 0.05, 0.16);
   }
 
   uiClick(): void {

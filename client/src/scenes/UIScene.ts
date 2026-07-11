@@ -319,6 +319,46 @@ export class UIScene extends Phaser.Scene {
     session.events.on(SessionEvents.questTracker, (line: string) => {
       this.questChip.setText(line === '' ? '' : `◈ ${line}`);
     });
+    // U5c: a quest turned in gets its stamp — a punchy chip + thunk.
+    const questStates = new Map<string, string>();
+    session.events.on(
+      SessionEvents.quests,
+      (sync: { log: Record<string, { state: string }> }) => {
+        for (const [id, row] of Object.entries(sync.log)) {
+          const prev = questStates.get(id);
+          questStates.set(id, row.state);
+          if (prev === 'active' && row.state === 'turnedIn') {
+            sound.questStamp();
+            const stamp = this.add.text(this.questChip.x + 4, this.questChip.y + 22, '✔ DONE', {
+              fontFamily: 'monospace',
+              fontSize: '15px',
+              fontStyle: 'bold',
+              color: PALETTE.solarGreen,
+              stroke: PALETTE.ink,
+              strokeThickness: 4,
+            });
+            stamp.setDepth(901);
+            stamp.setScale(1.8);
+            stamp.setAlpha(0);
+            this.tweens.add({
+              targets: stamp,
+              scale: 1,
+              alpha: 1,
+              duration: 140,
+              ease: 'back.out',
+            });
+            this.tweens.add({
+              targets: stamp,
+              alpha: 0,
+              y: stamp.y - 10,
+              delay: 950,
+              duration: 300,
+              onComplete: () => stamp.destroy(),
+            });
+          }
+        }
+      },
+    );
 
     this.boltsChip = this.add.text(12, 32, '', {
       fontFamily: 'monospace',

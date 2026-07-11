@@ -4,6 +4,7 @@ import type { ChargeSyncEvent } from '@shared/protocol';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
+import { sound } from '../audio/sound';
 
 const PANEL_W = 440;
 const PANEL_H = 380;
@@ -124,11 +125,16 @@ export class ChargePanel {
     add(16, 166, `Your Amperite: ${have}`, PALETTE.warmGlow);
     if (have > 0 && session.room !== null) {
       add(180, 166, '[donate 5]', PALETTE.neonTeal, () => {
-        if (session.room !== null)
+        if (session.room !== null) {
           send.donate(session.room, { itemId: 'amperite', qty: Math.min(5, have) });
+          sound.donationWhoosh();
+        }
       });
       add(280, 166, '[donate all]', PALETTE.neonTeal, () => {
-        if (session.room !== null) send.donate(session.room, { itemId: 'amperite', qty: have });
+        if (session.room !== null) {
+          send.donate(session.room, { itemId: 'amperite', qty: have });
+          sound.donationWhoosh();
+        }
       });
     }
 

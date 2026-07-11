@@ -5,6 +5,7 @@ import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
+import { sound } from '../audio/sound';
 
 const PANEL_W = 460;
 const ROW_H = 26;
@@ -108,12 +109,16 @@ export class MerchantPanel {
       add(300, y, `have ${have}`, UI_TEXT_WARM);
       if (have > 0 && session.room !== null) {
         add(378, y, '[10]', PALETTE.neonTeal, () => {
-          if (session.room !== null)
+          if (session.room !== null) {
             send.trade(session.room, { action: 'sellResource', itemId: res, qty: 10 });
+            sound.kaching();
+          }
         });
         add(414, y, '[all]', PALETTE.neonTeal, () => {
-          if (session.room !== null)
+          if (session.room !== null) {
             send.trade(session.room, { action: 'sellResource', itemId: res, qty: have });
+            sound.kaching();
+          }
         });
       }
     });
@@ -125,8 +130,10 @@ export class MerchantPanel {
       add(16, y, ITEMS[ware.itemId as ItemId].name, UI_TEXT_WARM);
       add(220, y, `${ware.price} Bolts`, PALETTE.warmGlow);
       add(340, y, '[buy]', PALETTE.neonTeal, () => {
-        if (session.room !== null)
+        if (session.room !== null) {
           send.trade(session.room, { action: 'buyItem', itemId: ware.itemId });
+          sound.kaching();
+        }
       });
     });
   }
