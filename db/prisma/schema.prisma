@@ -10,7 +10,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Runtime traffic goes through the pooler (Supabase: port 6543, pgbouncer);
+  // migrations need a direct connection (port 5432). Locally both point at
+  // the same dev database.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Account {

@@ -2,6 +2,8 @@
   "name": "@amperia/db",
   "private": true,
   "version": "0.0.0",
+  "main": "prisma/generated/client/index.js",
+  "types": "prisma/generated/client/index.d.ts",
   "scripts": {
     "generate": "prisma generate --schema prisma/schema.prisma",
     "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",

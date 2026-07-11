@@ -1,4 +1,7 @@
 import 'dotenv/config';
+// Fail-fast env contract — must evaluate before any module opens a DB or
+// Redis handle (ESM side-effect imports run in declaration order).
+import './services/env.js';
 import http from 'node:http';
 import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
