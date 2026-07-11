@@ -9,6 +9,7 @@ import cors from 'cors';
 import express from 'express';
 import { SPARK_NAME_RE } from '@shared/appearance';
 import { authRateOk, initOps } from './services/ops.js';
+import { redis, redisHealthy } from './services/redis.js';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
 import { prisma } from './services/db.js';
@@ -38,6 +39,45 @@ app.use('/auth', (req, res, next) => {
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, city: 'AMPERIA' });
+});
+
+/**
+ * Deploy healthcheck (D3) — Railway polls this path. 200 only when the
+ * process can actually serve players: DB answering, and Redis answering if
+ * one is configured (REDIS_URL unset ⇒ reported "off", still healthy).
+ */
+const VERSION = process.env.npm_package_version ?? '0.0.0';
+const COMMIT =
+  process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT ?? 'unknown';
+const within = <T>(ms: number, p: Promise<T>): Promise<T> =>
+  Promise.race([
+    p,
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms).unref()),
+  ]);
+
+app.get('/healthz', (_req, res) => {
+  void (async () => {
+    const db = await within(2500, prisma.$queryRaw`SELECT 1`).then(
+      () => 'ok' as const,
+      () => 'fail' as const,
+    );
+    const redisState =
+      redis === null
+        ? ('off' as const)
+        : await within(2500, redisHealthy()).then(
+            (up) => (up ? ('ok' as const) : ('fail' as const)),
+            () => 'fail' as const,
+          );
+    const ok = !shuttingDown && db === 'ok' && redisState !== 'fail';
+    res.status(ok ? 200 : 503).json({
+      ok,
+      version: VERSION,
+      commit: COMMIT,
+      uptime: Math.round(process.uptime()),
+      db,
+      redis: redisState,
+    });
+  })().catch(() => res.status(503).json({ ok: false }));
 });
 
 /**
@@ -164,6 +204,9 @@ post('/auth/link-wallet', async (b) => {
 const httpServer = http.createServer(app);
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
+  // We own the SIGTERM sequence below — Colyseus must not also register
+  // its own signal handlers and race us to process.exit.
+  gracefullyShutdown: false,
 });
 
 gameServer.define('filament', FilamentRoom);
@@ -180,3 +223,35 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 // The nightly economy rollup (E4b): one EconomySummary row per UTC day —
 // the data spine of the future City Ledger.
 scheduleNightlyRollup();
+
+/**
+ * Graceful shutdown (D3). Railway sends SIGTERM on every redeploy; if we
+ * die mid-flight, everything since the last 30s persist tick is lost —
+ * rollback-day item loss. Sequence: stop accepting connections → dispose
+ * rooms (each room's onDispose persists every active Spark) → close DB and
+ * Redis → exit 0. A hard 20s deadline force-exits if anything wedges.
+ */
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[ops] ${signal} received — graceful shutdown begins`);
+  const deadline = setTimeout(() => {
+    console.error('[ops] shutdown deadline (20s) hit — forcing exit');
+    process.exit(1);
+  }, 20_000);
+  try {
+    httpServer.close(); // refuse new HTTP + WebSocket upgrades immediately
+    await gameServer.gracefullyShutdown(false); // disconnects clients, awaits onDispose persists
+    await prisma.$disconnect();
+    if (redis !== null) await redis.quit().catch(() => undefined);
+    clearTimeout(deadline);
+    console.log('[ops] shutdown complete — all rooms persisted');
+    process.exit(0);
+  } catch (err) {
+    console.error('[ops] shutdown error', err instanceof Error ? (err.stack ?? err.message) : err);
+    process.exit(1);
+  }
+}
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
