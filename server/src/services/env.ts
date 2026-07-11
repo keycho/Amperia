@@ -32,6 +32,19 @@ if (isProd) {
     problems.push('  JWT_SECRET — set, but is the dev placeholder or under 32 chars; generate a real one');
   }
   must('CORS_ORIGIN', "comma-separated allowed browser origins, e.g. https://amperia.vercel.app");
+  const corsEntries = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o !== '');
+  for (const entry of corsEntries) {
+    if (entry.includes('*')) {
+      problems.push('  CORS_ORIGIN — wildcard origins are not allowed in production');
+    } else if (/localhost|127\.0\.0\.1/.test(entry)) {
+      problems.push('  CORS_ORIGIN — localhost origins are dev-only; list real client origins');
+    } else if (!/^https?:\/\/[^/]+$/.test(entry)) {
+      problems.push(`  CORS_ORIGIN — '${entry}' is not a bare origin (scheme://host[:port], no path)`);
+    }
+  }
 }
 
 // Optional, but if present it must be a URL ioredis can parse.

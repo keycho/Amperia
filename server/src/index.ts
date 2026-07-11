@@ -9,6 +9,7 @@ import cors from 'cors';
 import express from 'express';
 import { SPARK_NAME_RE } from '@shared/appearance';
 import { authRateOk, initOps } from './services/ops.js';
+import { allowedOrigin } from './services/origins.js';
 import { redis, redisHealthy } from './services/redis.js';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
@@ -25,7 +26,18 @@ const PORT = Number(process.env.PORT ?? 2567);
 initOps();
 
 const app = express();
-app.use(cors());
+// D4: one origin policy for everything — CORS headers only for allow-listed
+// origins, and browser requests from anywhere else are rejected outright
+// (not just left without CORS headers). WS upgrades enforce the same
+// predicate below. Origin-less requests (curl, healthchecks) pass.
+app.use(cors({ origin: (origin, cb) => cb(null, allowedOrigin(origin)) }));
+app.use((req, res, next) => {
+  if (!allowedOrigin(req.headers.origin)) {
+    res.status(403).json({ error: 'Origin not allowed.' });
+    return;
+  }
+  next();
+});
 app.use(express.json());
 
 // H4: auth endpoints get a per-IP sliding-window rate limit.
@@ -203,7 +215,12 @@ post('/auth/link-wallet', async (b) => {
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({
-  transport: new WebSocketTransport({ server: httpServer }),
+  transport: new WebSocketTransport({
+    server: httpServer,
+    // D4: same origin policy as HTTP, enforced at the upgrade — a browser
+    // from an unlisted origin never reaches the Colyseus handshake.
+    verifyClient: (info, done) => done(allowedOrigin(info.origin || undefined), 403),
+  }),
   // We own the SIGTERM sequence below — Colyseus must not also register
   // its own signal handlers and race us to process.exit.
   gracefullyShutdown: false,
