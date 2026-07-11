@@ -11,10 +11,12 @@ export interface Settings {
   shake: boolean;
   /** Texel grit: '6' (the shipped look) · '8' · 'none'. Applies on reload. */
   grit: '6' | '8' | 'none';
+  /** Corner minimap (U4a), toggled with M. */
+  minimap: boolean;
 }
 
 const KEY = 'amperia.settings';
-const DEFAULTS: Settings = { nameplates: true, shake: true, grit: '6' };
+const DEFAULTS: Settings = { nameplates: true, shake: true, grit: '6', minimap: true };
 
 let cache: Settings | null = null;
 
@@ -26,6 +28,7 @@ export function settings(): Settings {
       nameplates: typeof raw.nameplates === 'boolean' ? raw.nameplates : DEFAULTS.nameplates,
       shake: typeof raw.shake === 'boolean' ? raw.shake : DEFAULTS.shake,
       grit: raw.grit === '8' || raw.grit === 'none' ? raw.grit : DEFAULTS.grit,
+      minimap: typeof raw.minimap === 'boolean' ? raw.minimap : DEFAULTS.minimap,
     };
   } catch {
     cache = { ...DEFAULTS };

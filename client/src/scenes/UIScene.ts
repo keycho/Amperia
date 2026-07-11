@@ -22,6 +22,7 @@ import { BankPanel } from '../ui/BankPanel';
 import { GoalPanel } from '../ui/GoalPanel';
 import { HowToPlayPanel } from '../ui/HowToPlayPanel';
 import { WorldMapPanel } from '../ui/WorldMapPanel';
+import { Minimap } from '../ui/Minimap';
 import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
@@ -56,6 +57,7 @@ export class UIScene extends Phaser.Scene {
   private bankPanel!: BankPanel;
   private worldMapPanel!: WorldMapPanel;
   private howToPlayPanel!: HowToPlayPanel;
+  private minimap!: Minimap;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
   private chargePanel!: ChargePanel;
@@ -238,6 +240,7 @@ export class UIScene extends Phaser.Scene {
     this.bankPanel = new BankPanel(this);
     this.worldMapPanel = new WorldMapPanel(this);
     this.howToPlayPanel = new HowToPlayPanel(this);
+    this.minimap = new Minimap(this);
     // H1: brand-new Sparks get the intro right after the creator (once).
     session.events.on(SessionEvents.howToPlay, () => this.howToPlayPanel.maybeShowFirstTime());
     // U3d: the death recap — what happened, what dropped, when you're back.
@@ -552,7 +555,7 @@ export class UIScene extends Phaser.Scene {
         'click · walk / work / talk',
         '1-6 · tool belt',
         'I pack · K skills · G goals',
-        'M Manifest · TAB map',
+        'J Manifest · M minimap · TAB map',
         'H rivet a Heatlamp',
         'Enter · chat   ? · the intro',
         '/help · everything else',
@@ -630,7 +633,13 @@ export class UIScene extends Phaser.Scene {
       this.skillsPanel.setVisible(false);
       this.inventoryPanel.setVisible(!this.inventoryPanel.visible);
     });
+    // U4a: M = the corner minimap; the Manifest moved to J.
     kb.on('keydown-M', () => {
+      if (typing()) return;
+      sound.uiClick();
+      this.minimap.toggle();
+    });
+    kb.on('keydown-J', () => {
       this.manifestPanel.toggle();
     });
     // TAB = the world map (D4a). Captured so the browser keeps focus.
