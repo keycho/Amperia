@@ -893,7 +893,8 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(MSG.chatMsg, (m: ChatBroadcast) => {
       session.events.emit(SessionEvents.chat, m);
-      this.sparks.get(m.sessionId)?.showChatBubble(m.text);
+      // U4c: whispers stay in the log — no public bubble over anyone.
+      if (m.whisperTo === undefined) this.sparks.get(m.sessionId)?.showChatBubble(m.text);
     });
     room.onMessage(MSG.emote, (e: EmoteBroadcast) => {
       this.sparks.get(e.sessionId)?.playEmote(e.emote);

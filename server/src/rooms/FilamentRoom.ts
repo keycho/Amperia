@@ -1276,6 +1276,42 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.notice, {
         text: near.length > 0 ? `Nearby Sparks: ${near.join(', ')}` : 'No Sparks nearby.',
       });
+    } else if (cmd === '/w' || cmd === '/whisper') {
+      // U4c: a quiet line to one Spark in this district. Delivered to the
+      // two parties only; mutes still silence it; softFilter still applies.
+      const rest = text.slice(cmd.length).trim();
+      const gap = rest.indexOf(' ');
+      const name = (gap > 0 ? rest.slice(0, gap) : rest).toLowerCase();
+      const body = gap > 0 ? rest.slice(gap + 1).trim() : '';
+      if (name === '' || body === '') {
+        client.send(MSG.notice, { text: 'Usage: /w <Spark name> <message>' });
+        return;
+      }
+      let targetSid: string | null = null;
+      for (const [sid, other] of this.runtimes) {
+        if (sid !== client.sessionId && other.sparkName.toLowerCase() === name) {
+          targetSid = sid;
+          break;
+        }
+      }
+      const targetRt = targetSid !== null ? this.runtimes.get(targetSid) : undefined;
+      if (targetSid === null || targetRt === undefined) {
+        client.send(MSG.notice, { text: `No Spark called '${name}' in this district.` });
+        return;
+      }
+      const out: ChatBroadcast = {
+        from: rt.sparkName,
+        sessionId: client.sessionId,
+        text: softFilter(body),
+        ts: Date.now(),
+        whisperTo: targetRt.sparkName,
+      };
+      // The echo always lands; the delivery skips a target who muted the
+      // sender — silently, so mutes stay invisible.
+      client.send(MSG.chatMsg, out);
+      if (!targetRt.mutes.has(rt.accountId)) {
+        this.clients.find((c) => c.sessionId === targetSid)?.send(MSG.chatMsg, out);
+      }
     } else if (cmd === '/wave' || cmd === '/sit' || cmd === '/cheer' || cmd === '/point') {
       // U4b: the social flourishes — broadcast-only, no gameplay effect.
       this.broadcast(MSG.emote, {
@@ -1442,7 +1478,7 @@ export class FilamentRoom extends Room<FilamentState> {
           'The city in four breaths — 1) Click to walk; click a glowing node to work it; watch for the glint. ' +
           '2) Right tool in hand (1–6); Mastery levels as you work; the Tinkerbench crafts and mends. ' +
           '3) Goals G · Manifest M · skills K · map TAB · bank at the Ledgerhouse · the Coil spins free daily. ' +
-          `4) The Tangle bites — bank first, travel light. Commands: /near /wave /sit /cheer /point /trade <name> /charge /pod /haul <berth> /mute <name> /unmute <name> /report <name> <reason> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
+          `4) The Tangle bites — bank first, travel light. Commands: /near /w <name> <msg> /wave /sit /cheer /point /trade <name> /charge /pod /haul <berth> /mute <name> /unmute <name> /report <name> <reason> /help. H rivets a Heatlamp (${CONFIG.combat.heatlamp.costSalvage} Salvage). The [?] button replays the full intro.`,
       });
     } else {
       client.send(MSG.notice, { text: `The city doesn't know ${cmd ?? 'that'} yet.` });

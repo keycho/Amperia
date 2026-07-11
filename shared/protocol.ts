@@ -418,6 +418,9 @@ export interface ChatBroadcast {
   sessionId: string;
   text: string;
   ts: number;
+  /** U4c: set on whispers — the target's Spark name. Delivered only to the
+   *  two parties; never renders a public bubble. */
+  whisperTo?: string;
 }
 
 export interface AttackIntent {

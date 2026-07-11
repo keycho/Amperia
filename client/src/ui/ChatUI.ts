@@ -17,6 +17,10 @@ export class ChatUI {
   private readonly hint: Phaser.GameObjects.Text;
   private readonly bg: Phaser.GameObjects.Graphics;
   private readonly log: ChatBroadcast[] = [];
+  /** What each visible line currently shows (click-to-whisper, U4c). */
+  private recent: (ChatBroadcast | undefined)[] = [];
+  /** Whispers that landed while the input was closed. */
+  private unread = 0;
   private input: HTMLInputElement | null = null;
 
   constructor(scene: Phaser.Scene) {
@@ -32,6 +36,15 @@ export class ChatUI {
         strokeThickness: 3,
       });
       t.setDepth(891);
+      // U4c: click a name to whisper back — prefills /w <name>.
+      const idx = i;
+      t.setInteractive({ useHandCursor: true });
+      t.on('pointerdown', () => {
+        const m = this.recent[idx];
+        if (m === undefined || m.sessionId === '' || m.sessionId === session.room?.sessionId)
+          return;
+        this.openInput(`/w ${m.from} `);
+      });
       this.lines.push(t);
     }
     this.hint = scene.add.text(0, 0, '[Enter] to chat', {
@@ -78,19 +91,54 @@ export class ChatUI {
   private push(m: ChatBroadcast): void {
     this.log.push(m);
     if (this.log.length > 50) this.log.shift();
-    const recent = this.log.slice(-MAX_LINES);
+    if (
+      m.whisperTo !== undefined &&
+      m.sessionId !== session.room?.sessionId &&
+      this.input === null
+    ) {
+      this.unread += 1;
+      this.refreshHint();
+    }
+    this.recent = this.log.slice(-MAX_LINES);
     for (let i = 0; i < MAX_LINES; i++) {
       const line = this.lines[i];
-      const msg = recent[i];
+      const msg = this.recent[i];
       if (line === undefined) continue;
-      line.setText(msg === undefined ? '' : `${msg.from}: ${msg.text}`);
+      if (msg === undefined) {
+        line.setText('');
+        continue;
+      }
+      if (msg.whisperTo !== undefined) {
+        const own = msg.sessionId === session.room?.sessionId;
+        line.setText(own ? `to ${msg.whisperTo} ✉ ${msg.text}` : `${msg.from} ✉ ${msg.text}`);
+        line.setColor(PALETTE.violetNeon);
+      } else {
+        line.setText(`${msg.from}: ${msg.text}`);
+        line.setColor(UI_TEXT_WARM);
+      }
     }
     this.redrawBg();
   }
 
-  /** Open the DOM input (called on Enter). */
-  openInput(): void {
+  /** U4c: the hint doubles as the unread-whisper indicator. */
+  private refreshHint(): void {
+    if (this.unread > 0) {
+      this.hint.setText(`[Enter] to chat · ✉ ${this.unread}`);
+      this.hint.setColor(PALETTE.violetNeon);
+      this.hint.setAlpha(1);
+    } else {
+      this.hint.setText('[Enter] to chat');
+      this.hint.setColor(PALETTE.warmGlow);
+      this.hint.setAlpha(0.65);
+    }
+  }
+
+  /** Open the DOM input (called on Enter; prefill = click-to-whisper). */
+  openInput(prefill?: string): void {
+    this.unread = 0;
+    this.refreshHint();
     if (this.input !== null) {
+      if (prefill !== undefined) this.input.value = prefill;
       this.input.focus();
       return;
     }
@@ -129,6 +177,7 @@ export class ChatUI {
         this.closeInput();
       }
     };
+    if (prefill !== undefined) el.value = prefill;
     document.body.append(el);
     el.focus();
     this.input = el;
