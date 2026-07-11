@@ -1,5 +1,62 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-11 U3–U4 (professional frame + QoL)
+
+U3 — the professional frame, all five pieces verified live:
+
+- **U3a title screen** — the launch poster drifts (Ken Burns) behind a
+  glowing AMPERIA wordmark; "Enter the City" reveals the email-first
+  form (guest always open); version tag + volume gear. Returning Sparks
+  with a stored token skip straight in (reasonable choice: don't make
+  regulars watch the door).
+- **U3b settings** — gear panel: master volume, nameplates, screen
+  shake, texel grit (6px/8px/smooth — applies on reload), keybind
+  reference. Persisted in localStorage.
+- **U3c tooltips** — one DOM card with baked-texture thumbs for item
+  slots (name · kind · durability x/y · rarity · flavor), nodes, mobs,
+  and fixtures. A stale guard hides the card when the world scrolls out
+  from under a motionless pointer.
+- **U3d death recap** — THE TANGLE GOT YOU, the Scrapcache summary, and
+  a 3-2-1 countdown. Reasonable choice: the countdown is presentation
+  only — the server still respawns instantly; the pause is the breath
+  the moment deserves, not a gameplay wait.
+- **U3e connection UX** — "the city flickered — re-lighting…" banner,
+  five reconnect attempts with backoff, then a clean full-screen "Knock
+  again" state. Verified by killing the server under a live client. No
+  silent freezes, no raw errors anywhere.
+- **Fixed a real click-through**: Phaser also listens for mouse events
+  at the window level, so DOM-overlay clicks (creator confirm, login,
+  chat input) replayed into the world underneath — the creator's
+  confirm button was opening the tram stop board. All DOM overlays now
+  swallow pointer events at their root (`ui/domGuard.ts`).
+
+U4 — quality of life, each verified live:
+
+- **U4a minimap** — bottom-right corner widget: the district's real
+  walkable silhouette, canals, landings, the tramgate stop diamond, and
+  live blips (other Sparks warm, mobs ember, you rose, 4Hz). M toggles
+  (persisted); **the Manifest moved to J**.
+- **U4b emotes** — /wave /sit /cheer /point + a hold-E radial wheel
+  (Kenney pixel emote glyphs, CC0). Server-routed through the chat
+  command path (min-interval throttled). Sit persists until the next
+  step; an untouched koi shadow or AFK sit never generates anything.
+- **U4c whispers** — /w <name> in-district, violet 'NAME ✉ …' lines,
+  click a name in the log to prefill /w, unread ✉ badge on the [Enter]
+  hint. Mutes silence whispers without telling the muted. No public
+  bubbles. Reasonable choice: whispers are district-scoped (the room is
+  the delivery boundary) — cross-district mail is a later system.
+- **U4d gather auto-repeat** — clicking a node arms a run: when a cycle
+  completes, the client re-sends a full gather intent for the nearest
+  live node of the SAME kind within 6 tiles of where the run started
+  (the same cluster — never a cross-map walk). Stops on: player move,
+  full pack (simulated add of one unit), cluster worked out, death, or
+  a 15s watchdog if the server quietly refuses a cycle. Every cycle is
+  server-validated end to end; minigame cues (glints, forks, strikes,
+  casts) still need live hands, so the active layer stays active.
+  Reasonable choice: most nodes deplete per harvest, so "same node"
+  became "same cluster" — verified live: one click, three harvests,
+  including the respawned first heap.
+
 ## Status after the 2026-07-10 U0 DOORS-OPEN HARDENING (H1–H5)
 
 The gate before deploy — onboarding, moderation, load, ops, and the

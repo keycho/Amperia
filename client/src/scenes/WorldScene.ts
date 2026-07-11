@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { CONFIG } from '@shared/config';
-import { ITEMS } from '@shared/items';
+import { CONFIG, type NodeKind } from '@shared/config';
+import { ITEMS, type ItemId } from '@shared/items';
+import { addItem } from '@shared/inventory';
 import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type WorldMap } from '@shared/map';
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
@@ -50,6 +51,7 @@ import type {
   TravelGo,
   DeliverySync,
   TendStateEvent,
+  MoveIntent,
 } from '@shared/protocol';
 import { makeRng, type Rng } from '@shared/rng';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
@@ -213,6 +215,7 @@ export class WorldScene extends Phaser.Scene {
     this.bloomViews = new Map();
     this.tendingBed = null;
     this.expectLeave = false;
+    this.cancelAutoGather();
     this.puddleCount = 0;
   }
 
@@ -698,7 +701,7 @@ export class WorldScene extends Phaser.Scene {
             sound.swingWhiff();
           } else {
             const step = this.nearestAdjacentWalkable(t, me.settledTile);
-            if (step !== null) send.move(this.room, step);
+            if (step !== null) this.sendMove(step);
           }
         },
       );
@@ -874,6 +877,9 @@ export class WorldScene extends Phaser.Scene {
         floatText(this, nx, ny - 20, `+1 ${ITEMS[e.rare].name} ✦`, PALETTE.neonAmber);
         sound.rareChime();
       }
+      // U4d: a landed cycle queues the next; a zero take = full pack, stop.
+      if (e.qty > 0 || e.rare !== null) this.autoGatherNext(e.nodeId);
+      else if (this.autoGather?.nodeId === e.nodeId) this.cancelAutoGather();
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
@@ -965,7 +971,7 @@ export class WorldScene extends Phaser.Scene {
         );
         if (d > 2) {
           const step = this.nearestAdjacentWalkable({ x: c.tileX, y: c.tileY }, me.settledTile);
-          if (step !== null) send.move(this.room, step);
+          if (step !== null) this.sendMove(step);
           return;
         }
         send.reclaim(this.room, { cacheId: id });
@@ -1094,6 +1100,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (e.type === 'youDown') {
+      this.cancelAutoGather();
       session.events.emit(SessionEvents.deathRecap, e);
       return;
     }
@@ -1135,7 +1142,7 @@ export class WorldScene extends Phaser.Scene {
       const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const t = worldToTileFloor(world.x, world.y);
       if (this.map.walkable[t.ty]?.[t.tx] === true) {
-        send.move(this.room, { x: t.tx, y: t.ty });
+        this.sendMove({ x: t.tx, y: t.ty });
         this.gatherView.stop();
         this.pulseTile(t.tx, t.ty);
       }
@@ -1225,6 +1232,8 @@ export class WorldScene extends Phaser.Scene {
             return;
           }
           send.gather(this.room, { nodeId: view.id });
+          // U4d: clicking a node arms auto-repeat on its cluster.
+          this.autoGather = { kind: n.kind, anchor: { x: n.x, y: n.y }, nodeId: n.id, cycles: 0 };
         }),
       );
       this.nodes.set(n.id, view);
@@ -1233,6 +1242,87 @@ export class WorldScene extends Phaser.Scene {
 
   /** Node id of the session this client is currently working (UI routing). */
   private activeSessionNode: number | null = null;
+
+  // ── U4d: gather auto-repeat ──────────────────────────────────────────
+  /** Resource a node kind pays out (mirrors the server's grantLoot). */
+  private static readonly NODE_YIELD: Record<NodeKind, ItemId> = {
+    junkHeap: 'salvage',
+    brassSeam: 'brass',
+    amperite: 'amperite',
+    glowkoi: 'glowkoi',
+    antenna: 'signal',
+  };
+
+  /** The working run: node kind + the cluster anchor + the node in hand.
+   *  Every cycle is a fresh gather intent — the server validates each one. */
+  private autoGather: {
+    kind: NodeKind;
+    anchor: { x: number; y: number };
+    nodeId: number;
+    /** Koi only: the player actually cast this cycle (AFK never re-queues). */
+    engaged?: boolean;
+    /** Completed-cycle counter — the watchdog uses it to spot a dead run. */
+    cycles: number;
+  } | null = null;
+
+  private autoGatherTimer: Phaser.Time.TimerEvent | null = null;
+
+  /** Any player-directed move ends the run ('stop on move'). */
+  private sendMove(msg: MoveIntent): void {
+    this.cancelAutoGather();
+    if (this.room !== null) send.move(this.room, msg);
+  }
+
+  private cancelAutoGather(): void {
+    this.autoGather = null;
+    this.autoGatherTimer?.remove();
+    this.autoGatherTimer = null;
+  }
+
+  /** A cycle ended on the worked node — queue the next one in the cluster. */
+  private autoGatherNext(nodeId: number): void {
+    const run = this.autoGather;
+    if (run === null || run.nodeId !== nodeId || this.room === null) return;
+    run.cycles += 1;
+    this.autoGatherTimer?.remove();
+    this.autoGatherTimer = this.time.delayedCall(600, () => {
+      this.autoGatherTimer = null;
+      const room = this.room;
+      if (this.autoGather !== run || room === null) return;
+      // Stop on full pack: simulate one unit landing (the inventory sync
+      // arrives with the loot, so the mirror is current by now).
+      const yieldId = WorldScene.NODE_YIELD[run.kind];
+      if (addItem(gameState.inventory, yieldId, 1, CONFIG.inventory.stackMax).added === 0) {
+        this.cancelAutoGather();
+        return; // the loot toast already said the pack is full
+      }
+      // Nearest live node of the same kind, within the cluster it started in.
+      const me = this.sparks.get(room.sessionId);
+      const from = me?.settledTile ?? run.anchor;
+      let best: { id: number; d: number } | null = null;
+      for (const n of this.map.nodes) {
+        if (n.kind !== run.kind) continue;
+        if (Math.max(Math.abs(n.x - run.anchor.x), Math.abs(n.y - run.anchor.y)) > 6) continue;
+        const st = room.state.nodes.get(String(n.id)) as NodeStateShape | undefined;
+        if (st === undefined || st.depleted) continue;
+        const d = Math.max(Math.abs(n.x - from.x), Math.abs(n.y - from.y));
+        if (best === null || d < best.d) best = { id: n.id, d };
+      }
+      if (best === null) {
+        this.cancelAutoGather(); // the cluster is worked out — quiet stop
+        return;
+      }
+      run.nodeId = best.id;
+      run.engaged = false;
+      send.gather(room, { nodeId: best.id });
+      // Watchdog: a cycle the server quietly refused (raced a deplete,
+      // no path) never completes — end the run instead of wedging it.
+      const sentCycles = run.cycles;
+      this.time.delayedCall(15000, () => {
+        if (this.autoGather === run && run.cycles === sentCycles) this.cancelAutoGather();
+      });
+    });
+  }
 
   /** Open the creator ('first' = name + look; 'wardrobe' = look only). */
   private openCreator(mode: 'first' | 'wardrobe'): void {
@@ -1278,6 +1368,8 @@ export class WorldScene extends Phaser.Scene {
         if (!e.completed && e.total > 0) {
           floatText(this, view.image.x, view.image.y - 80, 'the vein goes cold', PALETTE.neonRose);
         }
+        // U4d: an empty-handed end sends no loot event — queue from here.
+        if (e.total === 0) this.autoGatherNext(e.nodeId);
         break;
       }
       case 'amperiteStart': {
@@ -1309,6 +1401,7 @@ export class WorldScene extends Phaser.Scene {
         if (view instanceof KoiSpotNode) {
           view.startTension(e.periodSeconds, e.sweetStart, e.sweetLen);
         }
+        if (this.autoGather?.nodeId === e.nodeId) this.autoGather.engaged = true;
         break;
       }
       case 'koiResult': {
@@ -1321,6 +1414,9 @@ export class WorldScene extends Phaser.Scene {
             floatText(this, view.image.x, view.image.y - 48, 'it slips away…', PALETTE.neonRose);
           }
         }
+        // U4d: a miss leaves the spot alive — recast, but only if the player
+        // actually cast this cycle (an untouched shadow means they're away).
+        if (!e.caught && this.autoGather?.engaged === true) this.autoGatherNext(e.nodeId);
         break;
       }
       case 'tuneStart': {
@@ -2045,7 +2141,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > CONFIG.economy.shops.reachTiles) {
                 floatText(this, img.x, img.y - 70, 'step up to the stall', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               send.shop(this.room, { action: 'browse', stallId });
@@ -2570,7 +2666,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > 4) {
                 floatText(this, img.x, img.y - 70, 'the tram leaves from the gate', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y + 2 }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               this.toggleTramBoard(img.x, img.y - 60);
@@ -2620,7 +2716,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > CONFIG.economy.merchant.tradeRadiusTiles) {
                 floatText(this, img.x, img.y - 60, 'step closer to trade', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               session.events.emit(SessionEvents.openMerchant);
@@ -2664,7 +2760,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > CONFIG.gear.benchRadiusTiles) {
                 floatText(this, img.x, img.y - 50, 'step up to the bench', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               session.events.emit(SessionEvents.openBench);
@@ -2704,7 +2800,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > CONFIG.quests.npcRadiusTiles) {
                 floatText(this, img.x, img.y - 50, 'step up to the board', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               session.events.emit(SessionEvents.openQuests);
@@ -2742,7 +2838,7 @@ export class WorldScene extends Phaser.Scene {
               if (d > CONFIG.quests.npcRadiusTiles) {
                 floatText(this, img.x, img.y - 50, 'the Warden is by the Dynamo', PALETTE.warmGlow);
                 const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) send.move(this.room, step);
+                if (step !== null) this.sendMove(step);
                 return;
               }
               // The Warden's ledger: meter + leaderboard + donate buttons.
