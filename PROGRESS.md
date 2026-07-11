@@ -1,5 +1,45 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-11 CLARITY PASS (post-U7)
+
+The diagnosis changed: texels were crisp but (a) objects lacked full
+contours and (b) the atmosphere layer re-softened the frame. Both
+fixed, everything A/B'd on the same Nightstalls + Stacks angles
+(`clarity-{before,mid,after}-*.png`, scratch). Acceptance met: on the
+crowded market lane every object reads as a discrete, countable thing
+— night mood and glowing lights intact.
+
+1. **Ink contours (§12A.3 optional → MANDATORY, binding)** — the baked
+   silhouette outline grew from 4 cardinal passes to a full
+   8-direction ring (diagonal edges had pinholes). All 80+ world bakes,
+   characters included, carry it; exemptions written into the spec:
+   pure-light forms (Sparkwisps) and floor-plane trim (ground tiles,
+   deck rims).
+2. **Bloom discipline** — the two region-sized ambient hazes (Dynamo +
+   stall row) are GONE; non-emissive surfaces render pure nearest
+   texels; glow halos halved (outer 2.4→1.2, mid →0.7 of scale) with
+   the skirt alpha dropped so stacking sources can't wash a region;
+   ground pools swap the soft 512px gaussian for a steep-falloff
+   fx-pool at ~70% footprint — pools stay, their edges read. Hot
+   emissive cores and film grain untouched.
+3. **Value floor (audited — zero fixes needed)** — 30 props per
+   district sampled from live textures: lit-face mean luma vs baked
+   floor mean (84). The city's smallest gap is the stovepipe at +29
+   against an +18 threshold. No material sits below the floor; the
+   audit script stays in scratch (value-audit.mjs) for reruns.
+4. **Integer scaling everywhere** — item thumbs bake at 44px and every
+   main consumer (slots, drag ghost, Manifest cells, tooltip) draws
+   1:1 or an exact 1/k; photo-mode zoom snaps to integers; the poster
+   compositor (the suspected smear source — confirmed: 1.15 capture
+   zoom × 0.72/0.55 bilinear composite) now captures at ZOOM 1 and
+   composites the Filament 1:1 with side islands an exact 1:2 nearest
+   decimation; banner/square derive by exact 2:1 halving + 1:1 crops;
+   the title-screen bg re-bakes the same way. Note: the integer
+   constraint makes the Filament read 2× the side islands (was
+   ~1.3×) — stronger hierarchy, judged worth the crispness.
+5. **Re-rendered set** — world-poster/banner/square, title-bg.jpg, and
+   the four marketing shots all re-shot through the new pipeline.
+
 ## Status after the 2026-07-11 U7 FINAL QA + WRAP — the U-block is done
 
 **Full playthrough probe (fresh account, real client, zero shortcuts):**
