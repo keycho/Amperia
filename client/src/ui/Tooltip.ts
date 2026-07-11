@@ -61,8 +61,8 @@ function ensure(): void {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:9px;align-items:flex-start;';
   thumbCanvas = document.createElement('canvas');
-  thumbCanvas.width = 40;
-  thumbCanvas.height = 40;
+  thumbCanvas.width = 44;
+  thumbCanvas.height = 44;
   thumbCanvas.style.cssText = `image-rendering:pixelated;border-radius:6px;background:${PALETTE.duskSky};display:none;flex:none;`;
   const col = document.createElement('div');
   titleEl = document.createElement('div');
@@ -106,11 +106,14 @@ export const tooltip = {
         const src = c.thumb.scene.textures.get(c.thumb.key).getSourceImage() as HTMLCanvasElement;
         const ctx = thumbCanvas.getContext('2d') as CanvasRenderingContext2D;
         ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, 40, 40);
-        const sc = Math.min(40 / src.width, 40 / src.height);
-        const dw = src.width * sc;
-        const dh = src.height * sc;
-        ctx.drawImage(src, (40 - dw) / 2, (40 - dh) / 2, dw, dh);
+        ctx.clearRect(0, 0, 44, 44);
+        // CLARITY: integer steps only — 1:1 when it fits, exact 1/k when
+        // it doesn't. Fractional resizes wobble pixel edges.
+        const big = Math.max(src.width, src.height);
+        const sc = big <= 44 ? 1 : 1 / Math.ceil(big / 44);
+        const dw = Math.round(src.width * sc);
+        const dh = Math.round(src.height * sc);
+        ctx.drawImage(src, Math.floor((44 - dw) / 2), Math.floor((44 - dh) / 2), dw, dh);
         thumbCanvas.style.display = 'block';
       } else {
         thumbCanvas.style.display = 'none';

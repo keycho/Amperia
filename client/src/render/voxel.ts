@@ -603,12 +603,19 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
 
   // Silhouette passes: ink outline all around, then a warm rim top-left.
   // Offsets scale with the grit texel so the outline stays ~1 texel wide.
+  // CLARITY (§12A.3 now mandatory): a full 8-direction ring — the four
+  // cardinals alone left pinholes on diagonal silhouette edges.
   if (model.outline !== false) {
+    const D = OUTLINE_OFF;
     for (const [dx, dy] of [
-      [-OUTLINE_OFF, 0],
-      [OUTLINE_OFF, 0],
-      [0, -OUTLINE_OFF],
-      [0, OUTLINE_OFF],
+      [-D, 0],
+      [D, 0],
+      [0, -D],
+      [0, D],
+      [-D, -D],
+      [D, -D],
+      [-D, D],
+      [D, D],
     ] as const) {
       for (const p of proj.points) {
         drawCube(g, p.px + ox + dx, p.py + oy + dy, null);

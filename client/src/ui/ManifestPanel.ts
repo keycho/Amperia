@@ -199,7 +199,7 @@ export class ManifestPanel {
         ? itemThumbKey(ITEMS[e.refId as ItemId])
         : cosmeticThumbKey(e.refId);
     const img = this.scene.add.image(x + CELL / 2, y + CELL / 2, key);
-    img.setDisplaySize(CELL - 10, CELL - 10);
+    img.setDisplaySize(44, 44); // 1:1 with the thumb bake (CLARITY)
     if (state === undefined) {
       // Undiscovered: a silhouette of the thing, not the thing.
       img.setTintFill(PALETTE_INT.ink);

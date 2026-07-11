@@ -3877,7 +3877,9 @@ export class WorldScene extends Phaser.Scene {
     this.cameraCtl.setLocked(true);
     const cam = this.cameras.main;
     cam.removeBounds();
-    if (opts.zoom !== undefined) cam.setZoom(opts.zoom);
+    // CLARITY: photo zoom snaps to integers — a fractional camera zoom
+    // resamples every texel unevenly and the captures read as mush.
+    if (opts.zoom !== undefined) cam.setZoom(Math.max(1, Math.round(opts.zoom)));
     const c = tileToWorld(opts.tile.x, opts.tile.y);
     cam.centerOn(c.x, c.y);
     this.hoverMarker?.setVisible(false);

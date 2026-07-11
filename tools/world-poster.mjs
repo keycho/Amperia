@@ -39,7 +39,9 @@ const r = await fetch(`${HTTP}/auth/guest`, { method: 'POST', headers: { 'conten
 const a = await r.json();
 
 // ── 1. Captures: pure-black void, nothing screen-fixed, no own Spark ────
-const CAP_W = 3200, CAP_H = 2100, ZOOM = 1.15;
+// CLARITY: ZOOM must be an INTEGER — fractional camera zoom resamples
+// every texel unevenly, and the poster reads as mush at 100%.
+const CAP_W = 3200, CAP_H = 2100, ZOOM = 1;
 const DISTRICTS = ['filament', 'stacks', 'terrarium', 'tangle'];
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 const page = await browser.newPage({ viewport: { width: CAP_W, height: CAP_H } });
@@ -98,11 +100,14 @@ const M_W = 4096, M_H = 2304;
 // The heart in the CENTER and largest; Stacks upper-right, Terrarium
 // lower-right, Tangle lower-left — a rough diamond. Draw order = depth
 // (nearer islands paint in front).
+// CLARITY: composite scales are integer RATIOS only — the Filament 1:1,
+// the side islands an exact 1:2 decimation (imageSmoothing off). Any
+// fractional resize (the old 0.72/0.55) smeared the texels back to mush.
 const ISLANDS = [
-  { d: 'stacks', cx: 2950, cy: 640, s: 0.55, gate: GATE_NW, hue: '#B266FF', label: 'THE STACKS', lx: 3520, ly: 260 },
-  { d: 'filament', cx: 2048, cy: 1150, s: 0.72, gate: GATE_SE, hue: '#FFB266', label: 'THE FILAMENT', lx: 1330, ly: 690 },
-  { d: 'tangle', cx: 1050, cy: 1700, s: 0.55, gate: GATE_NW, hue: '#C97C52', label: 'THE TANGLE', lx: 760, ly: 2225 },
-  { d: 'terrarium', cx: 3050, cy: 1720, s: 0.55, gate: GATE_NW, hue: '#7BC59A', label: 'THE TERRARIUM', lx: 3280, ly: 2225 },
+  { d: 'stacks', cx: 3080, cy: 560, s: 0.5, gate: GATE_NW, hue: '#B266FF', label: 'THE STACKS', lx: 3520, ly: 240 },
+  { d: 'filament', cx: 2048, cy: 1150, s: 1, gate: GATE_SE, hue: '#FFB266', label: 'THE FILAMENT', lx: 1210, ly: 620 },
+  { d: 'tangle', cx: 940, cy: 1760, s: 0.5, gate: GATE_NW, hue: '#C97C52', label: 'THE TANGLE', lx: 680, ly: 2225 },
+  { d: 'terrarium', cx: 3160, cy: 1780, s: 0.5, gate: GATE_NW, hue: '#7BC59A', label: 'THE TERRARIUM', lx: 3380, ly: 2225 },
 ];
 const isl = (name) => ISLANDS.find((i) => i.d === name);
 const gatePos = (i) => [
@@ -179,6 +184,8 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
 
   async function build() {
     const ctx = document.getElementById('c').getContext('2d');
+    // CLARITY: nearest-neighbor only — island scales are 1:1 or exact 1:2.
+    ctx.imageSmoothingEnabled = false;
     // Under-glows: each island floats on the black in its district hue.
     for (const i of ISLANDS) {
       const g = ctx.createRadialGradient(i.cx, i.cy + 60, 0, i.cx, i.cy + 60, 1050 * i.s);
@@ -252,12 +259,16 @@ await pp.screenshot({ path: `${OUT}/world-poster.png` });
 console.log('world-poster.png (4096×2304) ✓');
 
 // ── 3. Crops: X banner 1500×500 + square 1:1 ────────────────────────────
+// CLARITY: every scale step integer — the poster halves EXACTLY (2:1,
+// pixelated) and the banner is a 1:1 crop out of that half-size image.
 const master = b64(`${OUT}/world-poster.png`);
-const bannerScale = 1500 / M_W;
-const bandTop = Math.max(0, Math.min(M_H * bannerScale - 500, dyn[1] * bannerScale - 250));
+const HALF_W = M_W / 2; // 2048
+const HALF_H = M_H / 2; // 1152
+const bandTop = Math.max(0, Math.min(HALF_H - 500, Math.round(dyn[1] / 2) - 250));
+const bandLeft = Math.max(0, Math.min(HALF_W - 1500, Math.round(dyn[0] / 2) - 750));
 writeFileSync(`${SCRATCH}/banner.html`, `<!doctype html><html><head><meta charset="utf-8"><style>
   * { margin:0; padding:0; } body { width:1500px; height:500px; overflow:hidden; background:#000; position:relative; }
-  img { position:absolute; left:0; top:${-bandTop}px; width:1500px; }
+  img { position:absolute; left:${-bandLeft}px; top:${-bandTop}px; width:${HALF_W}px; image-rendering:pixelated; }
 </style></head><body><img src="data:image/png;base64,${master}"></body></html>`);
 const bp = await browser.newPage({ viewport: { width: 1500, height: 500 } });
 await bp.goto(`file://${SCRATCH}/banner.html`);
@@ -265,12 +276,11 @@ await sleep(900);
 await bp.screenshot({ path: `${OUT}/world-banner-x.png` });
 console.log('world-banner-x.png (1500×500) ✓');
 
-// Square: the full panorama letterboxed on black — clean for 1:1 posts.
-const sqScale = 2048 / M_W;
-const sqTop = Math.round((2048 - M_H * sqScale) / 2);
+// Square: the full panorama letterboxed on black — an exact 2:1 half.
+const sqTop = Math.round((2048 - HALF_H) / 2);
 writeFileSync(`${SCRATCH}/square.html`, `<!doctype html><html><head><meta charset="utf-8"><style>
   * { margin:0; padding:0; } body { width:2048px; height:2048px; overflow:hidden; background:#000; position:relative; }
-  img { position:absolute; left:0; top:${sqTop}px; width:2048px; }
+  img { position:absolute; left:0; top:${sqTop}px; width:2048px; image-rendering:pixelated; }
 </style></head><body><img src="data:image/png;base64,${master}"></body></html>`);
 const sp = await browser.newPage({ viewport: { width: 2048, height: 2048 } });
 await sp.goto(`file://${SCRATCH}/square.html`);

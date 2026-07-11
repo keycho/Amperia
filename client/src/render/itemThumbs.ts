@@ -13,7 +13,10 @@ import { shade, type Voxel } from './voxel';
  * never a tint wash over the whole sprite.
  */
 
-const CARD = 56;
+// CLARITY: 44 = the exact display size of the hotbar/pack slots and the
+// drag ghost, so thumbs render 1:1 — any non-integer resize wobbles the
+// card border and diamond edges.
+const CARD = 44;
 
 /** Texture key for an item's thumbnail (icon + accent variant). */
 export function itemThumbKey(def: ItemDef): string {
