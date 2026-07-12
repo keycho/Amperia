@@ -63,6 +63,9 @@ export const SessionEvents = {
   tutorial: 'tutorial',
   /** R3: one-line unlock/announce toast during the guided first loop. */
   tutorialToast: 'tutorialToast',
+  /** R6b: a rare CENTER-STAGE banner (level-ups, first Bolts). Payload
+   *  { text, sub? }; the UI rate-limits these to at most one a minute. */
+  banner: 'banner',
   /** U3d: you went down — payload the youDown combat event. */
   deathRecap: 'deathRecap',
 } as const;
