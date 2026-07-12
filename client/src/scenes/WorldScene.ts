@@ -98,7 +98,6 @@ import { floatText } from '../render/effects';
 import { floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
-import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
 import { placeAmbientNpcs } from '../render/ambientNpcs';
@@ -240,7 +239,6 @@ export class WorldScene extends Phaser.Scene {
     // Elevation-aware projection (R4): every tile-derived world position
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
-    makeSkylineTexture(this);
     this.drawFloor();
     this.placeWorldRim();
     this.placeProps();
@@ -268,7 +266,7 @@ export class WorldScene extends Phaser.Scene {
     this.decorateNightstalls();
     this.placeCanalLife();
     this.spawnAmbientBots();
-    addSkyline(this, -70);
+    // R5: no skyline — the void behind the deck edges IS the frame.
     // Catwalk lighting (I5): warm pools at the tram platform + plaza rim —
     // the spots where a Spark's look gets seen. Light only, never gameplay.
     for (const t of this.map.catwalks) {
