@@ -64,7 +64,7 @@ describe('EBT sanity ratio', () => {
 
     // Even with a lucky rare first-find on top, the first 15 minutes stays
     // civilised (well under a day's worth).
-    const withFind = total + OB.manifestFind.byPage.scavving;
+    const withFind = total + (OB.manifestFind.byPage.scavving ?? OB.manifestFind.default);
     expect(withFind).toBeLessThanOrEqual(130);
   });
 

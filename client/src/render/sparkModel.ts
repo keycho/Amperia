@@ -281,17 +281,21 @@ function buildHair(
   const style = HAIR_STYLES[styleIdx]?.id ?? 'mop';
   switch (style) {
     case 'spikes': {
-      hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, false);
-      for (const [sx, sy] of [
-        [0, 0],
-        [3, 1],
-        [5, 3],
-        [1, 3],
-        [4, 0],
-      ] as const) {
-        v.push({ x: -1 + sx + 1, y: lean - 2 + sy + 1, z: z + 1, c: t.hairMain, mat: cloth });
-        v.push({ x: -1 + sx + 1, y: lean - 2 + sy + 1, z: z + 2, c: t.hairLight, mat: cloth });
-      }
+      // EBT5: a low cap that BREAKS into tall spikes with clear gaps — a
+      // serrated crown head-on, unmistakable against the round mop.
+      hairSlab(v, t, -1, lean - 2, z, 8, 5, 1, 1, false);
+      // Tall peaks at alternating columns; the empty columns between them
+      // are the gaps that make the top silhouette jagged.
+      const cols = [0, 2, 4, 6] as const; // gaps at x-columns 1,3,5
+      cols.forEach((cx, i) => {
+        const h = i % 2 === 0 ? 4 : 3;
+        for (let dz = 1; dz <= h; dz++) {
+          const c = dz >= h - 1 ? t.hairLight : t.hairMain;
+          // Two rows deep so each spike has a lit front face, not a sliver.
+          v.push({ x: -1 + cx, y: lean, z: z + dz, c, mat: cloth });
+          v.push({ x: -1 + cx, y: lean + 2, z: z + dz, c, mat: cloth });
+        }
+      });
       break;
     }
     case 'buns': {
@@ -344,14 +348,26 @@ function buildHair(
       break;
     }
     case 'braid': {
-      // Full crown, one long braid falling down the back to the belt.
       hairSlab(v, t, -1, lean - 2, z, 8, 6, 1, 1, true);
-      const braidY = back ? lean + 3 : lean - 2;
-      for (let dz = 0; dz < 9; dz++) {
-        const c = dz % 2 === 0 ? t.hairMain : t.hairDeep;
-        v.push({ x: 2 + (dz % 2), y: braidY, z: 13 + lift - dz, c, mat: cloth });
+      if (back) {
+        // Down the back to the belt.
+        for (let dz = 0; dz < 10; dz++) {
+          const c = dz % 2 === 0 ? t.hairMain : t.hairDeep;
+          v.push({ x: 2 + (dz % 2), y: lean + 3, z: 13 + lift - dz, c, mat: cloth });
+        }
+        v.push({ x: 2, y: lean + 3, z: 3 + lift, c: t.hairLight, mat: cloth });
+      } else {
+        // EBT5: FRONT view — the braid drapes OVER THE SHOULDER toward the
+        // viewer, a clear over-shoulder tail in the silhouette (not a plain
+        // crown like the mop). Falls down the right-front from crown to belt.
+        const by = lean + 3; // lit front face, toward the camera
+        for (let dz = 0; dz < 10; dz++) {
+          const c = dz % 2 === 0 ? t.hairMain : t.hairDeep;
+          const bx = dz < 3 ? 5 : 4; // tucks in a touch below the shoulder
+          v.push({ x: bx, y: by, z: 12 + lift - dz, c, mat: cloth });
+        }
+        v.push({ x: 4, y: by, z: 2 + lift, c: t.hairLight, mat: cloth }); // tie
       }
-      v.push({ x: 2, y: braidY, z: 4 + lift, c: t.hairLight, mat: cloth }); // tie
       break;
     }
     case 'slick': {
