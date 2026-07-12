@@ -1417,11 +1417,23 @@ export class WorldScene extends Phaser.Scene {
    * the interactable props + gather nodes — decoration is never registered,
    * so the presence of a pictogram/label/hover ring always means "real".
    */
+  /** C3: the Nightstalls merchant's name — distinct from the player stalls. */
+  private static readonly MERCHANT_NAME = 'Sable';
+
   private buildInteractionMarkers(): void {
     this.markers = new InteractionMarkers(this);
     for (const p of this.map.props) {
       if (INTERACTABLE_STYLES[p.kind] === undefined) continue;
-      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h });
+      // C3: the merchant is uniquely named so it's not one of nine identical
+      // "Market Stall" tags; player stalls start "Empty Stall" and take their
+      // owner's name when the stall state syncs (renderStallFront).
+      const name =
+        p.kind === 'merchant'
+          ? `Merchant — ${WorldScene.MERCHANT_NAME}`
+          : p.kind === 'stall'
+            ? 'Empty Stall'
+            : undefined;
+      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h }, name);
     }
     for (const n of this.map.nodes) {
       if (INTERACTABLE_STYLES[n.kind] === undefined) continue;
@@ -1560,6 +1572,15 @@ export class WorldScene extends Phaser.Scene {
       active: this.tutorialStep,
     };
     session.events.emit(SessionEvents.tutorial, model);
+    this.updateMerchantHighlight();
+  }
+
+  /** C3: amber-pin the merchant's label while the loop points there (sell/buy). */
+  private updateMerchantHighlight(): void {
+    if (this.markers === undefined) return;
+    const m = this.map.props.find((p) => p.kind === 'merchant');
+    if (m === undefined) return;
+    this.markers.setHighlight(m.x, m.y, this.tutorialStep === 1 || this.tutorialStep === 2);
   }
 
   /** World position the arrow currently points at (heap → merchant). */
@@ -2512,7 +2533,15 @@ export class WorldScene extends Phaser.Scene {
     this.stallFronts.get(stallId)?.destroy();
     this.stallFronts.delete(stallId);
     const spot = this.map.shopStalls.find((sp) => sp.id === stallId);
-    if (spot === undefined || s.ownerName === '') return;
+    if (spot === undefined) return;
+    // C3: the marker label carries the owner (or "Empty Stall"), so the
+    // market row reads as distinct pitches, not nine identical tags.
+    this.markers?.setLabel(
+      spot.x,
+      spot.y,
+      s.ownerName === '' ? 'Empty Stall' : `${s.ownerName}'s Stall`,
+    );
+    if (s.ownerName === '') return;
     const { x, y } = this.propAnchor({ kind: 'stall', ...spot, variant: 0 });
     const parts: Phaser.GameObjects.GameObject[] = [];
     const shingle = this.add.text(x, y - 96, s.ownerName, {
