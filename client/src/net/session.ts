@@ -59,6 +59,10 @@ export const SessionEvents = {
   bank: 'bank',
   /** H1: a brand-new Spark finished the creator — show the intro cards. */
   howToPlay: 'howToPlay',
+  /** R3: First-Bolts checklist model → UIScene. Payload TutorialModel. */
+  tutorial: 'tutorial',
+  /** R3: one-line unlock/announce toast during the guided first loop. */
+  tutorialToast: 'tutorialToast',
   /** U3d: you went down — payload the youDown combat event. */
   deathRecap: 'deathRecap',
 } as const;

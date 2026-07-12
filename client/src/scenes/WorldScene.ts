@@ -68,6 +68,8 @@ import {
   type NodeView,
 } from '../entities/nodes';
 import { Spark } from '../entities/Spark';
+import { InteractionMarkers, INTERACTABLE_STYLES } from '../systems/InteractionMarkers';
+import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
@@ -113,7 +115,7 @@ import {
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { OcclusionFade, type OcclusionTarget } from '../systems/OcclusionFade';
-import { gameState } from '../state/GameState';
+import { gameState, GameEvents } from '../state/GameState';
 
 
 /**
@@ -145,6 +147,8 @@ export class WorldScene extends Phaser.Scene {
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  /** R1: the universal interaction language (pictograms / labels / hover). */
+  private markers!: InteractionMarkers;
   private mobs = new Map<string, Mob>();
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
@@ -162,6 +166,15 @@ export class WorldScene extends Phaser.Scene {
   private berthMarkers: Array<Phaser.GameObjects.Graphics | Phaser.GameObjects.Text> = [];
   /** String-light bulb glows — the Citywide Charge scales their density. */
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
+  /** R2: the "sell here" beacon over the NPC merchant, until first Bolts. */
+  private merchantBeacon: Phaser.GameObjects.GameObject[] = [];
+  /** R3: guided first-loop state (−1 inactive/done, 0 gather, 1 sell, 2 buy). */
+  private tutorialStep = -1;
+  private tutorialArrow?: Phaser.GameObjects.Image;
+  private tutorialHeapId: number | null = null;
+  private tutorialHeapRing?: Phaser.GameObjects.Image;
+  private tutorialStarted = false;
+  private tutorialSellItemsBase = 0;
   /** District structural lights (D3): the Stacks window blaze — the same
    *  Charge meter thins or crowds them (festival = a quarter blazing). */
   private chargeWindowGlows: Phaser.GameObjects.Image[] = [];
@@ -252,6 +265,7 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     this.placeStringLights();
+    this.decorateNightstalls();
     this.placeCanalLife();
     this.spawnAmbientBots();
     addSkyline(this, -70);
@@ -292,6 +306,8 @@ export class WorldScene extends Phaser.Scene {
       if (this.room !== null) send.nodeAction(this.room, { nodeId, action: 'tune', needle });
     };
     this.spawnNodes();
+    this.buildInteractionMarkers();
+    this.setupFirstLoop();
     this.setupInput();
 
     this.connectingText = this.add
@@ -513,6 +529,13 @@ export class WorldScene extends Phaser.Scene {
       const sparkTiles = [...this.sparks.values()].map((s) => s.settledTile);
       for (const bot of this.ambientBots) bot.update(time, sparkTiles);
     }
+    // R1: bob pictograms + fade labels/rings against the Spark's position.
+    if (this.markers !== undefined) {
+      const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+      this.markers.update(me?.settledTile ?? null, deltaMs);
+    }
+    // R3: aim the guided-loop arrow at the current target.
+    if (this.tutorialArrow !== undefined) this.updateTutorialArrow(time);
     if (sound.ready && time > this.spatialAt && this.room !== null) {
       this.spatialAt = time + 250;
       const own = this.sparks.get(this.room.sessionId);
@@ -961,9 +984,12 @@ export class WorldScene extends Phaser.Scene {
       ];
       session.events.emit(SessionEvents.notice, `${e.from} ${line ?? 'waves.'}`);
     });
-    room.onMessage(MSG.notice, (n: NoticeEvent) =>
-      session.events.emit(SessionEvents.notice, n.text),
-    );
+    room.onMessage(MSG.notice, (n: NoticeEvent) => {
+      // R3: during the guided first loop, drop ambient flavor (Coil, etc.)
+      // so the first minutes hold exactly one idea. Real feedback passes.
+      if (firstLoop.suppressFlavor(n.text)) return;
+      session.events.emit(SessionEvents.notice, n.text);
+    });
 
     // Direct trade: the window lives in the UI scene; route the flow there.
     room.onMessage(MSG.tradeAsk, (e: TradeAskEvent) =>
@@ -1199,6 +1225,258 @@ export class WorldScene extends Phaser.Scene {
         this.pulseTile(t.tx, t.ty);
       }
     });
+  }
+
+  /**
+   * R1: build the universal interaction language from the map. One pass over
+   * the interactable props + gather nodes — decoration is never registered,
+   * so the presence of a pictogram/label/hover ring always means "real".
+   */
+  private buildInteractionMarkers(): void {
+    this.markers = new InteractionMarkers(this);
+    for (const p of this.map.props) {
+      if (INTERACTABLE_STYLES[p.kind] === undefined) continue;
+      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h });
+    }
+    for (const n of this.map.nodes) {
+      if (INTERACTABLE_STYLES[n.kind] === undefined) continue;
+      const w = tileToWorld(n.x, n.y);
+      this.markers.add(n.kind, { x: w.x, y: w.y + TILE_H / 2 }, { x: n.x, y: n.y, w: 1, h: 1 });
+    }
+  }
+
+  // ── R3: the guided "First Bolts" loop ───────────────────────────────────
+
+  // 5 Salvage → ~15 Bolts, which covers the cheapest ware (a 12-Bolt Warmcup)
+  // in a single sale, so the gather→sell→buy loop always completes.
+  private static readonly TUT_GATHER = 5;
+  private static readonly TUT_LABELS = [
+    'Gather 5 Salvage from the glinting heap',
+    'Sell your Salvage at the Merchant',
+    'Buy a Warmcup from the Merchant',
+  ];
+
+  /** Watch inventory/Bolts and drive the three-step first loop. */
+  private setupFirstLoop(): void {
+    if (firstLoop.isDone()) return;
+    // Decide on the first inventory sync: a fresh 0-Bolts Spark who hasn't
+    // finished the loop gets the guided path; anyone else is left alone.
+    const decide = (): void => {
+      if (this.tutorialStarted || firstLoop.isDone()) return;
+      if (gameState.bolts > 0) {
+        firstLoop.markDone(); // already past the loop — never nag
+        gameState.events.off(GameEvents.inventoryChanged, decide);
+        return;
+      }
+      this.startTutorial();
+    };
+    gameState.events.on(GameEvents.inventoryChanged, decide);
+    gameState.events.on(GameEvents.inventoryChanged, () => this.onTutorialProgress());
+    gameState.events.on(GameEvents.boltsChanged, () => this.onTutorialProgress());
+  }
+
+  private startTutorial(): void {
+    this.tutorialStarted = true;
+    firstLoop.active = true;
+    firstLoop.boltsEarned = false;
+    // The checklist replaces the multi-page intro modal — one idea at a time.
+    try {
+      localStorage.setItem('amperia.howtoplay.seen', '1');
+    } catch {
+      /* private mode — modal simply may still show; not fatal */
+    }
+    // Target heap: the nearest Salvage heap to the Spark's spawn.
+    const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+    const from = me?.settledTile ?? { x: this.map.plaza.cx, y: this.map.plaza.cy };
+    const heaps = this.map.nodes.filter((n) => n.kind === 'junkHeap');
+    let best: number | null = null;
+    let bestD = Infinity;
+    for (const h of heaps) {
+      const d = Math.abs(h.x - from.x) + Math.abs(h.y - from.y);
+      if (d < bestD) {
+        bestD = d;
+        best = h.id;
+      }
+    }
+    this.tutorialHeapId = best;
+    this.tutorialStep = 0;
+    this.emitTutorialModel();
+    this.buildTutorialArrow();
+    this.highlightTutorialHeap();
+  }
+
+  private onTutorialProgress(): void {
+    if (!firstLoop.active) return;
+    if (this.tutorialStep === 0 && gameState.count('salvage') >= WorldScene.TUT_GATHER) {
+      this.tutorialStep = 1;
+      this.clearTutorialHeapHighlight();
+      this.emitTutorialModel();
+    }
+    if (this.tutorialStep === 1 && gameState.bolts > 0) {
+      // FIRST BOLTS — the disclosure trigger.
+      this.tutorialStep = 2;
+      this.tutorialSellItemsBase = this.sellItemsHeld();
+      this.onFirstBolts();
+      this.emitTutorialModel();
+    }
+    if (this.tutorialStep === 2 && this.sellItemsHeld() > this.tutorialSellItemsBase) {
+      this.finishTutorial();
+    }
+  }
+
+  /** Count of merchant-sold wares held (tools/Warmcup/Cellwax) — a purchase
+   *  is the only way this rises after the sell step. */
+  private sellItemsHeld(): number {
+    let n = 0;
+    for (const w of CONFIG.economy.merchant.sells) n += gameState.count(w.itemId as ItemId);
+    return n;
+  }
+
+  /** First Bolts landed: retire the beacon and unlock the hidden HUD, each
+   *  with a single calm toast (comms rules: prizes/membership, never "earn"). */
+  private onFirstBolts(): void {
+    firstLoop.boltsEarned = true;
+    this.setMerchantBeacon(false);
+    const unlocks = [
+      'Your first Bolts! The city opens up a little.',
+      'Rested Charge is on — a daily boost to gather XP.',
+      'The Manifest is yours to fill — press J for your collection log.',
+      'Weekly goals are posted — press G to see them.',
+    ];
+    unlocks.forEach((text, i) =>
+      this.time.delayedCall(i * 1900, () =>
+        session.events.emit(SessionEvents.tutorialToast, text),
+      ),
+    );
+  }
+
+  private finishTutorial(): void {
+    this.tutorialStep = -1;
+    firstLoop.markDone();
+    this.emitTutorialModel();
+    this.clearTutorialArrow();
+    this.clearTutorialHeapHighlight();
+    session.events.emit(
+      SessionEvents.tutorialToast,
+      "That's the whole loop — gather, sell, buy. The city's yours now.",
+    );
+  }
+
+  private emitTutorialModel(): void {
+    const model: TutorialModel = {
+      steps: WorldScene.TUT_LABELS.map((label, i) => ({
+        label,
+        done: this.tutorialStep === -1 || i < this.tutorialStep,
+      })),
+      active: this.tutorialStep,
+    };
+    session.events.emit(SessionEvents.tutorial, model);
+  }
+
+  /** World position the arrow currently points at (heap → merchant). */
+  private tutorialTargetWorld(): { x: number; y: number } | null {
+    if (this.tutorialStep === 0 && this.tutorialHeapId !== null) {
+      const h = this.map.nodes.find((n) => n.id === this.tutorialHeapId);
+      if (h !== undefined) {
+        const w = tileToWorld(h.x, h.y);
+        return { x: w.x, y: w.y };
+      }
+    }
+    if (this.tutorialStep === 1 || this.tutorialStep === 2) {
+      const m = this.map.props.find((p) => p.kind === 'merchant');
+      if (m !== undefined) return this.propAnchor(m);
+    }
+    return null;
+  }
+
+  private buildTutorialArrow(): void {
+    WorldScene.ensureTutArrowTexture(this);
+    this.tutorialArrow = this.add
+      .image(0, 0, 'tut-arrow')
+      .setScrollFactor(0)
+      .setScale(0.75)
+      .setDepth(1e6)
+      .setVisible(false);
+    // A gentle throb so the guide reads as alive, not painted.
+    this.tweens.add({
+      targets: this.tutorialArrow,
+      scale: 0.9,
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+  }
+
+  private highlightTutorialHeap(): void {
+    if (this.tutorialHeapId === null) return;
+    const h = this.map.nodes.find((n) => n.id === this.tutorialHeapId);
+    if (h === undefined) return;
+    const w = tileToWorld(h.x, h.y);
+    const ring = this.add.image(w.x, w.y, 'fx-glow');
+    ring.setTint(PALETTE_INT.neonTeal);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    ring.setScale(0.34, 0.34 * 0.5);
+    ring.setDepth(DEPTH_FLOOR + 5);
+    this.tweens.add({
+      targets: ring,
+      alpha: { from: 0.85, to: 0.3 },
+      scaleX: 0.42,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    this.tutorialHeapRing = ring;
+  }
+
+  private clearTutorialHeapHighlight(): void {
+    this.tutorialHeapRing?.destroy();
+    this.tutorialHeapRing = undefined;
+  }
+
+  private clearTutorialArrow(): void {
+    this.tutorialArrow?.destroy();
+    this.tutorialArrow = undefined;
+  }
+
+  /** Per-frame: aim the screen-space arrow from the Spark toward the target. */
+  private updateTutorialArrow(time: number): void {
+    const arrow = this.tutorialArrow;
+    if (arrow === undefined) return;
+    const target = this.tutorialTargetWorld();
+    const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+    if (target === null || me === undefined) {
+      arrow.setVisible(false);
+      return;
+    }
+    const cam = this.cameras.main;
+    const px = (me.image.x - cam.worldView.x) * cam.zoom;
+    const py = (me.image.y - cam.worldView.y) * cam.zoom;
+    const tx = (target.x - cam.worldView.x) * cam.zoom;
+    const ty = (target.y - cam.worldView.y) * cam.zoom;
+    const ang = Math.atan2(ty - py, tx - px);
+    const dist = Math.hypot(tx - px, ty - py);
+    const r = Math.min(Math.max(dist * 0.55, 64), 170);
+    const bob = Math.sin(time * 0.005) * 4;
+    arrow.setPosition(px + Math.cos(ang) * r, py + Math.sin(ang) * r - 40 + bob);
+    arrow.setRotation(ang);
+    arrow.setVisible(true);
+  }
+
+  /** A bold amber arrow texture pointing along +x (rotates to the target). */
+  private static ensureTutArrowTexture(scene: Phaser.Scene): void {
+    if (scene.textures.exists('tut-arrow')) return;
+    const g = scene.add.graphics();
+    // Ink contour, then the amber arrowhead + shaft on top (points along +x).
+    g.fillStyle(PALETTE_INT.ink, 1);
+    g.fillTriangle(32, 10, 60, 32, 32, 54);
+    g.fillRect(6, 25, 30, 14);
+    g.fillStyle(PALETTE_INT.neonAmber, 1);
+    g.fillTriangle(35, 15, 54, 32, 35, 49);
+    g.fillRect(10, 28, 26, 8);
+    g.generateTexture('tut-arrow', 64, 64);
+    g.destroy();
   }
 
   private spawnNodes(): void {
@@ -3515,6 +3793,238 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     this.applyChargeLighting(this.chargeLightingTier);
+  }
+
+  /**
+   * R2: make the Nightstalls read as THE market street from across the map.
+   * A distinct warm deck runs the lane, a garland strings its full length,
+   * and the NPC merchant stand gets a taller striped awning, a hanging coin
+   * sign, and a warm light pool. The vendor themself is an ambient NPC
+   * placed behind the counter (render/ambientNpcs). The vertical amber
+   * "sell here" beacon is built separately so first Bolts can retire it.
+   */
+  private decorateNightstalls(): void {
+    const stalls = this.map.props.filter((p) => p.kind === 'stall');
+    const merchant = this.map.props.find((p) => p.kind === 'merchant');
+    if (merchant === undefined || stalls.length === 0) return;
+    const market = [...stalls, merchant];
+    const minX = Math.min(...market.map((p) => p.x));
+    const maxX = Math.max(...market.map((p) => p.x + p.w - 1));
+    const minY = Math.min(...market.map((p) => p.y));
+    const maxY = Math.max(...market.map((p) => p.y + p.h - 1));
+    const midY = (minY + maxY) / 2;
+
+    // 1) Distinct market DECK across the walkable lane between the rows —
+    //    warm tan planking so the street reads as its own material.
+    const deck = this.add.graphics();
+    deck.setDepth(DEPTH_FLOOR + 2);
+    const plankA = mixPalette('groundAccent', 'warmGlow', 0.28);
+    const plankB = mixPalette('groundAccent', 'ink', 0.16);
+    for (let ty = minY - 1; ty <= maxY + 1; ty++) {
+      for (let tx = minX - 1; tx <= maxX + 1; tx++) {
+        if (this.map.walkable[ty]?.[tx] !== true) continue;
+        const { x, y } = tileToWorld(tx, ty);
+        deck.fillStyle((tx + ty) % 2 === 0 ? plankA : plankB, 0.55);
+        deck.beginPath();
+        deck.moveTo(x, y - TILE_H / 2);
+        deck.lineTo(x + TILE_W / 2, y);
+        deck.lineTo(x, y + TILE_H / 2);
+        deck.lineTo(x - TILE_W / 2, y);
+        deck.closePath();
+        deck.fill();
+      }
+    }
+
+    // 2) Full-length GARLAND: a lit run spanning the whole lane, post to
+    //    post — the horizontal light line that says "street" from afar.
+    const postH = 96;
+    const west = tileToWorld(minX - 1, midY);
+    const east = tileToWorld(maxX + 1, midY);
+    const a = { x: west.x, y: west.y - postH };
+    const b = { x: east.x, y: east.y - postH };
+    const g = this.add.graphics().setDepth(1e5);
+    for (const pst of [west, east]) {
+      g.lineStyle(3, mixPalette('ink', 'structureMid', 0.5), 1);
+      g.lineBetween(pst.x, pst.y, pst.x, pst.y - postH);
+    }
+    const sag = 34;
+    const curve = new Phaser.Curves.QuadraticBezier(
+      new Phaser.Math.Vector2(a.x, a.y),
+      new Phaser.Math.Vector2((a.x + b.x) / 2, Math.max(a.y, b.y) + sag),
+      new Phaser.Math.Vector2(b.x, b.y),
+    );
+    g.lineStyle(1.5, mixPalette('ink', 'structureMid', 0.5), 0.85);
+    curve.draw(g, 40);
+    const tints = [PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, PALETTE_INT.neonAmber, PALETTE_INT.neonRose];
+    const bulbs = Math.max(6, Math.floor(curve.getLength() / 30));
+    for (let i = 1; i < bulbs; i++) {
+      const p = curve.getPoint(i / bulbs);
+      const tint = tints[i % tints.length] as number;
+      g.fillStyle(tint, 0.95);
+      g.fillCircle(p.x, p.y + 2, 2.2);
+      const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.09, 1e5 + 1);
+      if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
+      this.stringBulbGlows.push(glow.core, glow.mid, glow.outer);
+    }
+
+    // 3) The NPC merchant stand: taller striped awning + hanging coin sign
+    //    + a broad warm pool so the vendor you sell to is unmistakable.
+    const ma = this.propAnchor(merchant);
+    WorldScene.ensureMarketTextures(this);
+    const awning = this.add.image(ma.x, ma.y - 70, 'nightstalls-awning');
+    awning.setScale(0.5);
+    awning.setDepth(depthForWorldY(ma.y) + 2);
+    // Hanging coin sign under the awning's front lip.
+    const board = this.add.image(ma.x + 22, ma.y - 44, 'nightstalls-sign');
+    board.setScale(0.5);
+    board.setDepth(depthForWorldY(ma.y) + 3);
+    const coin = this.add.image(ma.x + 22, ma.y - 46, 'imark-coin');
+    coin.setScale(0.42);
+    coin.setDepth(depthForWorldY(ma.y) + 4);
+    this.tweens.add({
+      targets: [board, coin],
+      angle: { from: -4, to: 4 },
+      duration: 2600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    this.addGroundPool(ma.x + 4, ma.y + 2, PALETTE_INT.warmGlow, 1.1);
+
+    // 4) The "sell here" beacon (retired on first Bolts — see R3).
+    this.buildMerchantBeacon(ma.x, ma.y);
+  }
+
+  /** Striped-awning + hanging-sign textures for the merchant stand. */
+  private static ensureMarketTextures(scene: Phaser.Scene): void {
+    if (scene.textures.exists('nightstalls-awning')) return;
+    const amber = PALETTE_INT.neonAmber;
+    const warm = PALETTE_INT.warmGlow;
+    const ink = PALETTE_INT.ink;
+    // Awning: a scalloped, diagonally striped canopy (baked 2×, drawn 0.5).
+    {
+      const W = 148;
+      const H = 64;
+      const g = scene.add.graphics();
+      // stripe body
+      for (let i = -H; i < W; i += 14) {
+        g.fillStyle(((i / 14) & 1) === 0 ? amber : warm, 1);
+        g.fillTriangle(i, 0, i + 14, 0, i - H, H);
+        g.fillTriangle(i + 14, 0, i - H + 14, H, i - H, H);
+      }
+      // scalloped front lip
+      g.fillStyle(amber, 1);
+      for (let s = 0; s < W; s += 18) g.fillCircle(s + 9, H, 9);
+      // ink top edge (contour)
+      g.fillStyle(ink, 1);
+      g.fillRect(0, 0, W, 4);
+      g.generateTexture('nightstalls-awning', W, H + 10);
+      g.destroy();
+    }
+    // Hanging sign board.
+    {
+      const g = scene.add.graphics();
+      g.fillStyle(ink, 0.92);
+      g.fillRoundedRect(0, 6, 40, 32, 5);
+      g.lineStyle(2, amber, 0.9);
+      g.strokeRoundedRect(0, 6, 40, 32, 5);
+      g.lineStyle(2, mixPalette('ink', 'structureMid', 0.5), 1);
+      g.lineBetween(20, 0, 20, 6);
+      g.generateTexture('nightstalls-sign', 40, 40);
+      g.destroy();
+    }
+  }
+
+  /**
+   * A tall vertical amber light BEAM over the NPC merchant — an MMO quest
+   * beacon that rises over rooftops so a new Spark can find where to sell
+   * from anywhere on the deck. `setMerchantBeacon(false)` retires it once
+   * the Spark has earned their first Bolts (R3).
+   */
+  private buildMerchantBeacon(x: number, y: number): void {
+    WorldScene.ensureBeaconTexture(this);
+    const depth = 1e5 + 20;
+    const baseY = y - 26;
+    // A crisp beam sprite (bottom-anchored) — the defined column.
+    const beam = this.add.image(x, baseY, 'beacon-beam');
+    beam.setOrigin(0.5, 1);
+    beam.setScale(0.5);
+    beam.setBlendMode(Phaser.BlendModes.ADD);
+    beam.setDepth(depth);
+    this.merchantBeacon.push(beam);
+    // A bright base flare pinning it to the stand.
+    const base = this.add.image(x, baseY, 'fx-glow');
+    base.setTint(PALETTE_INT.warmGlow);
+    base.setBlendMode(Phaser.BlendModes.ADD);
+    base.setScale(0.3, 0.17);
+    base.setAlpha(bloom(0.85));
+    base.setDepth(depth);
+    this.merchantBeacon.push(base);
+    // A small chevron cap bobbing at the top, pointing down at the stand.
+    const cap = this.add.image(x, baseY - 300, 'beacon-cap');
+    cap.setScale(0.5);
+    cap.setBlendMode(Phaser.BlendModes.ADD);
+    cap.setDepth(depth);
+    this.merchantBeacon.push(cap);
+    this.tweens.add({
+      targets: cap,
+      y: baseY - 288,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    // Slow breathing pulse on the whole beacon.
+    this.tweens.add({
+      targets: [beam, base],
+      alpha: { from: 1, to: 0.62 },
+      duration: 1300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    // Motes rising up the beam — reads as "energy," points the eye up.
+    addEmberMotes(this, x, baseY - 20, depth, { count: 6, radius: 9, rise: 280 });
+  }
+
+  /** Vertical beam + chevron-cap textures for the merchant beacon. */
+  private static ensureBeaconTexture(scene: Phaser.Scene): void {
+    if (scene.textures.exists('beacon-beam')) return;
+    const amber = ((PALETTE_INT.neonAmber >> 16) & 255) / 255;
+    const aG = ((PALETTE_INT.neonAmber >> 8) & 255) / 255;
+    const aB = (PALETTE_INT.neonAmber & 255) / 255;
+    const W = 44;
+    const H = 640;
+    const g = scene.add.graphics();
+    // Row by row: alpha fades toward the top; each row is a soft horizontal
+    // gradient (bright core, faint edges) built from a few nested rects.
+    for (let ry = 0; ry < H; ry++) {
+      const up = 1 - ry / H; // 1 at base → 0 at top
+      const a = Math.pow(up, 1.4);
+      for (let k = 0; k < 4; k++) {
+        const halfW = (W / 2) * (0.18 + 0.82 * (k / 3));
+        const layerA = a * (k === 0 ? 0.95 : 0.5 - k * 0.12);
+        if (layerA <= 0.02) continue;
+        g.fillStyle(Phaser.Display.Color.GetColor(amber * 255, aG * 255, aB * 255), layerA);
+        g.fillRect(W / 2 - halfW, ry, halfW * 2, 1);
+      }
+    }
+    g.generateTexture('beacon-beam', W, H);
+    g.clear();
+    // Downward chevron cap.
+    g.fillStyle(PALETTE_INT.neonAmber, 1);
+    g.fillTriangle(4, 4, 36, 4, 20, 26);
+    g.fillStyle(PALETTE_INT.warmGlow, 1);
+    g.fillTriangle(11, 4, 29, 4, 20, 18);
+    g.generateTexture('beacon-cap', 40, 30);
+    g.destroy();
+  }
+
+  /** Retire (or restore) the merchant beacon — R3 first-Bolts gate. */
+  setMerchantBeacon(on: boolean): void {
+    for (const o of this.merchantBeacon) {
+      (o as Phaser.GameObjects.Image).setVisible(on);
+    }
   }
 
   /**

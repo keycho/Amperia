@@ -36,6 +36,9 @@ const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
     { code: '1:2:5:5:1:0', tile: [18, 3], dir: 'se', turns: ['se', 'sw'] },
     // A browser drifting along the Nightstalls.
     { code: '1:0:3:3:4:1', tile: [29, 18], dir: 'ne', turns: ['ne', 'nw'] },
+    // R2: the Nightstalls MERCHANT, standing behind the stand (30,17) so the
+    // vendor you sell to is a visible person, not an empty counter.
+    { code: '1:2:1:0:4:1', tile: [30, 16], dir: 'se', turns: ['se', 'sw'] },
   ],
   tangle: [
     // The mechanic riveting at the blocked-up Draymule (ember hair + teal
