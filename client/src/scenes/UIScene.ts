@@ -27,6 +27,7 @@ import { EmoteWheel } from '../ui/EmoteWheel';
 import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
+import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 
 interface DragState {
   strip: SlotStrip;
@@ -67,6 +68,13 @@ export class UIScene extends Phaser.Scene {
   private questChip!: Phaser.GameObjects.Text;
   private boltsChip!: Phaser.GameObjects.Text;
   private toast: Phaser.GameObjects.Container | null = null;
+  /** R3: the "First Bolts" checklist panel + the two revealable HUD icons. */
+  private tutorialPanel: Phaser.GameObjects.Container | null = null;
+  private tutorialLines: Phaser.GameObjects.Text[] = [];
+  private discloseIcons: Phaser.GameObjects.GameObject[] = [];
+  private toastQueue: string[] = [];
+  private toastRunning = false;
+  private lastRested: RestedSync | null = null;
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
   private hp = { hp: 0, maxHp: 0 };
@@ -182,6 +190,124 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
+  /** Render the Rested banner from a payload — gated until first Bolts (R3). */
+  private applyRested(e: RestedSync): void {
+    if (firstLoop.active && !firstLoop.boltsEarned) {
+      this.restedText.setAlpha(0);
+      return;
+    }
+    if (e.msLeft > 0) {
+      const mins = Math.ceil(e.msLeft / 60_000);
+      const pct = Math.round((e.multiplier - 1) * 100);
+      this.restedText.setText(`✦ Rested — +${pct}% gather XP · ${mins}m left today`);
+      this.restedText.setAlpha(1);
+    } else if (this.restedText.text !== '') {
+      this.restedText.setText('✦ Rested spent for today — back tomorrow');
+      this.tweens.add({ targets: this.restedText, alpha: 0, delay: 4000, duration: 600 });
+    }
+  }
+
+  /** R3: queue unlock toasts so they play one at a time, in order. */
+  private queueToast(text: string): void {
+    this.toastQueue.push(text);
+    if (!this.toastRunning) this.runToasts();
+  }
+
+  private runToasts(): void {
+    const next = this.toastQueue.shift();
+    if (next === undefined) {
+      this.toastRunning = false;
+      return;
+    }
+    this.toastRunning = true;
+    this.showToast(next);
+    this.time.delayedCall(2600, () => this.runToasts());
+  }
+
+  /**
+   * R3: the "First Bolts" checklist — a small top-left panel with three
+   * steps, the active one lit amber with a ›, done ones checked. Fades out
+   * when the loop completes.
+   */
+  private renderTutorial(m: TutorialModel): void {
+    if (this.tutorialPanel === null) {
+      const g = this.add.graphics();
+      g.fillStyle(PALETTE_INT.ink, 0.72);
+      g.fillRoundedRect(0, 0, 268, 96, 8);
+      g.lineStyle(1.5, PALETTE_INT.neonAmber, 0.55);
+      g.strokeRoundedRect(0, 0, 268, 96, 8);
+      const title = this.add.text(12, 8, 'FIRST BOLTS', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: PALETTE.neonAmber,
+      });
+      this.tutorialLines = m.steps.map((_, i) =>
+        this.add.text(12, 28 + i * 20, '', {
+          fontFamily: 'monospace',
+          fontSize: '12px',
+          color: UI_TEXT_WARM,
+        }),
+      );
+      const panel = this.add.container(12, 90, [g, title, ...this.tutorialLines]);
+      panel.setDepth(930);
+      panel.setAlpha(0);
+      this.tutorialPanel = panel;
+      this.tweens.add({ targets: panel, alpha: 1, duration: 400 });
+    }
+    m.steps.forEach((step, i) => {
+      const line = this.tutorialLines[i];
+      if (line === undefined) return;
+      const isActive = i === m.active;
+      const mark = step.done ? '☑' : isActive ? '›' : '☐';
+      line.setText(`${mark} ${step.label}`);
+      line.setColor(step.done ? PALETTE.solarGreen : isActive ? PALETTE.neonAmber : PALETTE.warmGlow);
+      line.setAlpha(step.done ? 0.75 : 1);
+    });
+    // Reveal the previously-hidden HUD icons once the first Bolts land.
+    if (firstLoop.boltsEarned && this.discloseIcons.length === 0) this.revealDiscloseIcons();
+    // Loop complete: let it read, then fade the checklist away.
+    if (m.active === -1 && this.tutorialPanel !== null) {
+      const panel = this.tutorialPanel;
+      this.tutorialPanel = null;
+      this.time.delayedCall(3200, () =>
+        this.tweens.add({
+          targets: panel,
+          alpha: 0,
+          duration: 500,
+          onComplete: () => panel.destroy(),
+        }),
+      );
+    }
+  }
+
+  /**
+   * R3: Manifest (J) and weekly Goals (G) had no HUD button — they surface
+   * only after first Bolts, each announced with a one-line toast, as small
+   * clickable glyph chips under the Bolts counter.
+   */
+  private revealDiscloseIcons(): void {
+    const x = this.scale.width - 12;
+    const make = (glyph: string, y: number, onClick: () => void) => {
+      const t = this.add.text(x, y, glyph, {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: PALETTE.neonTeal,
+        stroke: PALETTE.ink,
+        strokeThickness: 3,
+      });
+      t.setOrigin(1, 0);
+      t.setDepth(902);
+      t.setAlpha(0);
+      t.setInteractive({ useHandCursor: true });
+      t.on('pointerdown', onClick);
+      this.tweens.add({ targets: t, alpha: 1, duration: 500 });
+      this.discloseIcons.push(t);
+    };
+    make('❏ Manifest · J', 100, () => this.manifestPanel.toggle());
+    make('★ Goals · G', 122, () => this.goalPanel.toggle());
+  }
+
   constructor() {
     super('ui');
   }
@@ -267,19 +393,22 @@ export class UIScene extends Phaser.Scene {
     this.restedText.setDepth(900);
     this.restedText.setShadow(0, 0, PALETTE.neonAmber, 4, true, true);
     session.events.on(SessionEvents.rested, (e: RestedSync) => {
-      if (e.msLeft > 0) {
-        const mins = Math.ceil(e.msLeft / 60_000);
-        const pct = Math.round((e.multiplier - 1) * 100);
-        this.restedText.setText(`✦ Rested — +${pct}% gather XP · ${mins}m left today`);
-        this.restedText.setAlpha(1);
-      } else if (this.restedText.text !== '') {
-        this.restedText.setText('✦ Rested spent for today — back tomorrow');
-        this.tweens.add({ targets: this.restedText, alpha: 0, delay: 4000, duration: 600 });
-      }
+      this.lastRested = e;
+      this.applyRested(e);
     });
-    session.events.on(SessionEvents.manifestFound, (ev: ManifestFoundEvent) =>
-      showManifestToast(this, ev),
-    );
+    // R3: the Rested event fires only on join (suppressed then). When first
+    // Bolts land, re-apply the cached state so the banner appears on cue.
+    gameState.events.on(GameEvents.boltsChanged, () => {
+      if (firstLoop.boltsEarned && this.lastRested !== null) this.applyRested(this.lastRested);
+    });
+    session.events.on(SessionEvents.manifestFound, (ev: ManifestFoundEvent) => {
+      // R3: no Manifest chatter until the first loop has opened it up.
+      if (firstLoop.active && !firstLoop.boltsEarned) return;
+      showManifestToast(this, ev);
+    });
+    // R3: the guided first-loop checklist + one-line unlock toasts.
+    session.events.on(SessionEvents.tutorial, (m: TutorialModel) => this.renderTutorial(m));
+    session.events.on(SessionEvents.tutorialToast, (text: string) => this.queueToast(text));
     session.events.on(SessionEvents.inspect, (ev: InspectInfoEvent) =>
       this.inspectCard.show(ev),
     );

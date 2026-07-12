@@ -69,6 +69,7 @@ import {
 } from '../entities/nodes';
 import { Spark } from '../entities/Spark';
 import { InteractionMarkers, INTERACTABLE_STYLES } from '../systems/InteractionMarkers';
+import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
@@ -114,7 +115,7 @@ import {
 import { CameraController } from '../systems/CameraController';
 import { GatherView } from '../systems/GatherView';
 import { OcclusionFade, type OcclusionTarget } from '../systems/OcclusionFade';
-import { gameState } from '../state/GameState';
+import { gameState, GameEvents } from '../state/GameState';
 
 
 /**
@@ -167,6 +168,13 @@ export class WorldScene extends Phaser.Scene {
   private stringBulbGlows: Phaser.GameObjects.Image[] = [];
   /** R2: the "sell here" beacon over the NPC merchant, until first Bolts. */
   private merchantBeacon: Phaser.GameObjects.GameObject[] = [];
+  /** R3: guided first-loop state (−1 inactive/done, 0 gather, 1 sell, 2 buy). */
+  private tutorialStep = -1;
+  private tutorialArrow?: Phaser.GameObjects.Image;
+  private tutorialHeapId: number | null = null;
+  private tutorialHeapRing?: Phaser.GameObjects.Image;
+  private tutorialStarted = false;
+  private tutorialSellItemsBase = 0;
   /** District structural lights (D3): the Stacks window blaze — the same
    *  Charge meter thins or crowds them (festival = a quarter blazing). */
   private chargeWindowGlows: Phaser.GameObjects.Image[] = [];
@@ -299,6 +307,7 @@ export class WorldScene extends Phaser.Scene {
     };
     this.spawnNodes();
     this.buildInteractionMarkers();
+    this.setupFirstLoop();
     this.setupInput();
 
     this.connectingText = this.add
@@ -525,6 +534,8 @@ export class WorldScene extends Phaser.Scene {
       const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
       this.markers.update(me?.settledTile ?? null, deltaMs);
     }
+    // R3: aim the guided-loop arrow at the current target.
+    if (this.tutorialArrow !== undefined) this.updateTutorialArrow(time);
     if (sound.ready && time > this.spatialAt && this.room !== null) {
       this.spatialAt = time + 250;
       const own = this.sparks.get(this.room.sessionId);
@@ -973,9 +984,12 @@ export class WorldScene extends Phaser.Scene {
       ];
       session.events.emit(SessionEvents.notice, `${e.from} ${line ?? 'waves.'}`);
     });
-    room.onMessage(MSG.notice, (n: NoticeEvent) =>
-      session.events.emit(SessionEvents.notice, n.text),
-    );
+    room.onMessage(MSG.notice, (n: NoticeEvent) => {
+      // R3: during the guided first loop, drop ambient flavor (Coil, etc.)
+      // so the first minutes hold exactly one idea. Real feedback passes.
+      if (firstLoop.suppressFlavor(n.text)) return;
+      session.events.emit(SessionEvents.notice, n.text);
+    });
 
     // Direct trade: the window lives in the UI scene; route the flow there.
     room.onMessage(MSG.tradeAsk, (e: TradeAskEvent) =>
@@ -1229,6 +1243,240 @@ export class WorldScene extends Phaser.Scene {
       const w = tileToWorld(n.x, n.y);
       this.markers.add(n.kind, { x: w.x, y: w.y + TILE_H / 2 }, { x: n.x, y: n.y, w: 1, h: 1 });
     }
+  }
+
+  // ── R3: the guided "First Bolts" loop ───────────────────────────────────
+
+  // 5 Salvage → ~15 Bolts, which covers the cheapest ware (a 12-Bolt Warmcup)
+  // in a single sale, so the gather→sell→buy loop always completes.
+  private static readonly TUT_GATHER = 5;
+  private static readonly TUT_LABELS = [
+    'Gather 5 Salvage from the glinting heap',
+    'Sell your Salvage at the Merchant',
+    'Buy a Warmcup from the Merchant',
+  ];
+
+  /** Watch inventory/Bolts and drive the three-step first loop. */
+  private setupFirstLoop(): void {
+    if (firstLoop.isDone()) return;
+    // Decide on the first inventory sync: a fresh 0-Bolts Spark who hasn't
+    // finished the loop gets the guided path; anyone else is left alone.
+    const decide = (): void => {
+      if (this.tutorialStarted || firstLoop.isDone()) return;
+      if (gameState.bolts > 0) {
+        firstLoop.markDone(); // already past the loop — never nag
+        gameState.events.off(GameEvents.inventoryChanged, decide);
+        return;
+      }
+      this.startTutorial();
+    };
+    gameState.events.on(GameEvents.inventoryChanged, decide);
+    gameState.events.on(GameEvents.inventoryChanged, () => this.onTutorialProgress());
+    gameState.events.on(GameEvents.boltsChanged, () => this.onTutorialProgress());
+  }
+
+  private startTutorial(): void {
+    this.tutorialStarted = true;
+    firstLoop.active = true;
+    firstLoop.boltsEarned = false;
+    // The checklist replaces the multi-page intro modal — one idea at a time.
+    try {
+      localStorage.setItem('amperia.howtoplay.seen', '1');
+    } catch {
+      /* private mode — modal simply may still show; not fatal */
+    }
+    // Target heap: the nearest Salvage heap to the Spark's spawn.
+    const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+    const from = me?.settledTile ?? { x: this.map.plaza.cx, y: this.map.plaza.cy };
+    const heaps = this.map.nodes.filter((n) => n.kind === 'junkHeap');
+    let best: number | null = null;
+    let bestD = Infinity;
+    for (const h of heaps) {
+      const d = Math.abs(h.x - from.x) + Math.abs(h.y - from.y);
+      if (d < bestD) {
+        bestD = d;
+        best = h.id;
+      }
+    }
+    this.tutorialHeapId = best;
+    this.tutorialStep = 0;
+    this.emitTutorialModel();
+    this.buildTutorialArrow();
+    this.highlightTutorialHeap();
+  }
+
+  private onTutorialProgress(): void {
+    if (!firstLoop.active) return;
+    if (this.tutorialStep === 0 && gameState.count('salvage') >= WorldScene.TUT_GATHER) {
+      this.tutorialStep = 1;
+      this.clearTutorialHeapHighlight();
+      this.emitTutorialModel();
+    }
+    if (this.tutorialStep === 1 && gameState.bolts > 0) {
+      // FIRST BOLTS — the disclosure trigger.
+      this.tutorialStep = 2;
+      this.tutorialSellItemsBase = this.sellItemsHeld();
+      this.onFirstBolts();
+      this.emitTutorialModel();
+    }
+    if (this.tutorialStep === 2 && this.sellItemsHeld() > this.tutorialSellItemsBase) {
+      this.finishTutorial();
+    }
+  }
+
+  /** Count of merchant-sold wares held (tools/Warmcup/Cellwax) — a purchase
+   *  is the only way this rises after the sell step. */
+  private sellItemsHeld(): number {
+    let n = 0;
+    for (const w of CONFIG.economy.merchant.sells) n += gameState.count(w.itemId as ItemId);
+    return n;
+  }
+
+  /** First Bolts landed: retire the beacon and unlock the hidden HUD, each
+   *  with a single calm toast (comms rules: prizes/membership, never "earn"). */
+  private onFirstBolts(): void {
+    firstLoop.boltsEarned = true;
+    this.setMerchantBeacon(false);
+    const unlocks = [
+      'Your first Bolts! The city opens up a little.',
+      'Rested Charge is on — a daily boost to gather XP.',
+      'The Manifest is yours to fill — press J for your collection log.',
+      'Weekly goals are posted — press G to see them.',
+    ];
+    unlocks.forEach((text, i) =>
+      this.time.delayedCall(i * 1900, () =>
+        session.events.emit(SessionEvents.tutorialToast, text),
+      ),
+    );
+  }
+
+  private finishTutorial(): void {
+    this.tutorialStep = -1;
+    firstLoop.markDone();
+    this.emitTutorialModel();
+    this.clearTutorialArrow();
+    this.clearTutorialHeapHighlight();
+    session.events.emit(
+      SessionEvents.tutorialToast,
+      "That's the whole loop — gather, sell, buy. The city's yours now.",
+    );
+  }
+
+  private emitTutorialModel(): void {
+    const model: TutorialModel = {
+      steps: WorldScene.TUT_LABELS.map((label, i) => ({
+        label,
+        done: this.tutorialStep === -1 || i < this.tutorialStep,
+      })),
+      active: this.tutorialStep,
+    };
+    session.events.emit(SessionEvents.tutorial, model);
+  }
+
+  /** World position the arrow currently points at (heap → merchant). */
+  private tutorialTargetWorld(): { x: number; y: number } | null {
+    if (this.tutorialStep === 0 && this.tutorialHeapId !== null) {
+      const h = this.map.nodes.find((n) => n.id === this.tutorialHeapId);
+      if (h !== undefined) {
+        const w = tileToWorld(h.x, h.y);
+        return { x: w.x, y: w.y };
+      }
+    }
+    if (this.tutorialStep === 1 || this.tutorialStep === 2) {
+      const m = this.map.props.find((p) => p.kind === 'merchant');
+      if (m !== undefined) return this.propAnchor(m);
+    }
+    return null;
+  }
+
+  private buildTutorialArrow(): void {
+    WorldScene.ensureTutArrowTexture(this);
+    this.tutorialArrow = this.add
+      .image(0, 0, 'tut-arrow')
+      .setScrollFactor(0)
+      .setScale(0.75)
+      .setDepth(1e6)
+      .setVisible(false);
+    // A gentle throb so the guide reads as alive, not painted.
+    this.tweens.add({
+      targets: this.tutorialArrow,
+      scale: 0.9,
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+  }
+
+  private highlightTutorialHeap(): void {
+    if (this.tutorialHeapId === null) return;
+    const h = this.map.nodes.find((n) => n.id === this.tutorialHeapId);
+    if (h === undefined) return;
+    const w = tileToWorld(h.x, h.y);
+    const ring = this.add.image(w.x, w.y, 'fx-glow');
+    ring.setTint(PALETTE_INT.neonTeal);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    ring.setScale(0.34, 0.34 * 0.5);
+    ring.setDepth(DEPTH_FLOOR + 5);
+    this.tweens.add({
+      targets: ring,
+      alpha: { from: 0.85, to: 0.3 },
+      scaleX: 0.42,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inout',
+    });
+    this.tutorialHeapRing = ring;
+  }
+
+  private clearTutorialHeapHighlight(): void {
+    this.tutorialHeapRing?.destroy();
+    this.tutorialHeapRing = undefined;
+  }
+
+  private clearTutorialArrow(): void {
+    this.tutorialArrow?.destroy();
+    this.tutorialArrow = undefined;
+  }
+
+  /** Per-frame: aim the screen-space arrow from the Spark toward the target. */
+  private updateTutorialArrow(time: number): void {
+    const arrow = this.tutorialArrow;
+    if (arrow === undefined) return;
+    const target = this.tutorialTargetWorld();
+    const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+    if (target === null || me === undefined) {
+      arrow.setVisible(false);
+      return;
+    }
+    const cam = this.cameras.main;
+    const px = (me.image.x - cam.worldView.x) * cam.zoom;
+    const py = (me.image.y - cam.worldView.y) * cam.zoom;
+    const tx = (target.x - cam.worldView.x) * cam.zoom;
+    const ty = (target.y - cam.worldView.y) * cam.zoom;
+    const ang = Math.atan2(ty - py, tx - px);
+    const dist = Math.hypot(tx - px, ty - py);
+    const r = Math.min(Math.max(dist * 0.55, 64), 170);
+    const bob = Math.sin(time * 0.005) * 4;
+    arrow.setPosition(px + Math.cos(ang) * r, py + Math.sin(ang) * r - 40 + bob);
+    arrow.setRotation(ang);
+    arrow.setVisible(true);
+  }
+
+  /** A bold amber arrow texture pointing along +x (rotates to the target). */
+  private static ensureTutArrowTexture(scene: Phaser.Scene): void {
+    if (scene.textures.exists('tut-arrow')) return;
+    const g = scene.add.graphics();
+    // Ink contour, then the amber arrowhead + shaft on top (points along +x).
+    g.fillStyle(PALETTE_INT.ink, 1);
+    g.fillTriangle(32, 10, 60, 32, 32, 54);
+    g.fillRect(6, 25, 30, 14);
+    g.fillStyle(PALETTE_INT.neonAmber, 1);
+    g.fillTriangle(35, 15, 54, 32, 35, 49);
+    g.fillRect(10, 28, 26, 8);
+    g.generateTexture('tut-arrow', 64, 64);
+    g.destroy();
   }
 
   private spawnNodes(): void {
