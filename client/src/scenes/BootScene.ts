@@ -11,6 +11,7 @@ import {
   makeShadowTextures,
   makeTileMarkerTextures,
 } from '../render/textures';
+import { bootProgress } from '../boot/bootLoader';
 
 /**
  * Loads curated Kenney UI/icon/particle sprites, bakes the voxel world set
@@ -25,6 +26,9 @@ export class BootScene extends Phaser.Scene {
     for (const [key, url] of Object.entries(IMAGE_MANIFEST)) {
       this.load.image(key, url);
     }
+    // P4: drive the inline boot-loader bar with real asset progress (the slow
+    // part on a cold/throttled load); the bake step + first scene fill the rest.
+    this.load.on('progress', (p: number) => bootProgress(p * 0.9));
   }
 
   create(): void {

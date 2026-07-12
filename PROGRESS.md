@@ -1,5 +1,38 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-12 PUBLIC STATS + BOOT LOADER block (P1–P4)
+
+A public window on the city + an instant first paint. No token/chain code
+(M4 gate holds) — the token tiles are published placeholders.
+- P3 — `shared/publicStats.ts` is the ONE contract: the `PublicStats` shape +
+  `cityStatTiles()` formatter + `TOKEN_LEDGER_TILES` + `LEDGER_FOOTER`. The
+  server endpoint and the `/ledger` page both format through it, so they can't
+  drift; a future marketing page imports the same module. (No marketing page
+  exists yet — the shape is documented here regardless.) Everything is
+  aggregate + non-personal + backward-looking; comms-locked (a vitest asserts
+  no earn/yield/price language anywhere in the copy).
+- P1 — `GET /api/public-stats` (server): no auth, 60s in-memory cache,
+  permissive CORS + Cache-Control so a marketing page can read it. Returns
+  Sparks registered / active today, Bolts in circulation, Bolts sunk this week
+  (tolls/repairs/fees), trades completed, Citywide Charge tier, busiest
+  district — no usernames, no per-player rows, no wallet anything. Serves the
+  last good snapshot on a DB hiccup. Exempt from the origin allow-list (it's
+  public read-only).
+- P2 — `GET /ledger` (server): AMPERIA-branded dark dashboard, live city tiles
+  (server-rendered from the shared helper, refreshed every 60s from the API —
+  the browser only writes pre-formatted strings, no client formatting → no
+  drift), a greyed TOKEN LEDGER section ($AMP burned / treasury / buyback /
+  champions' purse, each "— awaiting first ledger —"), and the locked footer
+  "Updated monthly in public. Nothing here is ever estimated."
+- P4 — instant boot loader inline in `client/index.html` (pure HTML/CSS, so
+  it is the FIRST paint before the bundle is fetched): near-black warm void
+  (#0A0814, never pure black/white), amber-gradient AMPERIA wordmark + glow,
+  tagline, and a thin amber progress bar driven by the Phaser asset loader
+  (`bootProgress`), with a compositor sheen that survives the bake step.
+  `LoginScene.create` calls `bootDone()` → 300ms fade → removed from the DOM.
+  Verified on a Fast-3G cold load (production build): loader is first paint
+  (no white flash), bar fills with real progress, fades to the title at ~16s.
+
 ## Status after the 2026-07-12 CLICK & CLARITY FIX block (C1–C4)
 
 Production-feedback fixes from real play: couldn't reliably click a stall to
