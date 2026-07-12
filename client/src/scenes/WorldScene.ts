@@ -118,6 +118,24 @@ import { gameState, GameEvents } from '../state/GameState';
 
 
 /**
+ * C1/C2: one registered world interactable (merchant, stall, tram, coil,
+ * bank, bench, dispatcher, warden, dispatch post, garden bed). The central
+ * pointer resolver hit-tests these by rendered bounds; the E path drives the
+ * nearest in-reach one. `interact()` is the full proximity-gated action
+ * (approach if too far, else act).
+ */
+interface PropInteract {
+  sprite: Phaser.GameObjects.Image;
+  /** Footprint anchor tile — for Chebyshev proximity + the E path. */
+  tile: { x: number; y: number };
+  /** Reach in tiles for the E prompt / E key. */
+  radius: number;
+  /** C2 prompt verb, e.g. "Trade", "Tram", "Spin". */
+  verb: string;
+  interact: () => void;
+}
+
+/**
  * The Filament, rendered from server truth. The client sends intents (move,
  * gather, glint clicks, stack moves) and animates the results — it never
  * decides yields, positions-for-loot, or inventory contents.
@@ -148,6 +166,12 @@ export class WorldScene extends Phaser.Scene {
   private sparks = new Map<string, Spark>();
   /** R1: the universal interaction language (pictograms / labels / hover). */
   private markers!: InteractionMarkers;
+  /** C1/C2: central interactable registry — one hit resolver + the E path. */
+  private propInteracts: PropInteract[] = [];
+  /** C2: the on-object "E — …" prompt + its current nearest target. */
+  private ePrompt: Phaser.GameObjects.Container | null = null;
+  private ePromptText!: Phaser.GameObjects.Text;
+  private eTarget: PropInteract | null = null;
   private mobs = new Map<string, Mob>();
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
@@ -384,15 +408,20 @@ export class WorldScene extends Phaser.Scene {
     ) => {
       if (!ptr.leftButtonDown() || this.room === null) return;
       ev.stopPropagation();
-      if (this.coilSpinning) return;
-      if (this.coilSpunToday) {
-        session.events.emit(SessionEvents.notice, 'The Coil rests until tomorrow.');
-        return;
-      }
-      send.coilSpin(this.room);
+      this.tryCoilSpin();
     };
     frame.on('pointerdown', trySpin);
     wheel.on('pointerdown', trySpin);
+  }
+
+  /** C1/C2: the daily-gated Coil spin — shared by the wheel click and E. */
+  private tryCoilSpin(): void {
+    if (this.room === null || this.coilSpinning) return;
+    if (this.coilSpunToday) {
+      session.events.emit(SessionEvents.notice, 'The Coil rests until tomorrow.');
+      return;
+    }
+    send.coilSpin(this.room);
   }
 
   /** Spin to the rolled segment: 4 slow turns, ratchet ticks, ease-out
@@ -531,6 +560,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.markers !== undefined) {
       const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
       this.markers.update(me?.settledTile ?? null, deltaMs);
+      // C2: keep the "E — …" prompt on the nearest in-reach interactable.
+      this.updateEPrompt(me);
     }
     // R3: aim the guided-loop arrow at the current target.
     if (this.tutorialArrow !== undefined) this.updateTutorialArrow(time);
@@ -1219,9 +1250,20 @@ export class WorldScene extends Phaser.Scene {
   // ── input ──────────────────────────────────────────────────────────────
 
   private setupInput(): void {
+    this.buildEPrompt();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown() || this.room === null) return;
       const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      // C1: an interactable beats a ground-move. Hit-test the registered
+      // interactables by their full rendered bounds; where bounds overlap
+      // (tall iso sprites, transparent corners), the one whose CENTRE is
+      // nearest the cursor wins — so clicking a stall's awning never opens
+      // the tram behind it. Decoration is never registered, so never captures.
+      const hit = this.pickInteractAt(world.x, world.y);
+      if (hit !== null) {
+        hit.interact();
+        return;
+      }
       const t = worldToTileFloor(world.x, world.y);
       if (this.map.walkable[t.ty]?.[t.tx] === true) {
         this.sendMove({ x: t.tx, y: t.ty });
@@ -1229,6 +1271,145 @@ export class WorldScene extends Phaser.Scene {
         this.pulseTile(t.tx, t.ty);
       }
     });
+    // C2: E interacts with the nearest in-reach interactable. It only fires
+    // when one is in range (session.eInteractActive) so it never steals the
+    // emote wheel (UIScene) elsewhere.
+    this.input.keyboard?.on('keydown-E', (ev: KeyboardEvent) => {
+      if (ev.repeat) return;
+      if (document.activeElement instanceof HTMLInputElement) return;
+      if (this.eTarget === null) return;
+      sound.uiClick();
+      this.eTarget.interact();
+    });
+  }
+
+  /**
+   * C1: register a world interactable. `img` supplies the clickable rendered
+   * bounds; `approach` (when set) makes a too-far click/E walk the Spark up to
+   * the object first (the merchant/stall/etc behaviour), otherwise the action
+   * fires immediately and the server enforces range (bank, coil).
+   */
+  private registerInteract(
+    img: Phaser.GameObjects.Image,
+    tile: { x: number; y: number },
+    radius: number,
+    verb: string,
+    action: () => void,
+    approach?: { moveTo?: { x: number; y: number }; hint: string },
+  ): void {
+    const interact =
+      approach === undefined
+        ? action
+        : () => this.approachOrAct(tile, radius, approach.moveTo ?? tile, approach.hint, img, action);
+    this.propInteracts.push({ sprite: img, tile, radius, verb, interact });
+  }
+
+  /** Act if the Spark is within `radius`, else float a hint and step closer. */
+  private approachOrAct(
+    tile: { x: number; y: number },
+    radius: number,
+    moveTo: { x: number; y: number },
+    hint: string,
+    img: Phaser.GameObjects.Image,
+    action: () => void,
+  ): void {
+    if (this.room === null) return;
+    const me = this.sparks.get(this.room.sessionId);
+    if (me === undefined) return;
+    const d = Math.max(Math.abs(me.settledTile.x - tile.x), Math.abs(me.settledTile.y - tile.y));
+    if (d > radius) {
+      floatText(this, img.x, img.y - 60, hint, PALETTE.warmGlow);
+      const step = this.nearestAdjacentWalkable(moveTo, me.settledTile);
+      if (step !== null) this.sendMove(step);
+      return;
+    }
+    action();
+  }
+
+  /** C1: nearest-centre-to-cursor among interactables whose bounds contain it. */
+  private pickInteractAt(wx: number, wy: number): PropInteract | null {
+    let best: PropInteract | null = null;
+    let bestD = Infinity;
+    for (const it of this.propInteracts) {
+      const s = it.sprite;
+      if (!s.active || !s.visible) continue;
+      if (!s.getBounds().contains(wx, wy)) continue;
+      const c = s.getCenter();
+      const d = Phaser.Math.Distance.Between(c.x, c.y, wx, wy);
+      if (d < bestD) {
+        bestD = d;
+        best = it;
+      }
+    }
+    return best;
+  }
+
+  /** C2: build the reusable "E — …" prompt pill (hidden until near one). */
+  private buildEPrompt(): void {
+    const bg = this.add.graphics();
+    bg.fillStyle(PALETTE_INT.ink, 0.82);
+    bg.fillRoundedRect(-46, -13, 92, 26, 13);
+    bg.lineStyle(1.5, PALETTE_INT.neonAmber, 0.7);
+    bg.strokeRoundedRect(-46, -13, 92, 26, 13);
+    const txt = this.add
+      .text(0, 0, 'E — Trade', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: PALETTE.warmGlow,
+      })
+      .setOrigin(0.5);
+    this.ePromptText = txt;
+    const box = this.add.container(0, 0, [bg, txt]);
+    box.setDepth(1e6);
+    box.setVisible(false);
+    this.ePrompt = box;
+  }
+
+  /**
+   * C2: each frame, find the nearest interactable within its reach of the
+   * Spark and float an "E — <verb>" prompt on it; drive session.eInteractActive
+   * so the emote wheel yields the E key while one is in range.
+   */
+  private updateEPrompt(me: Spark | undefined): void {
+    if (this.ePrompt === null) return;
+    let target: PropInteract | null = null;
+    let bestD = Infinity;
+    let bestPrio = -1;
+    if (me !== undefined) {
+      for (const it of this.propInteracts) {
+        if (!it.sprite.active || !it.sprite.visible) continue;
+        // In reach = Chebyshev tiles ≤ radius.
+        const cheb = Math.max(
+          Math.abs(me.settledTile.x - it.tile.x),
+          Math.abs(me.settledTile.y - it.tile.y),
+        );
+        if (cheb > it.radius) continue;
+        // A service (merchant/bank/bench/NPC/tram/coil) outranks a crowding
+        // player stall for the ambiguous keyboard path, so "walk to the
+        // Merchant and press E" always sells even when a stall is a hair
+        // closer. Within a tier, the physically nearest (Euclidean) wins —
+        // no integer-tie flip-flop. (Clicks keep pure nearest-centre.)
+        const prio = it.verb === 'Browse' ? 0 : 1;
+        const w = tileToWorld(it.tile.x, it.tile.y);
+        const d = Phaser.Math.Distance.Between(me.image.x, me.image.y, w.x, w.y);
+        if (prio > bestPrio || (prio === bestPrio && d < bestD)) {
+          bestPrio = prio;
+          bestD = d;
+          target = it;
+        }
+      }
+    }
+    this.eTarget = target;
+    session.eInteractActive = target !== null;
+    if (target === null) {
+      this.ePrompt.setVisible(false);
+      return;
+    }
+    const b = target.sprite.getBounds();
+    this.ePrompt.setPosition(Math.round(b.centerX), Math.round(b.top - 14));
+    this.ePromptText.setText(`E — ${target.verb}`);
+    this.ePrompt.setVisible(true);
   }
 
   /**
@@ -1236,11 +1417,23 @@ export class WorldScene extends Phaser.Scene {
    * the interactable props + gather nodes — decoration is never registered,
    * so the presence of a pictogram/label/hover ring always means "real".
    */
+  /** C3: the Nightstalls merchant's name — distinct from the player stalls. */
+  private static readonly MERCHANT_NAME = 'Sable';
+
   private buildInteractionMarkers(): void {
     this.markers = new InteractionMarkers(this);
     for (const p of this.map.props) {
       if (INTERACTABLE_STYLES[p.kind] === undefined) continue;
-      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h });
+      // C3: the merchant is uniquely named so it's not one of nine identical
+      // "Market Stall" tags; player stalls start "Empty Stall" and take their
+      // owner's name when the stall state syncs (renderStallFront).
+      const name =
+        p.kind === 'merchant'
+          ? `Merchant — ${WorldScene.MERCHANT_NAME}`
+          : p.kind === 'stall'
+            ? 'Empty Stall'
+            : undefined;
+      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h }, name);
     }
     for (const n of this.map.nodes) {
       if (INTERACTABLE_STYLES[n.kind] === undefined) continue;
@@ -1256,8 +1449,8 @@ export class WorldScene extends Phaser.Scene {
   private static readonly TUT_GATHER = 5;
   private static readonly TUT_LABELS = [
     'Gather 5 Salvage from the glinting heap',
-    'Sell your Salvage at the Merchant',
-    'Buy a Warmcup from the Merchant',
+    'Sell at the Merchant — press E',
+    'Buy a Warmcup — press E',
   ];
 
   /** Watch inventory/Bolts and drive the three-step first loop. */
@@ -1379,6 +1572,15 @@ export class WorldScene extends Phaser.Scene {
       active: this.tutorialStep,
     };
     session.events.emit(SessionEvents.tutorial, model);
+    this.updateMerchantHighlight();
+  }
+
+  /** C3: amber-pin the merchant's label while the loop points there (sell/buy). */
+  private updateMerchantHighlight(): void {
+    if (this.markers === undefined) return;
+    const m = this.map.props.find((p) => p.kind === 'merchant');
+    if (m === undefined) return;
+    this.markers.setHighlight(m.x, m.y, this.tutorialStep === 1 || this.tutorialStep === 2);
   }
 
   /** World position the arrow currently points at (heap → merchant). */
@@ -2331,7 +2533,15 @@ export class WorldScene extends Phaser.Scene {
     this.stallFronts.get(stallId)?.destroy();
     this.stallFronts.delete(stallId);
     const spot = this.map.shopStalls.find((sp) => sp.id === stallId);
-    if (spot === undefined || s.ownerName === '') return;
+    if (spot === undefined) return;
+    // C3: the marker label carries the owner (or "Empty Stall"), so the
+    // market row reads as distinct pitches, not nine identical tags.
+    this.markers?.setLabel(
+      spot.x,
+      spot.y,
+      s.ownerName === '' ? 'Empty Stall' : `${s.ownerName}'s Stall`,
+    );
+    if (s.ownerName === '') return;
     const { x, y } = this.propAnchor({ kind: 'stall', ...spot, variant: 0 });
     const parts: Phaser.GameObjects.GameObject[] = [];
     const shingle = this.add.text(x, y - 96, s.ownerName, {
@@ -2481,31 +2691,16 @@ export class WorldScene extends Phaser.Scene {
           // Every lane stall is a rentable player pitch: click to browse
           // (the server answers with the stall's detail panel).
           const stallId = stallSeq++;
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > CONFIG.economy.shops.reachTiles) {
-                floatText(this, img.x, img.y - 70, 'step up to the stall', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              send.shop(this.room, { action: 'browse', stallId });
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            CONFIG.economy.shops.reachTiles,
+            'Browse',
+            () => {
+              if (this.room !== null) send.shop(this.room, { action: 'browse', stallId });
             },
+            { hint: 'step up to the stall' },
           );
           // Lantern glow on the baked lantern voxel (right post, mid-height)
           // — layered core + hue bloom (addendum b).
@@ -2806,24 +3001,15 @@ export class WorldScene extends Phaser.Scene {
           const img = this.propSprite(`gardenbed-${p.variant % 3}`, x, y);
           // U1b: click to tend (start), click again on the pulse (cue).
           const bedIdx = this.map.props.filter((pp) => pp.kind === 'gardenbed').indexOf(p);
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              if (this.tendingBed === bedIdx) {
-                this.room.send(MSG.tend, { action: 'cue' });
-                return;
-              }
-              this.room.send(MSG.tend, { action: 'start', bed: bedIdx });
-            },
-          );
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(img, { x: p.x, y: p.y }, 1, 'Tend', () => {
+            if (this.room === null) return;
+            if (this.tendingBed === bedIdx) {
+              this.room.send(MSG.tend, { action: 'cue' });
+              return;
+            }
+            this.room.send(MSG.tend, { action: 'start', bed: bedIdx });
+          });
           break;
         }
         case 'toolshed': {
@@ -2857,31 +3043,26 @@ export class WorldScene extends Phaser.Scene {
           addLayeredGlow(this, hall.x, hall.y - 24, PALETTE_INT.warmGlow, 0.6, img.depth + 1, 0.4);
           const door = tileToWorld(p.x + 1, p.y + 3);
           addLayeredGlow(this, door.x, door.y - 30, PALETTE_INT.neonAmber, 0.32, img.depth + 1, 0.5);
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              ptr: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              ev: Phaser.Types.Input.EventData,
-            ) => {
-              if (!ptr.leftButtonDown() || this.room === null) return;
-              ev.stopPropagation();
-              // The server refuses politely unless you stand in the hall.
-              send.bank(this.room, { action: 'open' });
-            },
-          );
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          // The server refuses politely unless you stand in the hall — no
+          // client approach gate, so this fires immediately when clicked/E'd.
+          this.registerInteract(img, { x: p.x + 1, y: p.y + 3 }, 3, 'Bank', () => {
+            if (this.room !== null) send.bank(this.room, { action: 'open' });
+          });
           break;
         }
         case 'fortunecoil': {
           const img = this.propSprite('fortunecoil', x, y);
-          img.setInteractive({ useHandCursor: true });
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
           hoverTip(img, () => ({
             title: 'The Fortune Coil',
             sub: 'one free spin a day',
             lines: ['Cosmetic prizes, nothing else. The wheel owes nobody.'],
           }));
+          // The server holds the daily gate + proximity; act immediately.
+          this.registerInteract(img, { x: p.x + 1, y: p.y + 1 }, 3, 'Spin', () =>
+            this.tryCoilSpin(),
+          );
           this.placeCoilFace(p, img);
           break;
         }
@@ -2963,31 +3144,22 @@ export class WorldScene extends Phaser.Scene {
             sub: 'parcel runs · the Stacks',
             lines: ['Take a parcel, find the tower, reach the landing.'],
           }));
-          // U1a: parcels post here. Click = take one (or hear your status).
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              if (this.delivery !== null) {
-                floatText(
-                  this,
-                  img.x,
-                  img.y - 70,
-                  `${this.delivery.tower}: ${this.delivery.line ?? ''}`,
-                  PALETTE.neonAmber,
-                );
-                return;
-              }
-              this.room.send(MSG.delivery, { action: 'take' });
-            },
-          );
+          // U1a: parcels post here. Click/E = take one (or hear your status).
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(img, { x: p.x, y: p.y }, 2, 'Parcel', () => {
+            if (this.room === null) return;
+            if (this.delivery !== null) {
+              floatText(
+                this,
+                img.x,
+                img.y - 70,
+                `${this.delivery.tower}: ${this.delivery.line ?? ''}`,
+                PALETTE.neonAmber,
+              );
+              return;
+            }
+            this.room.send(MSG.delivery, { action: 'take' });
+          });
           const sign = this.add.image(x + 22, y - 58, 'fx-glow');
           sign.setTint(PALETTE_INT.neonAmber);
           sign.setBlendMode(Phaser.BlendModes.ADD);
@@ -3006,31 +3178,14 @@ export class WorldScene extends Phaser.Scene {
           }));
           // Ride the tram (D3): click opens the stop board — every other
           // district on the line, tolls charged per hop server-side.
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > 4) {
-                floatText(this, img.x, img.y - 70, 'the tram leaves from the gate', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y + 2 }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              this.toggleTramBoard(img.x, img.y - 60);
-            },
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            4,
+            'Tram',
+            () => this.toggleTramBoard(img.x, img.y - 60),
+            { moveTo: { x: p.x, y: p.y + 2 }, hint: 'the tram leaves from the gate' },
           );
           // Sign glow over the lane + beacon + arrival pool of light.
           const sign = this.add.image(x - 26, y - 84, 'fx-glow');
@@ -3056,31 +3211,14 @@ export class WorldScene extends Phaser.Scene {
             sub: 'buys the five resources',
             lines: ['Published bands, honest scales. Daily cap applies.'],
           }));
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > CONFIG.economy.merchant.tradeRadiusTiles) {
-                floatText(this, img.x, img.y - 60, 'step closer to trade', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              session.events.emit(SessionEvents.openMerchant);
-            },
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            CONFIG.economy.merchant.tradeRadiusTiles,
+            'Trade',
+            () => session.events.emit(SessionEvents.openMerchant),
+            { hint: 'step closer to trade' },
           );
           // Lantern glow + a warm pool: the stand is a real light source.
           const lamp = this.add.image(x + 26, y - 34, 'fx-glow');
@@ -3100,31 +3238,14 @@ export class WorldScene extends Phaser.Scene {
             sub: 'craft · repair',
             lines: ['Builds gear, mends what broke. Nothing is ever lost for good.'],
           }));
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > CONFIG.gear.benchRadiusTiles) {
-                floatText(this, img.x, img.y - 50, 'step up to the bench', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              session.events.emit(SessionEvents.openBench);
-            },
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            CONFIG.gear.benchRadiusTiles,
+            'Craft',
+            () => session.events.emit(SessionEvents.openBench),
+            { hint: 'step up to the bench' },
           );
           // The screen is the light: teal glow + a small cool pool.
           const screen = this.add.image(x - 4, y - 20, 'fx-glow');
@@ -3140,31 +3261,14 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'dispatcher': {
           const img = this.propSprite('dispatcher', x, y);
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > CONFIG.quests.npcRadiusTiles) {
-                floatText(this, img.x, img.y - 50, 'step up to the board', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              session.events.emit(SessionEvents.openQuests);
-            },
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            CONFIG.quests.npcRadiusTiles,
+            'Board',
+            () => session.events.emit(SessionEvents.openQuests),
+            { hint: 'step up to the board' },
           );
           const glow = this.add.image(x - 8, y - 30, 'fx-glow');
           glow.setTint(PALETTE_INT.neonAmber);
@@ -3178,32 +3282,17 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'warden': {
           const img = this.propSprite('warden', x, y);
-          img.setInteractive({ useHandCursor: true });
-          img.on(
-            'pointerdown',
-            (
-              pointer: Phaser.Input.Pointer,
-              _lx: number,
-              _ly: number,
-              event: Phaser.Types.Input.EventData,
-            ) => {
-              if (!pointer.leftButtonDown() || this.room === null) return;
-              event.stopPropagation();
-              const me = this.sparks.get(this.room.sessionId);
-              if (me === undefined) return;
-              const d = Math.max(
-                Math.abs(me.settledTile.x - p.x),
-                Math.abs(me.settledTile.y - p.y),
-              );
-              if (d > CONFIG.quests.npcRadiusTiles) {
-                floatText(this, img.x, img.y - 50, 'the Warden is by the Dynamo', PALETTE.warmGlow);
-                const step = this.nearestAdjacentWalkable({ x: p.x, y: p.y }, me.settledTile);
-                if (step !== null) this.sendMove(step);
-                return;
-              }
-              // The Warden's ledger: meter + leaderboard + donate buttons.
-              send.chargeInfo(this.room);
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          // The Warden's ledger: meter + leaderboard + donate buttons.
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            CONFIG.quests.npcRadiusTiles,
+            'Charge',
+            () => {
+              if (this.room !== null) send.chargeInfo(this.room);
             },
+            { hint: 'the Warden is by the Dynamo' },
           );
           const glow = this.add.image(x + 12, y - 34, 'fx-glow');
           glow.setTint(PALETTE_INT.neonTeal);

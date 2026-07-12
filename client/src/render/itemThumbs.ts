@@ -366,6 +366,57 @@ const COSMETIC_MODELS: Record<string, () => Voxel[]> = {
     { x: 0, y: 2, z: 1, c: PALETTE_INT.neonCyan },
     { x: 2, y: 0, z: 1, c: PALETTE_INT.neonCyan },
   ],
+
+  // ── The Cosmetic Foundry (premium) thumbs ──────────────────────────────
+  auroraCrown: () => {
+    const v: Voxel[] = box(0, 1, 0, 4, 1, 1, blendInt(PALETTE_INT.violetNeon, C.ink, 0.3));
+    for (const [x, h] of [[0, 2], [1, 3], [2, 2], [3, 3]] as const) {
+      for (let i = 0; i < h; i++) {
+        v.push({ x, y: 1, z: 1 + i, c: i === h - 1 ? PALETTE_INT.neonCyan : PALETTE_INT.violetNeon });
+      }
+    }
+    return v;
+  },
+  firstLightCrown: () => {
+    const v: Voxel[] = box(0, 1, 0, 4, 1, 1, blendInt(C.amber, C.ink, 0.3));
+    for (const [x, h] of [[0, 2], [1, 3], [2, 2], [3, 3]] as const) {
+      for (let i = 0; i < h; i++) {
+        v.push({ x, y: 1, z: 1 + i, c: i === h - 1 ? C.glow : C.amber });
+      }
+    }
+    return v;
+  },
+  filamentWings: () => {
+    const v: Voxel[] = [];
+    for (const [x, dir] of [[1, -1], [2, 1]] as const) {
+      for (let i = 0; i < 3; i++) {
+        v.push({ x: x + dir * i, y: 1, z: i, c: i === 2 ? C.amber : PALETTE_INT.neonCyan });
+      }
+    }
+    return v;
+  },
+  duskBloomMantle: () => {
+    const v: Voxel[] = box(0, 1, 2, 4, 1, 1, PALETTE_INT.violetNeon);
+    v.push(...box(1, 1, 0, 2, 1, 2, blendInt(PALETTE_INT.violetNeon, C.ink, 0.4)));
+    v.push({ x: 0, y: 1, z: 1, c: PALETTE_INT.neonCyan });
+    v.push({ x: 3, y: 1, z: 1, c: PALETTE_INT.neonCyan });
+    return v;
+  },
+  emberdriftCape: () => {
+    const v: Voxel[] = box(0, 1, 2, 4, 1, 1, PALETTE_INT.emberOrange);
+    v.push(...box(1, 1, 0, 2, 1, 2, blendInt(PALETTE_INT.emberOrange, C.ink, 0.4)));
+    v.push({ x: 0, y: 1, z: 1, c: C.glow });
+    v.push({ x: 3, y: 1, z: 1, c: C.glow });
+    return v;
+  },
+  nightmarketCoat: () => {
+    const coat = blendInt(PALETTE_INT.violetNeon, PALETTE_INT.structureMid, 0.35);
+    const v: Voxel[] = box(0, 1, 0, 4, 1, 3, blendInt(coat, C.ink, 0.35));
+    v.push(...box(1, 1, 0, 2, 1, 3, coat));
+    v.push({ x: 1, y: 1, z: 2, c: C.amber }); // button
+    v.push({ x: 2, y: 1, z: 1, c: C.amber });
+    return v;
+  },
 };
 
 export function cosmeticThumbKey(id: string): string {

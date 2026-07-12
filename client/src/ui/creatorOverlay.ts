@@ -495,6 +495,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     const closeBtn = button('Keep the old look', false);
     closeBtn.onclick = () => {
       window.clearInterval(turntable);
+      document.removeEventListener('keydown', onKey, true);
       root.remove();
       opts.onCancel?.();
     };
@@ -506,6 +507,57 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   document.body.append(root);
   refreshAll();
 
+  // ── S3: F9 clean-shot ─────────────────────────────────────────────────
+  // Hides the controls chrome and drops the turntable onto a dark warm
+  // vignette with a small AMPERIA wordmark bottom-right — a marketing-shot
+  // aid for the creator, matching the Foundry/Manifest F9 mode. Esc/F9 exits.
+  let clean = false;
+  const wordmark = document.createElement('div');
+  wordmark.textContent = 'AMPERIA';
+  wordmark.style.cssText = [
+    'position:fixed',
+    'right:26px',
+    'bottom:20px',
+    `color:${PALETTE.neonAmber}`,
+    'font-family:monospace',
+    'font-size:18px',
+    'font-weight:bold',
+    'letter-spacing:3px',
+    'opacity:.72',
+    `text-shadow:0 0 10px ${PALETTE.neonAmber}`,
+    'display:none',
+    'pointer-events:none',
+    'z-index:12',
+  ].join(';');
+  root.append(wordmark);
+  const setClean = (v: boolean): void => {
+    clean = v;
+    root.style.background = v
+      ? `radial-gradient(ellipse at 50% 44%, ${PALETTE.duskSky} 0%, ${PALETTE.ink} 80%)`
+      : `${PALETTE.duskSky}CC`;
+    panel.style.background = v ? 'transparent' : PALETTE.structureMid;
+    panel.style.border = v ? 'none' : `2px solid ${PALETTE.ink}`;
+    panel.style.boxShadow = v ? 'none' : '0 12px 40px rgba(0,0,0,0.35)';
+    controls.style.display = v ? 'none' : 'flex';
+    caption.style.display = v ? 'none' : 'block';
+    wordmark.style.display = v ? 'block' : 'none';
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (!root.isConnected) {
+      document.removeEventListener('keydown', onKey, true);
+      return;
+    }
+    if (e.key === 'F9') {
+      e.preventDefault();
+      setClean(!clean);
+    } else if (e.key === 'Escape' && clean) {
+      e.preventDefault();
+      e.stopPropagation();
+      setClean(false);
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+
   return {
     setError(text: string): void {
       msg.textContent = text;
@@ -514,6 +566,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     },
     close(): void {
       window.clearInterval(turntable);
+      document.removeEventListener('keydown', onKey, true);
       root.remove();
     },
   };

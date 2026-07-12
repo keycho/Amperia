@@ -15,6 +15,7 @@ import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
 import { ChargePanel } from '../ui/ChargePanel';
 import { ShopPanel } from '../ui/ShopPanel';
+import { FoundryPanel } from '../ui/FoundryPanel';
 import { itemThumbKey } from '../render/itemThumbs';
 import { SlotStrip } from '../ui/SlotStrip';
 import { InspectCard } from '../ui/InspectCard';
@@ -63,6 +64,7 @@ export class UIScene extends Phaser.Scene {
   private emoteWheel!: EmoteWheel;
   private restedText!: Phaser.GameObjects.Text;
   private shopPanel!: ShopPanel;
+  private foundryPanel!: FoundryPanel;
   private chargePanel!: ChargePanel;
   private buffChip!: Phaser.GameObjects.Text;
   private questChip!: Phaser.GameObjects.Text;
@@ -70,6 +72,9 @@ export class UIScene extends Phaser.Scene {
   private toast: Phaser.GameObjects.Container | null = null;
   /** R3: the "First Bolts" checklist panel + the two revealable HUD icons. */
   private tutorialPanel: Phaser.GameObjects.Container | null = null;
+  /** C4: true while the finished checklist is fading out — keeps its column
+   *  slot reserved (and the quest tracker suppressed) until it's destroyed. */
+  private tutorialClosing = false;
   private tutorialLines: Phaser.GameObjects.Text[] = [];
   private discloseIcons: Phaser.GameObjects.GameObject[] = [];
   private toastQueue: string[] = [];
@@ -77,6 +82,11 @@ export class UIScene extends Phaser.Scene {
   private lastRested: RestedSync | null = null;
   private banner: Phaser.GameObjects.Container | null = null;
   private lastBannerAt = -Infinity;
+  /** S3: F9 clean-shot mode — a dark warm vignette that masks the HUD/world
+   *  so the open panel stands alone for a marketing screenshot. */
+  private cleanShot = false;
+  private cleanLayer: Phaser.GameObjects.Container | null = null;
+  private hiddenForShot: Phaser.GameObjects.GameObject[] = [];
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
   private hp = { hp: 0, maxHp: 0 };
@@ -195,7 +205,9 @@ export class UIScene extends Phaser.Scene {
   /** Render the Rested banner from a payload — gated until first Bolts (R3). */
   private applyRested(e: RestedSync): void {
     if (firstLoop.active && !firstLoop.boltsEarned) {
+      this.restedText.setText('');
       this.restedText.setAlpha(0);
+      this.layoutLeftColumn();
       return;
     }
     if (e.msLeft > 0) {
@@ -205,8 +217,18 @@ export class UIScene extends Phaser.Scene {
       this.restedText.setAlpha(1);
     } else if (this.restedText.text !== '') {
       this.restedText.setText('✦ Rested spent for today — back tomorrow');
-      this.tweens.add({ targets: this.restedText, alpha: 0, delay: 4000, duration: 600 });
+      this.tweens.add({
+        targets: this.restedText,
+        alpha: 0,
+        delay: 4000,
+        duration: 600,
+        onComplete: () => {
+          this.restedText.setText('');
+          this.layoutLeftColumn();
+        },
+      });
     }
+    this.layoutLeftColumn();
   }
 
   /** R3/R6b: queue toast pills so they play one at a time, in order. A short
@@ -282,6 +304,77 @@ export class UIScene extends Phaser.Scene {
   }
 
   /**
+   * S3: F9 clean-shot mode. Drops a full-screen dark warm vignette at depth
+   * 1100 — above every HUD widget (≤950) and below every panel (1150+), so
+   * whatever panel is open floats alone on a clean backdrop with a small
+   * AMPERIA wordmark bottom-right. Purely a screenshot aid; Esc/F9 exits.
+   * Rebuilt fresh each time it opens so it always matches the viewport.
+   */
+  toggleCleanShot(): void {
+    this.setCleanShot(!this.cleanShot);
+  }
+
+  private setCleanShot(on: boolean): void {
+    this.cleanShot = on;
+    this.cleanLayer?.destroy();
+    this.cleanLayer = null;
+    if (!on) {
+      // Restore exactly the HUD widgets we hid (leave already-hidden ones).
+      for (const o of this.hiddenForShot) {
+        const wo = o as Phaser.GameObjects.GameObject & { setVisible(v: boolean): unknown };
+        wo.setVisible(true);
+      }
+      this.hiddenForShot.length = 0;
+      return;
+    }
+    // Hide every HUD widget (the hotbar sits at depth 1000, chips ≤950) so
+    // the showcase panel stands alone. The showcase panels — Foundry (1180),
+    // Manifest/Goal (1150) — are at ≥1150 and are left untouched; the world
+    // (a separate scene) stays as a faint backdrop under the scrim.
+    this.hiddenForShot.length = 0;
+    for (const o of this.children.list) {
+      const wo = o as Phaser.GameObjects.GameObject & {
+        depth?: number;
+        visible?: boolean;
+        setVisible(v: boolean): unknown;
+      };
+      if (wo.visible === true && (wo.depth ?? 0) < 1150) {
+        wo.setVisible(false);
+        this.hiddenForShot.push(o);
+      }
+    }
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const layer = this.add.container(0, 0);
+    layer.setDepth(1100);
+    // Dark warm scrim + a soft centre lift → a vignette, not a flat modal.
+    // Warm ink (never pure black — art rule 10) at high alpha buries the HUD.
+    const scrim = this.add.graphics();
+    scrim.fillStyle(PALETTE_INT.ink, 0.93);
+    scrim.fillRect(0, 0, w, h);
+    layer.add(scrim);
+    const glow = this.add.image(w / 2, h / 2, 'fx-glow');
+    glow.setTint(PALETTE_INT.warmGlow);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    glow.setAlpha(0.1);
+    glow.setScale(Math.max(w, h) / 190);
+    layer.add(glow);
+    // AMPERIA wordmark, bottom-right.
+    const mark = this.add.text(w - 26, h - 22, 'AMPERIA', {
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      fontStyle: 'bold',
+      color: PALETTE.neonAmber,
+    });
+    mark.setOrigin(1, 1);
+    mark.setAlpha(0.72);
+    mark.setLetterSpacing(3);
+    mark.setShadow(0, 0, PALETTE.neonAmber, 10, false, true);
+    layer.add(mark);
+    this.cleanLayer = layer;
+  }
+
+  /**
    * R3: the "First Bolts" checklist — a small top-left panel with three
    * steps, the active one lit amber with a ›, done ones checked. Fades out
    * when the loop completes.
@@ -311,6 +404,7 @@ export class UIScene extends Phaser.Scene {
       panel.setAlpha(0);
       this.tutorialPanel = panel;
       this.tweens.add({ targets: panel, alpha: 1, duration: 400 });
+      this.layoutLeftColumn();
     }
     m.steps.forEach((step, i) => {
       const line = this.tutorialLines[i];
@@ -323,16 +417,23 @@ export class UIScene extends Phaser.Scene {
     });
     // Reveal the previously-hidden HUD icons once the first Bolts land.
     if (firstLoop.boltsEarned && this.discloseIcons.length === 0) this.revealDiscloseIcons();
-    // Loop complete: let it read, then fade the checklist away.
-    if (m.active === -1 && this.tutorialPanel !== null) {
+    // Loop complete: let it read, then fade the checklist away. C4: the panel
+    // keeps its column slot (tutorialClosing) until it's actually destroyed,
+    // so the quest tracker doesn't jump up UNDER the still-fading checklist.
+    if (m.active === -1 && this.tutorialPanel !== null && !this.tutorialClosing) {
+      this.tutorialClosing = true;
       const panel = this.tutorialPanel;
-      this.tutorialPanel = null;
       this.time.delayedCall(3200, () =>
         this.tweens.add({
           targets: panel,
           alpha: 0,
           duration: 500,
-          onComplete: () => panel.destroy(),
+          onComplete: () => {
+            panel.destroy();
+            this.tutorialPanel = null;
+            this.tutorialClosing = false;
+            this.layoutLeftColumn();
+          },
         }),
       );
     }
@@ -470,6 +571,7 @@ export class UIScene extends Phaser.Scene {
       this.inspectCard.show(ev),
     );
     this.shopPanel = new ShopPanel(this);
+    this.foundryPanel = new FoundryPanel(this);
     this.chargePanel = new ChargePanel(this);
 
     // The weekend city buff, worn like a banner (comms rules: a reward
@@ -490,6 +592,7 @@ export class UIScene extends Phaser.Scene {
             ? `☀ Weekend city buff — +${c.buffPct}% gather XP, with the city's thanks`
             : '',
         );
+        this.layoutLeftColumn();
         if (this.chargePanel.visible) this.chargePanel.refresh();
       },
     );
@@ -504,6 +607,7 @@ export class UIScene extends Phaser.Scene {
     this.questChip.setDepth(900);
     session.events.on(SessionEvents.questTracker, (line: string) => {
       this.questChip.setText(line === '' ? '' : `◈ ${line}`);
+      this.layoutLeftColumn();
     });
     // U5c: a quest turned in gets its stamp — a punchy chip + thunk.
     const questStates = new Map<string, string>();
@@ -638,6 +742,44 @@ export class UIScene extends Phaser.Scene {
     this.chargePanel.setPosition((w - cp.w) / 2, Math.max(30, (h - cp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
+    this.layoutLeftColumn();
+  }
+
+  /**
+   * C4: stack every top-left HUD element in ONE vertical flow — measured
+   * heights, fixed gaps, nothing absolutely positioned into the column.
+   * Empty/hidden rows collapse so nothing overlaps. While the FIRST BOLTS
+   * checklist is up it takes the slot AND the separate quest-tracker line is
+   * suppressed entirely (the checklist IS the tracker).
+   */
+  private layoutLeftColumn(): void {
+    const x = 12;
+    const GAP = 6;
+    let y = 10;
+    const row = (
+      obj: Phaser.GameObjects.Text | Phaser.GameObjects.Container | null,
+      shown: boolean,
+      height: number,
+    ): void => {
+      if (obj === null) return;
+      obj.setVisible(shown);
+      if (!shown) return;
+      obj.setPosition(x, y);
+      y += height + GAP;
+    };
+    const checklistUp = this.tutorialPanel !== null;
+    row(this.lootChip, true, this.lootChip.height);
+    row(this.boltsChip, true, this.boltsChip.height);
+    row(this.tutorialPanel, checklistUp, 96);
+    // Quest tracker: only when it has a line, the checklist is gone, and the
+    // guided loop is over — otherwise the checklist speaks for it.
+    row(
+      this.questChip,
+      this.questChip.text !== '' && !checklistUp && !firstLoop.active,
+      this.questChip.height,
+    );
+    row(this.buffChip, this.buffChip.text !== '', this.buffChip.height);
+    row(this.restedText, this.restedText.text !== '', this.restedText.height);
   }
 
   /** Gear button + a small panel with the master volume slider. */
@@ -875,15 +1017,19 @@ export class UIScene extends Phaser.Scene {
       this.manifestPanel.toggle();
     });
     // U4b: hold E = the emote wheel; release plays the highlighted glyph.
+    // C2: while a world interactable is in reach, E interacts (WorldScene
+    // owns that) and the wheel stands down so the two never fight.
     kb.on('keydown-E', (ev: KeyboardEvent) => {
       if (typing() || ev.repeat) return;
+      if (session.eInteractActive) return;
       this.emoteWheel.open();
     });
     kb.on('keyup-E', () => {
-      this.emoteWheel.release();
+      if (this.emoteWheel.visible) this.emoteWheel.release();
     });
     // TAB = the world map (D4a). Captured so the browser keeps focus.
     kb.addCapture('TAB');
+    kb.addCapture('F9'); // S3: clean-shot key, captured from the browser.
     kb.on('keydown-TAB', () => {
       if (typing()) return;
       sound.uiClick();
@@ -895,6 +1041,17 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-B', () => {
       if (this.bankPanel.visible) this.bankPanel.setVisible(false);
     });
+    kb.on('keydown-F', () => {
+      if (typing()) return;
+      sound.uiClick();
+      this.foundryPanel.toggle();
+    });
+    // S3: F9 = clean-shot mode (dark vignette for marketing screenshots).
+    kb.on('keydown-F9', (ev: KeyboardEvent) => {
+      ev.preventDefault();
+      sound.uiClick();
+      this.toggleCleanShot();
+    });
     kb.on('keydown-K', () => {
       if (typing()) return;
       this.inventoryPanel.setVisible(false);
@@ -902,11 +1059,14 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-ESC', () => {
       if (typing()) return;
-      if (this.emoteWheel.visible) this.emoteWheel.close();
+      // S3: clean-shot exits first, so Esc doesn't close the framed panel.
+      if (this.cleanShot) this.setCleanShot(false);
+      else if (this.emoteWheel.visible) this.emoteWheel.close();
       else if (this.tradePanel.visible) {
         // Esc = walk away: the server closes both windows.
         this.tradePanel.requestCancel();
-      } else if (this.shopPanel.visible) this.shopPanel.setVisible(false);
+      } else if (this.foundryPanel.visible) this.foundryPanel.setVisible(false);
+      else if (this.shopPanel.visible) this.shopPanel.setVisible(false);
       else if (this.chargePanel.visible) this.chargePanel.setVisible(false);
       else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
       else if (this.questPanel.visible) this.questPanel.setVisible(false);

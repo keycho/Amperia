@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE_INT } from '@shared/palette';
+import { PALETTE, PALETTE_INT } from '@shared/palette';
 import { depthForWorldY, tileToWorldBase, TILE_H, worldToTileFloor } from '../iso/project';
 
 /**
@@ -24,7 +24,9 @@ import { depthForWorldY, tileToWorldBase, TILE_H, worldToTileFloor } from '../is
 const ICON_TEX = 44; // texture px (baked 2×; drawn at 0.5 → 22 screen px)
 const NEAR_TILES = 6; // pictogram shows within this Chebyshev range
 const LABEL_TILES = 4; // name label fades in within this range
+const LABEL_MAX = 3; // C3: at most this many labels show at once (nearest)
 const FADE_PER_MS = 0.006; // alpha lerp speed toward target
+const LABEL_COLOR = '#FFF0D9'; // default name-label ink
 
 /** kind → pictogram + label + how high to float above the base anchor. */
 interface KindStyle {
@@ -85,6 +87,10 @@ interface Entry {
   iconAlpha: number;
   labelAlpha: number;
   hovered: boolean;
+  /** C3: tutorial-pinned — label stays amber and always visible. */
+  highlight: boolean;
+  /** Resting label depth (a highlight lifts it above neighbour labels). */
+  labelDepth: number;
 }
 
 export class InteractionMarkers {
@@ -253,9 +259,11 @@ export class InteractionMarkers {
     kind: string,
     anchor: { x: number; y: number },
     footprint: { x: number; y: number; w: number; h: number },
+    nameOverride?: string,
   ): void {
     const style = INTERACTABLE_STYLES[kind];
     if (style === undefined) return;
+    const labelText = nameOverride ?? style.label;
     const baseY = anchor.y - style.lift;
     const depth = depthForWorldY(anchor.y) + 6;
 
@@ -282,10 +290,10 @@ export class InteractionMarkers {
     (icon as unknown as { _ink: Phaser.GameObjects.Image })._ink = iconInk;
 
     const label = this.scene.add
-      .text(anchor.x, baseY + 15, style.label, {
+      .text(anchor.x, baseY + 15, labelText, {
         fontFamily: 'monospace',
         fontSize: '12px',
-        color: '#FFF0D9',
+        color: LABEL_COLOR,
         stroke: '#1E1930',
         strokeThickness: 3,
       })
@@ -312,8 +320,32 @@ export class InteractionMarkers {
       iconAlpha: 0,
       labelAlpha: 0,
       hovered: false,
+      highlight: false,
+      labelDepth: depth + 1,
     });
     this.drawOutline(this.entries[this.entries.length - 1]!);
+  }
+
+  /** The entry whose footprint contains this tile (C3 label/highlight lookup). */
+  private findEntry(tx: number, ty: number): Entry | undefined {
+    return this.entries.find((e) => tx >= e.x0 && tx <= e.x1 && ty >= e.y0 && ty <= e.y1);
+  }
+
+  /** C3: rename an interactable's label (merchant name, stall owner/empty). */
+  setLabel(tx: number, ty: number, text: string): void {
+    this.findEntry(tx, ty)?.label.setText(text);
+  }
+
+  /** C3: amber-pin a target's label (tutorial) with an ink plate that reads
+   *  over neighbour labels, or clear it back to a plain stroked label. */
+  setHighlight(tx: number, ty: number, on: boolean): void {
+    const e = this.findEntry(tx, ty);
+    if (e === undefined) return;
+    e.highlight = on;
+    e.label.setColor(on ? PALETTE.neonAmber : LABEL_COLOR);
+    e.label.setBackgroundColor(on ? PALETTE.ink : '');
+    e.label.setPadding(on ? 5 : 0, on ? 2 : 0);
+    e.label.setDepth(on ? 900_000 : e.labelDepth);
   }
 
   /** A 1px amber diamond ring around the footprint's base, for hover. */
@@ -367,6 +399,22 @@ export class InteractionMarkers {
       hoverTile = worldToTileFloor(wp.x, wp.y);
     }
 
+    // C3: declutter — of the interactables within label range, only the
+    // LABEL_MAX nearest show their name (plus any highlighted target); the
+    // rest are hover-only, so a market cluster isn't a wall of "Market Stall".
+    let labelShown: Set<Entry> | null = null;
+    if (doProx && player !== null) {
+      const p = player;
+      labelShown = new Set(
+        this.entries
+          .map((e) => ({ e, d: Math.max(Math.abs(p.x - e.cx), Math.abs(p.y - e.cy)) }))
+          .filter((o) => o.d <= LABEL_TILES)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, LABEL_MAX)
+          .map((o) => o.e),
+      );
+    }
+
     for (const e of this.entries) {
       // Bob every frame — cheap sine on the icon + its ink twin + chip.
       const bob = Math.sin(this.t * 0.004 + e.phase) * 3;
@@ -378,7 +426,8 @@ export class InteractionMarkers {
       if (doProx && player !== null) {
         const dist = Math.max(Math.abs(player.x - e.cx), Math.abs(player.y - e.cy));
         e.iconAlpha = dist <= NEAR_TILES ? 1 : 0;
-        e.labelAlpha = dist <= LABEL_TILES ? 1 : 0;
+        // Label shows if it's one of the nearest few OR a pinned target.
+        e.labelAlpha = e.highlight || (labelShown !== null && labelShown.has(e)) ? 1 : 0;
       }
       // Hover: pointer tile inside footprint.
       const hov =
@@ -399,8 +448,10 @@ export class InteractionMarkers {
       e.icon.setAlpha(next);
       iconInk.setAlpha(next);
       e.chip.setAlpha(next * 0.9);
+      // C3: a hovered label always shows, even past the nearest-few cap.
+      const labelTarget = e.hovered ? 1 : e.labelAlpha;
       const lcur = e.label.alpha;
-      e.label.setAlpha(lcur + (e.labelAlpha - lcur) * lerp);
+      e.label.setAlpha(lcur + (labelTarget - lcur) * lerp);
 
       if (hov) {
         // 1px amber outline PULSE.

@@ -76,6 +76,46 @@ export const COSMETICS: Record<string, CosmeticDef> = {
     label: "Archivist's Glow",
     source: 'Complete the whole Manifest',
   },
+
+  // ── The Cosmetic Foundry (premium, $AMP) — pure style, no stats, never
+  //    drops, never a gameplay effect. Catalog/price/rarity live in
+  //    shared/foundry.ts; these are just the wardrobe defs + models.
+  nightmarketCoat: {
+    id: 'nightmarketCoat',
+    slot: 'jacket',
+    label: 'Nightmarket Coat',
+    source: 'The Cosmetic Foundry',
+  },
+  filamentWings: {
+    id: 'filamentWings',
+    slot: 'back',
+    label: 'Filament Wings',
+    source: 'The Cosmetic Foundry',
+  },
+  auroraCrown: {
+    id: 'auroraCrown',
+    slot: 'head',
+    label: 'Aurora Crown',
+    source: 'The Cosmetic Foundry',
+  },
+  duskBloomMantle: {
+    id: 'duskBloomMantle',
+    slot: 'back',
+    label: 'Dusk-Bloom Mantle',
+    source: 'The Cosmetic Foundry',
+  },
+  firstLightCrown: {
+    id: 'firstLightCrown',
+    slot: 'head',
+    label: 'First-Light Crown',
+    source: 'The Cosmetic Foundry — First Light season',
+  },
+  emberdriftCape: {
+    id: 'emberdriftCape',
+    slot: 'back',
+    label: 'Emberdrift Cape',
+    source: 'The Cosmetic Foundry — First Light season',
+  },
 };
 
 export type EquippedMap = Partial<Record<CosmeticSlot, string>>;

@@ -517,6 +517,15 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     if (eq.back === 'salvagerSatchel') {
       // Shoulder strap reads the satchel from the front too.
       v.push({ x: 2, y: 2 + lean, z: 8 + lift, c: t.jacketDeep });
+    } else if (eq.back === 'filamentWings') {
+      // Wing tips poke past the shoulders so the wings read from the front.
+      v.push({ x: -2, y: lean - 2, z: 10 + lift, c: PALETTE_INT.neonCyan });
+      v.push({ x: 7, y: lean - 2, z: 10 + lift, c: PALETTE_INT.neonCyan });
+    } else if (eq.back === 'duskBloomMantle' || eq.back === 'emberdriftCape') {
+      // A petal collar rides the shoulders in front too.
+      const collar =
+        eq.back === 'duskBloomMantle' ? PALETTE_INT.violetNeon : PALETTE_INT.emberOrange;
+      v.push(...cbox(0, lean - 1, 8 + lift, 6, 1, 1, collar, cloth));
     }
   } else if (eq.back === 'salvagerSatchel') {
     // The Salvager Satchel: a proper wood-ribbed bag with an amber clasp.
@@ -530,6 +539,37 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     v.push({ x: 1, y: 2 + lean, z: 13 + lift, c: PALETTE_INT.neonTeal });
     v.push({ x: 2, y: 2 + lean, z: 10 + lift, c: PALETTE_INT.neonCyan });
     v.push({ x: 3, y: 2 + lean, z: 14 + lift, c: PALETTE_INT.neonAmber }); // finial
+  } else if (eq.back === 'filamentWings') {
+    // FOUNDRY (Arc): two arcs of live filament sweeping UP and OUT from the
+    // shoulders to lit tips above the head — cyan strands, amber sparks.
+    const strand = PALETTE_INT.neonCyan;
+    const spark = PALETTE_INT.neonAmber;
+    for (const [sx, dir] of [[1, -1], [4, 1]] as const) {
+      // Sweep up and OUT from the shoulder to a lit tip above the head.
+      for (let i = 0; i < 11; i++) {
+        const c = i % 3 === 2 ? spark : strand;
+        const spread = Math.min(i, 5);
+        v.push({ x: sx + dir * spread, y: 2 + lean, z: 6 + lift + i, c });
+        // A second strand gives the wing body, not just an edge.
+        if (i > 1 && i < 9) {
+          v.push({ x: sx + dir * Math.max(0, spread - 1), y: 2 + lean, z: 6 + lift + i, c: strand });
+        }
+      }
+      v.push({ x: sx + dir * 5, y: 2 + lean, z: 17 + lift, c: spark }); // wing tip
+    }
+  } else if (eq.back === 'duskBloomMantle' || eq.back === 'emberdriftCape') {
+    // FOUNDRY (Arc, seasonal / vaulted): a mantle of petals draping the back.
+    const dusk = eq.back === 'duskBloomMantle';
+    const petal = dusk ? PALETTE_INT.violetNeon : PALETTE_INT.emberOrange;
+    const petalDeep = dusk
+      ? blendInt(PALETTE_INT.violetNeon, PALETTE_INT.ink, 0.4)
+      : blendInt(PALETTE_INT.emberOrange, PALETTE_INT.ink, 0.4);
+    v.push(...cbox(0, 2 + lean, 8 + lift, 6, 1, 1, petal, cloth)); // shoulder line
+    for (let z = 2; z <= 7; z++) {
+      const c = z % 2 === 0 ? petal : petalDeep;
+      const w = z <= 3 ? 6 : 4; // flares wider toward the hem
+      v.push(...cbox(z <= 3 ? 0 : 1, 2 + lean, z + lift, w, 1, 1, c, cloth));
+    }
   } else {
     v.push(...cbox(2, 2 + lean, 5 + lift, 2, 1, 2, BODY_COLORS.toolRust, MATERIALS.rust));
   }
@@ -570,6 +610,18 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     const tailY = lean + (back ? -1 : 3);
     v.push({ x: back ? 1 : 0, y: tailY, z: 7 + lift, c: BODY_COLORS.scarfDeep, mat: cloth });
     v.push({ x: back ? 1 : 0, y: tailY, z: 6 + lift, c: BODY_COLORS.scarf, mat: cloth });
+  } else if (eq.jacket === 'nightmarketCoat') {
+    // FOUNDRY (Ember): a longer plum-violet coat over the jacket with warm
+    // neon piping and an amber button — Nightstalls after-hours cut.
+    const coat = blendInt(PALETTE_INT.violetNeon, PALETTE_INT.structureMid, 0.35);
+    const coatDeep = blendInt(coat, PALETTE_INT.ink, 0.4);
+    v.push(...cbox(1, lean, 5 + lift, 4, 3, 4, coatDeep, cloth)); // coat body
+    v.push(...cbox(1, lean, 4 + lift, 4, 3, 1, coat, cloth)); // low hem
+    if (!back) {
+      v.push(...cbox(2, lean + 2, 5 + lift, 2, 1, 4, coat, cloth)); // front placket
+      v.push({ x: 2, y: lean + 2, z: 7 + lift, c: PALETTE_INT.neonAmber }); // button
+      v.push({ x: 3, y: lean + 2, z: 5 + lift, c: PALETTE_INT.neonAmber }); // button
+    }
   }
 
   // THE OVERSIZED HEAD (R4-REVISED — "the bust is the Spark"): a big skin
@@ -615,6 +667,36 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
           });
         }
       }
+    }
+  }
+
+  // FOUNDRY head crowns (Aurora): a ring of tall neon prongs proud of the
+  // brow with a floating gem — auroraCrown runs violet/cyan cold, the vaulted
+  // firstLightCrown runs amber/warm. Pure regalia, sits over the mop.
+  if (eq.head === 'auroraCrown' || eq.head === 'firstLightCrown') {
+    const aurora = eq.head === 'auroraCrown';
+    const main = aurora ? PALETTE_INT.violetNeon : PALETTE_INT.neonAmber;
+    const accent = aurora ? PALETTE_INT.neonCyan : PALETTE_INT.warmGlow;
+    const zc = 13 + lift;
+    // A prong ring across the whole brow, alternating heights (tips=accent),
+    // tallest at centre — a clear regal crown from the front.
+    const prongs: ReadonlyArray<readonly [number, number]> = [
+      [-2, 4],
+      [-1, 5],
+      [1, 6],
+      [3, 7],
+      [5, 6],
+      [6, 5],
+      [7, 4],
+    ];
+    for (const [px, h] of prongs) {
+      for (let i = 0; i < h; i++) {
+        v.push({ x: px, y: lean + 4, z: zc + i, c: i >= h - 2 ? accent : main });
+      }
+    }
+    // A floating gem above centre.
+    for (const [gx, gz] of [[2, 8], [3, 8], [2, 9], [3, 9]] as const) {
+      v.push({ x: gx, y: lean + 4, z: zc + gz, c: gz === 8 ? accent : main });
     }
   }
 
