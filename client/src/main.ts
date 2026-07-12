@@ -7,6 +7,8 @@ import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { voxelSprite } from './render/voxel';
+import { bakeSparkAppearance, equipKey } from './render/sparkModel';
+import { decodeEquipped } from '@shared/cosmetics';
 import { session } from './net/session';
 import { gameState } from './state/GameState';
 import { sound } from './audio/sound';
@@ -29,6 +31,9 @@ declare global {
         enter: (opts: { tile: { x: number; y: number }; zoom?: number; nameplates?: boolean }) => void;
         exit: () => void;
       };
+      /** Bake a Spark appearance and return its baked texture key for a dir
+       *  (verification harness: the lineup + silhouette checkpoints). */
+      bakeSpark?: (code: string, dir?: string, equipped?: string) => string;
     };
   }
 }
@@ -79,6 +84,11 @@ window.__amperia = {
   photo: {
     enter: (opts) => (game.scene.getScene('world') as WorldScene).enterPhotoMode(opts),
     exit: () => (game.scene.getScene('world') as WorldScene).exitPhotoMode(),
+  },
+  bakeSpark: (code, dir = 'sw', equipped = '') => {
+    const scene = game.scene.getScene('world');
+    bakeSparkAppearance(scene, code, { previewOnly: true, equipped });
+    return voxelSprite(`spark@${code}#${equipKey(decodeEquipped(equipped))}-${dir}`).key;
   },
 };
 

@@ -202,10 +202,10 @@ export class Spark {
     this.label?.destroy();
     this.label = this.scene.add.text(this.image.x, this.image.y, name, {
       fontFamily: 'monospace',
-      fontSize: '12px',
+      fontSize: '11px',
       color: UI_TEXT_WARM,
       stroke: PALETTE.ink,
-      strokeThickness: 3,
+      strokeThickness: 4,
     });
     this.label.setOrigin(0.5, 1);
     // Ease in: fade up from a step below so arrivals feel like arrivals.
@@ -242,10 +242,11 @@ export class Spark {
       }
     }
     if (this.label === null) return;
-    this.label.setPosition(
-      this.image.x,
-      this.image.y - this.image.displayHeight + 6 + this.labelRise.value,
-    );
+    // R4: float the nameplate a clear gap ABOVE the sprite's true top so it
+    // never covers the face or the mop (origin-aware, since the shared
+    // character anchor puts the origin near the feet, not the top).
+    const topY = this.image.y - this.image.originY * this.image.displayHeight;
+    this.label.setPosition(this.image.x, topY - 5 + this.labelRise.value);
     this.label.setDepth(this.image.depth + 1);
     this.syncBubble();
   }

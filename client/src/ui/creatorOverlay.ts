@@ -97,31 +97,16 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   // U2a: the pedestal faces the camera (mascot angle) and can rotate.
   const FACINGS = ['sw', 'se', 'ne', 'nw'] as const;
   let facing = 0;
+  // R4: the preview is 2× the old size, on the brand radial-glow backdrop,
+  // and turns on its own — making a character, not configuring one.
   const canvas = document.createElement('canvas');
-  canvas.width = 240;
-  canvas.height = 330;
-  canvas.style.cssText = `background:${PALETTE.ink};border-radius:10px;image-rendering:pixelated;`;
+  canvas.width = 360;
+  canvas.height = 470;
+  canvas.style.cssText = 'border-radius:12px;image-rendering:pixelated;';
   const caption = document.createElement('div');
   caption.style.cssText = `color:${UI_TEXT_WARM};opacity:.7;font-size:11px;`;
   caption.textContent = 'as seen in the lanes';
-  const rotateBtn = document.createElement('button');
-  rotateBtn.textContent = '↻ turn';
-  rotateBtn.style.cssText = [
-    'padding:5px 12px',
-    `background:${PALETTE.ink}`,
-    `color:${UI_TEXT_WARM}`,
-    `border:1px solid ${PALETTE.groundBase}`,
-    'border-radius:7px',
-    'font-family:monospace',
-    'font-size:11px',
-    'cursor:pointer',
-  ].join(';');
-  rotateBtn.onclick = () => {
-    facing = (facing + 1) % FACINGS.length;
-    sound.uiClick();
-    drawPreview();
-  };
-  previewWrap.append(canvas, rotateBtn, caption);
+  previewWrap.append(canvas, caption);
 
   const drawPreview = () => {
     const code = encodeAppearance(a);
@@ -133,7 +118,16 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     const W = canvas.width;
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    // Pedestal glow: layered warm pools under and behind the Spark.
+    // Brand radial-glow backdrop: a warm rose→plum→dark bloom behind the
+    // Spark (the mascot's void-with-a-glow), not a flat panel.
+    const bg = ctx.createRadialGradient(W / 2, H * 0.42, 20, W / 2, H * 0.42, H * 0.62);
+    bg.addColorStop(0, 'rgba(255, 111, 145, 0.5)');
+    bg.addColorStop(0.35, 'rgba(179, 102, 160, 0.32)');
+    bg.addColorStop(0.7, PALETTE.duskSky);
+    bg.addColorStop(1, PALETTE.ink);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    // Warm pools under and behind the Spark.
     const glow = (r: number, alpha: number, cy: number) => {
       const g = ctx.createRadialGradient(W / 2, cy, 0, W / 2, cy, r);
       g.addColorStop(0, `rgba(255, 217, 160, ${alpha})`);
@@ -141,24 +135,30 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
       ctx.fillStyle = g;
       ctx.fillRect(W / 2 - r, cy - r, r * 2, r * 2);
     };
-    glow(95, 0.16, H * 0.45);
-    glow(60, 0.22, H * 0.78);
+    glow(150, 0.18, H * 0.44);
+    glow(96, 0.24, H * 0.8);
     // Pedestal disc.
     ctx.fillStyle = PALETTE.duskSky;
     ctx.beginPath();
-    ctx.ellipse(W / 2, H - 30, 62, 18, 0, 0, Math.PI * 2);
+    ctx.ellipse(W / 2, H - 40, 92, 26, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = PALETTE.neonAmber;
     ctx.globalAlpha = 0.5;
     ctx.stroke();
     ctx.globalAlpha = 1;
-    // The Spark, nearest-neighbor upscaled to fit, feet on the pedestal.
+    // The Spark, nearest-neighbor upscaled BIG, feet on the pedestal.
     ctx.imageSmoothingEnabled = false;
-    const s = Math.max(0.75, Math.min(2, (W - 24) / src.width, (H - 74) / src.height));
-    const dw = src.width * s;
-    const dh = src.height * s;
-    ctx.drawImage(src, Math.round((W - dw) / 2), Math.round(H - 44 - dh + 14), dw, dh);
+    const s = Math.max(1, Math.min(3.5, (W - 40) / src.width, (H - 110) / src.height));
+    const dw = Math.round(src.width * s);
+    const dh = Math.round(src.height * s);
+    ctx.drawImage(src, Math.round((W - dw) / 2), Math.round(H - 58 - dh + 18), dw, dh);
   };
+
+  // Slow auto-turntable: cycle the four baked facings every ~1.7s.
+  const turntable = window.setInterval(() => {
+    facing = (facing + 1) % FACINGS.length;
+    drawPreview();
+  }, 1700);
 
   // ── controls ────────────────────────────────────────────────────────────
   const controls = document.createElement('div');
@@ -494,6 +494,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
   if (opts.mode === 'wardrobe') {
     const closeBtn = button('Keep the old look', false);
     closeBtn.onclick = () => {
+      window.clearInterval(turntable);
       root.remove();
       opts.onCancel?.();
     };
@@ -512,6 +513,7 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
       randomBtn.disabled = false;
     },
     close(): void {
+      window.clearInterval(turntable);
       root.remove();
     },
   };

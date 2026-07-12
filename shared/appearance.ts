@@ -41,27 +41,36 @@ export const HAIR_STYLES: readonly HairStyleDef[] = [
   { id: 'frizz', label: 'Wild Frizz' },
 ];
 
-/** Hair colors (main tone; light/deep derive in the model builder). */
+/**
+ * Hair colors (main tone; light/deep derive in the model builder).
+ * R4-REVISED: near-full saturation — the hair is the Spark's biggest
+ * silhouette mass and must read as a bold colour block against the warm
+ * dusk, like the mascot's rose mop. Kept palette-derived (only a whisper of
+ * structureMid to seat them in the world).
+ */
 export const HAIR_COLORS: readonly number[] = [
-  blendInt(PALETTE_INT.neonRose, PALETTE_INT.structureMid, 0.12), // rose (mascot)
-  blendInt(PALETTE_INT.emberOrange, PALETTE_INT.structureMid, 0.15),
-  blendInt(PALETTE_INT.neonTeal, PALETTE_INT.structureMid, 0.3),
-  blendInt(PALETTE_INT.neonCyan, PALETTE_INT.structureMid, 0.3),
-  blendInt(PALETTE_INT.violetNeon, PALETTE_INT.structureMid, 0.32),
-  blendInt(PALETTE_INT.ink, PALETTE_INT.structureMid, 0.45), // soot
+  PALETTE_INT.neonRose, // rose (mascot) — full pop
+  PALETTE_INT.emberOrange,
+  PALETTE_INT.neonTeal,
+  PALETTE_INT.neonCyan,
+  PALETTE_INT.violetNeon,
+  blendInt(PALETTE_INT.ink, PALETTE_INT.structureMid, 0.55), // soot (kept dark)
 ];
 
-/** Jacket colors (main tone) — index 0 is the mascot's plum. */
+/**
+ * Jacket colors (main tone) — index 0 is the mascot's plum. R4-REVISED:
+ * saturated so the torso block reads as its own colour under the hair.
+ */
 export const JACKET_COLORS: readonly number[] = [
-  blendInt(PALETTE_INT.duskSky, PALETTE_INT.structureMid, 0.68), // plum (mascot)
-  blendInt(MATERIAL_INT.rust, PALETTE_INT.structureMid, 0.2),
-  blendInt(MATERIAL_INT.paintTeal, PALETTE_INT.structureMid, 0.15),
-  blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.structureMid, 0.15),
-  blendInt(MATERIAL_INT.paintRose, PALETTE_INT.structureMid, 0.15),
+  blendInt(PALETTE_INT.duskSky, PALETTE_INT.structureMid, 0.5), // plum (mascot)
+  MATERIAL_INT.rust,
+  MATERIAL_INT.paintTeal,
+  MATERIAL_INT.paintOchre,
+  MATERIAL_INT.paintRose,
   // U2b: gunmetal work coat, garden green, ember bomber.
-  blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.structureMid, 0.25),
-  blendInt(PALETTE_INT.solarGreen, PALETTE_INT.structureMid, 0.4),
-  blendInt(PALETTE_INT.emberOrange, PALETTE_INT.structureMid, 0.45),
+  blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.structureMid, 0.15),
+  PALETTE_INT.solarGreen,
+  PALETTE_INT.emberOrange,
 ];
 
 export interface AccessoryDef {
