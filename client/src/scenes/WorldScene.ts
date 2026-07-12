@@ -68,6 +68,7 @@ import {
   type NodeView,
 } from '../entities/nodes';
 import { Spark } from '../entities/Spark';
+import { InteractionMarkers, INTERACTABLE_STYLES } from '../systems/InteractionMarkers';
 import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
@@ -145,6 +146,8 @@ export class WorldScene extends Phaser.Scene {
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  /** R1: the universal interaction language (pictograms / labels / hover). */
+  private markers!: InteractionMarkers;
   private mobs = new Map<string, Mob>();
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
@@ -292,6 +295,7 @@ export class WorldScene extends Phaser.Scene {
       if (this.room !== null) send.nodeAction(this.room, { nodeId, action: 'tune', needle });
     };
     this.spawnNodes();
+    this.buildInteractionMarkers();
     this.setupInput();
 
     this.connectingText = this.add
@@ -512,6 +516,11 @@ export class WorldScene extends Phaser.Scene {
     if (this.ambientBots.length > 0) {
       const sparkTiles = [...this.sparks.values()].map((s) => s.settledTile);
       for (const bot of this.ambientBots) bot.update(time, sparkTiles);
+    }
+    // R1: bob pictograms + fade labels/rings against the Spark's position.
+    if (this.markers !== undefined) {
+      const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
+      this.markers.update(me?.settledTile ?? null, deltaMs);
     }
     if (sound.ready && time > this.spatialAt && this.room !== null) {
       this.spatialAt = time + 250;
@@ -1199,6 +1208,24 @@ export class WorldScene extends Phaser.Scene {
         this.pulseTile(t.tx, t.ty);
       }
     });
+  }
+
+  /**
+   * R1: build the universal interaction language from the map. One pass over
+   * the interactable props + gather nodes — decoration is never registered,
+   * so the presence of a pictogram/label/hover ring always means "real".
+   */
+  private buildInteractionMarkers(): void {
+    this.markers = new InteractionMarkers(this);
+    for (const p of this.map.props) {
+      if (INTERACTABLE_STYLES[p.kind] === undefined) continue;
+      this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h });
+    }
+    for (const n of this.map.nodes) {
+      if (INTERACTABLE_STYLES[n.kind] === undefined) continue;
+      const w = tileToWorld(n.x, n.y);
+      this.markers.add(n.kind, { x: w.x, y: w.y + TILE_H / 2 }, { x: n.x, y: n.y, w: 1, h: 1 });
+    }
   }
 
   private spawnNodes(): void {
