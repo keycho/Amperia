@@ -40,6 +40,8 @@ interface LedgerRow {
   data: {
     side?: string;
     sink?: string;
+    /** EBT onboarding faucet bucket (starterBonus / manifestFind / weeklyGoal). */
+    source?: string;
     bolts?: number;
     feeBolts?: number;
     questId?: string;
@@ -78,6 +80,10 @@ export async function computeMetrics(fromMs: number, toMs: number): Promise<DayM
     const d = r.data;
     if (r.type === 'trade' && d.side === 'npcBuys' && typeof d.bolts === 'number') {
       bump(faucets, 'npcSale', d.bolts);
+    } else if (r.type === 'quest' && typeof d.source === 'string' && typeof d.bolts === 'number') {
+      // EBT onboarding faucets get their OWN buckets (starterBonus,
+      // manifestFind) so they read distinctly on the balance dashboard.
+      bump(faucets, d.source, d.bolts);
     } else if (r.type === 'quest' && typeof d.bolts === 'number') {
       bump(faucets, `quest:${d.questId ?? '?'}`, d.bolts);
     } else if (r.type === 'trade' && d.side === 'npcSells' && typeof d.bolts === 'number') {

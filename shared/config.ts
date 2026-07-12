@@ -322,6 +322,35 @@ export const CONFIG = {
       /** Server-checked interaction reach (chebyshev tiles). */
       tradeRadiusTiles: 3,
     },
+    /**
+     * EARLY BOLTS TUNING (EBT): a Spark's first ~15 minutes should net
+     * ~75–100 Bolts so gather → sell → buy always affords a cheap ware and
+     * the first hour feels generous. Every grant here is config-driven and
+     * ledger-logged under its OWN faucet source (starterBonus / manifestFind).
+     * Copy always REWARDS, never "earn" (comms rules).
+     */
+    onboarding: {
+      /** The first N quest turn-ins per Spark pay this multiple (a one-time
+       *  welcome bonus on top of the base reward; the bonus half is logged
+       *  as its own faucet). */
+      starterQuestBonus: { count: 3, multiplier: 2 },
+      /** Bolts for logging something NEW in the Manifest, by page — rare
+       *  gather variants pay most, wardrobe unlocks least (they already came
+       *  from a quest). Always within the 10–25 band. */
+      manifestFind: {
+        byPage: {
+          scavving: 25,
+          delving: 25,
+          skimming: 25,
+          tuning: 25,
+          gardens: 20,
+          mobs: 20,
+          errands: 15,
+          wardrobe: 10,
+        } as Record<string, number>,
+        default: 15,
+      },
+    },
     /** Warmcup heal on use. */
     warmcupHeal: 10,
     /** Cellwax durability restored on use (lands with gear durability). */
@@ -596,7 +625,9 @@ export const CONFIG = {
         name: 'First Salvage',
         copy: 'Gather 10 Salvage from the alley heaps.',
         step: { type: 'gather', itemId: 'salvage', qty: 10 },
-        rewards: { bolts: 25 },
+        // EBT quest-step curve 10/25/15 — the welcome 2× (onboarding
+        // .starterQuestBonus) doubles these for a Spark's first three turn-ins.
+        rewards: { bolts: 10 },
         prereq: null,
         repeatable: null,
       },
@@ -605,7 +636,7 @@ export const CONFIG = {
         name: 'Market Hands',
         copy: 'Sell 10 resources at the Nightstalls stand.',
         step: { type: 'sellNpc', itemId: null, qty: 10 },
-        rewards: { bolts: 30 },
+        rewards: { bolts: 25 },
         prereq: 'tut1',
         repeatable: null,
       },
@@ -614,7 +645,7 @@ export const CONFIG = {
         name: 'Bench Work',
         copy: 'Craft a piece of gear at the Tinkerbench.',
         step: { type: 'craft', itemId: null, qty: 1 },
-        rewards: { bolts: 40, cosmetic: 'starterScarf' },
+        rewards: { bolts: 15, cosmetic: 'starterScarf' },
         prereq: 'tut2',
         repeatable: null,
       },

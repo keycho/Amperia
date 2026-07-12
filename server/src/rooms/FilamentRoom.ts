@@ -11,6 +11,7 @@ import {
   countItem,
 } from '@shared/inventory';
 import { ITEMS, type ItemId } from '@shared/items';
+import { MANIFEST_BY_ID } from '@shared/manifest';
 import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
 import { softFilter } from '@shared/profanity';
 import { tramHops, tramToll } from '@shared/travel';
@@ -46,6 +47,7 @@ import {
   dailyTurnInsToday,
   isComplete,
   questById,
+  questDefs,
   type QuestLog,
 } from '@shared/quests';
 import { findPath, findPathAdjacent, type PathGrid, type TilePoint } from '@shared/pathfinding';
@@ -907,6 +909,20 @@ export class FilamentRoom extends Room<FilamentState> {
           type: 'trophy',
           account: rt.accountId,
           data: { manifest: entryId, count: res.count },
+        });
+        // EBT: a first find pays out Bolts (10–25 by page), its own faucet.
+        const find = CONFIG.economy.onboarding.manifestFind;
+        const page = MANIFEST_BY_ID[entryId]?.page;
+        const findBolts = (page !== undefined ? find.byPage[page] : undefined) ?? find.default;
+        rt.bolts += findBolts;
+        ledger.log({
+          type: 'quest',
+          account: rt.accountId,
+          data: { source: 'manifestFind', manifest: entryId, bolts: findBolts },
+        });
+        client.send(MSG.inventory, this.inventorySync(rt));
+        client.send(MSG.notice, {
+          text: `A first for the Manifest — the city rewards you ${findBolts} Bolts.`,
         });
         client.send(MSG.manifestFound, {
           entryId,
@@ -2989,24 +3005,44 @@ export class FilamentRoom extends Room<FilamentState> {
         client.send(MSG.notice, { text: 'The Dispatcher is out of daily work — tomorrow.' });
         return;
       }
+      // EBT starter welcome bonus: a Spark's first N one-shot quest turn-ins
+      // pay a multiple. Counted over one-shots only (they turn in exactly
+      // once, so no double-grant); dailies never carry the bonus.
+      const sqb = CONFIG.economy.onboarding.starterQuestBonus;
+      const priorStarters = questDefs().filter(
+        (d) => d.repeatable === null && rt.quests[d.id]?.state === 'turnedIn',
+      ).length;
+      const bonusApplies = def.repeatable === null && priorStarters < sqb.count;
       rt.quests[def.id] = {
         state: 'turnedIn',
         progress: def.step.qty,
         day: new Date(now).toISOString().slice(0, 10),
       };
-      rt.bolts += def.rewards.bolts;
+      const base = def.rewards.bolts;
+      const bonus = bonusApplies ? base * (sqb.multiplier - 1) : 0;
+      rt.bolts += base + bonus;
       ledger.log({
         type: 'quest',
         account: rt.accountId,
-        data: { questId: def.id, bolts: def.rewards.bolts, cosmetic: def.rewards.cosmetic ?? null },
+        data: { questId: def.id, bolts: base, cosmetic: def.rewards.cosmetic ?? null },
       });
+      if (bonus > 0) {
+        ledger.log({
+          type: 'quest',
+          account: rt.accountId,
+          data: { source: 'starterBonus', questId: def.id, bolts: bonus },
+        });
+      }
       if (def.rewards.cosmetic !== undefined) {
         this.grantCosmetic(client, rt, def.rewards.cosmetic, `quest: ${def.name}`);
       }
       client.send(MSG.quests, { log: rt.quests });
       client.send(MSG.inventory, this.inventorySync(rt));
       client.send(MSG.notice, {
-        text: `Quest complete: ${def.name} — reward ${def.rewards.bolts} Bolts.`,
+        text:
+          bonus > 0
+            ? `Quest complete: ${def.name} — reward ${base + bonus} Bolts (welcome bonus).`
+            : `Quest complete: ${def.name} — reward ${base} Bolts.`,
       });
       return;
     }

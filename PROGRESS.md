@@ -1,5 +1,26 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-12 EARLY BOLTS TUNING block (EBT)
+
+Onboarding Bolts economy, all config-driven (`economy.onboarding`),
+ledger-logged under distinct faucets, comms-compliant (REWARDS, never earn):
+- starter quest curve tut1/2/3 = 10/25/15; the first three one-shot quest
+  turn-ins per Spark pay a welcome 2× (bonus logged as its own
+  `starterBonus` faucet, counted over one-shots so no double-grant)
+- Manifest first-finds pay 10–25 Bolts by page (`manifestFind` faucet)
+- `metrics` buckets both new faucets distinctly on the dashboard
+- sanity: a guaranteed early session models to 88 Bolts (in the 75–100 band);
+  `shared/onboarding.test.ts` locks the curve, the band, and the total.
+  Verified live: tut1 → +20 with the 2×; ledger carries base + bonus as
+  separate rows
+- silhouette follow-up: spikes get a serrated crown (tall peaks + gaps),
+  braid drapes an over-shoulder tail in the front view; mop stays the round
+  reference — all six Sparks pass the black-silhouette distinguishability test
+
+Interpretation flagged in the commit: "starter merchant quests" read as the
+Dispatcher's starter chain by the market; sale proceeds ride on top of the
+quest faucets. No gameplay logic beyond these faucets; no token/chain code.
+
 ## Status after the 2026-07-12 READABILITY & FIRST-HOUR block (R0–R6)
 
 Production feedback ("can't tell interactables from decoration, can't find
