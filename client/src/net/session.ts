@@ -23,6 +23,8 @@ export const SessionEvents = {
   prices: 'prices',
   /** Open the merchant panel (world → UI scene). */
   openMerchant: 'openMerchant',
+  /** Open the Cosmetic Foundry (premium shop showcase). */
+  openFoundry: 'openFoundry',
   /** Open the Tinkerbench panel (world → UI scene). */
   openBench: 'openBench',
   /** Open the Dispatcher's quest board (world → UI scene). */

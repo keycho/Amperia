@@ -1,5 +1,37 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-12 FOUNDRY SHOWCASE block (S1–S4)
+
+Made the Cosmetic Foundry (premium shop) screenshot-worthy. Still DATA +
+presentation only — no purchase flow, no $AMP state (M4 gate holds); the
+purse reads a placeholder `◈ 0 $AMP`.
+- `shared/foundry.ts` (new): the catalog — rarity (Ember/Arc/Aurora),
+  whole-$AMP price, 1–2 lines of world flavor, and time-scarcity state per
+  item. Rules are asserted in the file header: pure style (no item grants a
+  stat/rate/drop), honest scarcity (SEASONAL → published VAULTED date, never
+  re-sold, no countdown-pressure/FOMO/randomness), comms-compliant copy.
+- Six premium cosmetics (`shared/cosmetics.ts`) with worn voxel models
+  (`sparkModel.ts`) + Foundry thumbnails (`itemThumbs.ts`): auroraCrown,
+  filamentWings, nightmarketCoat, duskBloomMantle, firstLightCrown,
+  emberdriftCape. The last two form the vaulted "First Light" set.
+- `client/src/ui/FoundryPanel.ts` (new, F to open): left = a featured
+  turntable Spark on a warm radial-glow stage (rarity tag in rarity colour,
+  name, flavor, price, state badge, WORN ✓ when equipped); right = the
+  collection list (icon · name · price · state), vaulted rows greyed. Click a
+  row to feature it.
+- S2 state badges: AVAILABLE · SEASONAL (shows the quiet "VAULTS IN N DAYS"
+  only inside 2 weeks, else bare SEASONAL) · VAULTED (greyed, no countdown).
+- S3 clean-shot mode (F9): hides the HUD (every widget < depth 1150) and
+  drops the open panel onto a warm-ink vignette with a small AMPERIA
+  wordmark bottom-right; Esc/F9 exits and restores exactly what it hid.
+  Works on the Foundry/Manifest/goal panels (Phaser) and the creator DOM
+  overlay (its own F9 handler dims the chrome to just the turntable).
+- S4 copy: footer "pure style · no stats · never pay-to-win"; every catalog
+  item carries flavor; prices in $AMP; no "earn/yield/investment".
+- Checkpoint shots (1920×1080, F9 clean): Foundry featuring the seasonal
+  Aurora Crown, and featuring the vaulted First-Light Crown with the vaulted
+  set greyed in the list.
+
 ## Status after the 2026-07-12 EARLY BOLTS TUNING block (EBT)
 
 Onboarding Bolts economy, all config-driven (`economy.onboarding`),
