@@ -8,9 +8,16 @@ import type { FilamentRoom } from './NetClient';
 export const session: {
   room: FilamentRoom | null;
   events: Phaser.Events.EventEmitter;
+  /**
+   * C2: true while the Spark is within reach of a world interactable, so the
+   * E key interacts (handled in WorldScene) instead of opening the emote
+   * wheel (UIScene). WorldScene refreshes this every frame.
+   */
+  eInteractActive: boolean;
 } = {
   room: null,
   events: new Phaser.Events.EventEmitter(),
+  eInteractActive: false,
 };
 
 export const SessionEvents = {

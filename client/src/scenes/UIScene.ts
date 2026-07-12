@@ -1017,12 +1017,15 @@ export class UIScene extends Phaser.Scene {
       this.manifestPanel.toggle();
     });
     // U4b: hold E = the emote wheel; release plays the highlighted glyph.
+    // C2: while a world interactable is in reach, E interacts (WorldScene
+    // owns that) and the wheel stands down so the two never fight.
     kb.on('keydown-E', (ev: KeyboardEvent) => {
       if (typing() || ev.repeat) return;
+      if (session.eInteractActive) return;
       this.emoteWheel.open();
     });
     kb.on('keyup-E', () => {
-      this.emoteWheel.release();
+      if (this.emoteWheel.visible) this.emoteWheel.release();
     });
     // TAB = the world map (D4a). Captured so the browser keeps focus.
     kb.addCapture('TAB');
