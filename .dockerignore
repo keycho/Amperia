@@ -1,0 +1,14 @@
+# Keep the image build hermetic: no local installs, builds, or secrets may
+# leak into the context (server/Dockerfile builds from the repo root).
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+db/prisma/generated
+.git
+assets
+docs
+logs
+tools
+*.md

@@ -1,0 +1,251 @@
+// AMPERIA persistence — PostgreSQL via Prisma.
+// Accounts are email-first; guests are accounts without an email; SIWS wallet
+// linking is optional and late (walletAddress nullable). All value movements
+// append to LedgerEvent (the economy ledger habit).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Runtime traffic goes through the pooler (Supabase: port 6543, pgbouncer);
+  // migrations need a direct connection (port 5432). Locally both point at
+  // the same dev database.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Account {
+  id            String      @id @default(cuid())
+  email         String?     @unique
+  passwordHash  String?
+  walletAddress String?     @unique
+  createdAt     DateTime    @default(now())
+  character     Character?
+  ledgerEvents  LedgerEvent[]
+  manifest      ManifestEntry[]
+  loftpod       Loftpod?
+  mutes         Mute[]
+}
+
+/// H2 moderation: per-account mutes. The muted are never told — their
+/// chat and bubbles simply stop reaching this account.
+model Mute {
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId      String
+  mutedAccountId String
+  createdAt      DateTime @default(now())
+
+  @@id([accountId, mutedAccountId])
+}
+
+/// H2 moderation: /report rows for the weekly review habit (dev script
+/// reads them — no admin UI yet).
+model Report {
+  id           String   @id @default(cuid())
+  reporterId   String
+  reportedId   String
+  reportedName String
+  reason       String
+  createdAt    DateTime @default(now())
+}
+
+model Character {
+  id        String   @id @default(cuid())
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String   @unique
+  sparkName String   @unique
+  tileX     Int      @default(-1)
+  tileY     Int      @default(-1)
+  packJson  Json     @default("[]")
+  hotbarJson Json    @default("[]")
+  skillsJson Json    @default("{}")
+  bolts     Int      @default(0)
+  /// Anti-Sybil throttle state: Bolts of NPC sales so far on dailySaleDate.
+  dailySaleBolts Int    @default(0)
+  dailySaleDate  String @default("")
+  /// U1a: delivery Bolts so far on deliveryDayDate (parity daily cap).
+  deliveryDayBolts Int    @default(0)
+  deliveryDayDate  String @default("")
+  /// U1b: Terrarium tends so far on tendDayDate (parity daily cap).
+  tendDayCount Int    @default(0)
+  tendDayDate  String @default("")
+  /// Direct-trade guardrail state (E1c): per-UTC-day rollover counters.
+  tradeDayDate       String @default("")
+  tradeDayValueBolts Int    @default(0)
+  tradeDayCount      Int    @default(0)
+  questsJson     Json   @default("{}")
+  cosmeticsJson  Json   @default("[]")
+  /// Creator appearance code (shared/appearance.ts); "" = not chosen yet,
+  /// so the client shows the first-login creator. Presentation only.
+  appearance     String @default("")
+  /// Worn wardrobe cosmetics (shared/cosmetics.ts wire); "" = never set
+  /// (derive from owned on load), "none" = explicitly bare.
+  equipped       String @default("")
+  /// Untradeable Manifest titles earned (shared/manifest.ts), in earn order.
+  titlesJson     Json   @default("[]")
+  /// Weekly-goal regalia tokens toward the seasonal cosmetic (S2).
+  goalTokens     Int    @default(0)
+  /// Rested Charge (S3): gathering ms burned today + the UTC day it belongs to.
+  restedMsUsed   Int    @default(0)
+  restedDate     String @default("")
+  /// The Fortune Coil (S4): last free-spin UTC day, pity counter, shards.
+  coilDate       String @default("")
+  coilPity       Int    @default(0)
+  coilShards     Int    @default(0)
+  /// The Ledgerhouse (S5): banked slots (same shape as packJson) + the
+  /// purchased capacity. Death NEVER touches this column.
+  bankJson       Json   @default("[]")
+  bankSlots      Int    @default(48)
+  /// Which district the Spark was last in ('filament' | 'tangle').
+  district       String @default("filament")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The Manifest (S1): account-wide collection log — one row per discovered
+/// entry. Counts tick on repeats; firstAt is the discovery moment.
+model ManifestEntry {
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  entryId   String
+  count     Int      @default(1)
+  firstAt   DateTime @default(now())
+
+  @@id([accountId, entryId])
+}
+
+/// Weekly goal board (S2): per-account, per-week, per-goal progress.
+model GoalProgress {
+  accountId String
+  weekKey   String
+  goalId    String
+  progress  Int     @default(0)
+  claimed   Boolean @default(false)
+
+  @@id([accountId, weekKey, goalId])
+  @@index([accountId, weekKey])
+}
+
+/// World-shared merchant price pressure per resource (0 = ceiling price).
+model MerchantState {
+  resourceId String   @id
+  pressure   Float    @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+/// A rentable player shop stall on the Nightstalls lane (E2). The id is the
+/// stall's deterministic index in the map's shopStalls list. Stock escrows
+/// here so the shop sells while the owner is OFFLINE; proceeds accumulate
+/// in the cashbox until collected. `version` guards concurrent mutations
+/// (optimistic: update ... WHERE version = seen).
+/// NOTE: allocation is first-come flat rent for now — premium deed AUCTIONS
+/// replace the allocation method at the token layer (M4).
+model ShopStall {
+  id             Int       @id
+  ownerAccountId String?
+  ownerName      String    @default("")
+  rentPaidUntil  DateTime?
+  /// [{ itemId, qty, priceBolts, durability? }]
+  stockJson      Json      @default("[]")
+  cashboxBolts   Int       @default(0)
+  /// Bolts of sales since the owner last collected (login toast).
+  awaySaleBolts  Int       @default(0)
+  version        Int       @default(0)
+  updatedAt      DateTime  @updatedAt
+}
+
+/// One Spark's Amperite donations to the Citywide Charge for one week
+/// (weekKey = the UTC Monday's ISO date — the meter "resets" by keying).
+model ChargeContribution {
+  weekKey   String
+  accountId String
+  /// Denormalized for the leaderboard display.
+  sparkName String   @default("")
+  amperite  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([weekKey, accountId])
+  @@index([weekKey, amperite])
+}
+
+/// A finalized week's top-contributor award (regalia only — the untradeable
+/// name-glow trim + Manifest entry; NEVER Bolts, NEVER tradeable).
+model ChargeAward {
+  id          String    @id @default(cuid())
+  accountId   String
+  weekKey     String
+  rank        Int
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([weekKey, accountId])
+  @@index([accountId, deliveredAt])
+}
+
+/// Mailbox for goods coming back to a Spark outside a live session: an
+/// expired stall's stock + cashbox wait here and deliver on next login.
+model StallReturn {
+  id          String   @id @default(cuid())
+  accountId   String
+  boltsAmount Int      @default(0)
+  /// [{ itemId, qty, durability? }]
+  stockJson   Json     @default("[]")
+  reason      String   @default("rentExpired")
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+}
+
+/// One UTC day's economy rollup (E4) — the data spine of the future City
+/// Ledger. Written by the nightly job; /metrics renders live + history.
+model EconomySummary {
+  date            String   @id
+  faucetsJson     Json     @default("{}")
+  sinksJson       Json     @default("{}")
+  faucetBolts     Int      @default(0)
+  sinkBolts       Int      @default(0)
+  netBolts        Int      @default(0)
+  /// Total Bolts in player hands (+ stall cashboxes) at rollup time.
+  supplyBolts     Int      @default(0)
+  growthPct       Float    @default(0)
+  medianBolts     Int      @default(0)
+  p90Bolts        Int      @default(0)
+  tradeCount      Int      @default(0)
+  tradeVolumeEst  Int      @default(0)
+  anomalyCount    Int      @default(0)
+  shopVolumeBolts Int      @default(0)
+  chargeAmperite  Int      @default(0)
+  /// Per-resource NPC band position { resource: { unit, floor, ceiling } }.
+  bandsJson       Json     @default("{}")
+  createdAt       DateTime @default(now())
+}
+
+model LedgerEvent {
+  id        BigInt   @id @default(autoincrement())
+  ts        DateTime @default(now())
+  type      String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  data      Json
+
+  @@index([accountId, ts])
+  @@index([type, ts])
+}
+
+/// A Spark's home (districts block D2b): ONE Loftpod per account, parked
+/// on a Terrarium berth. Tier/dye/trophies are pure display + Bolts sinks.
+model Loftpod {
+  id          String   @id @default(cuid())
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId   String   @unique
+  /// Index into the Terrarium map's loftberths (server-managed slots).
+  berth       Int      @unique
+  tier        Int      @default(1)
+  dye         String   @default("plum")
+  trophyTitle String   @default("")
+  trophySkill String   @default("")
+  updatedAt   DateTime @updatedAt
+}

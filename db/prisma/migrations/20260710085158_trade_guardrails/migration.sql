@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Character" ADD COLUMN     "tradeDayCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "tradeDayDate" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "tradeDayValueBolts" INTEGER NOT NULL DEFAULT 0;

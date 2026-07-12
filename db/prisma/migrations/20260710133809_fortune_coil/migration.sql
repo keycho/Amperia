@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Character" ADD COLUMN     "coilDate" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "coilPity" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "coilShards" INTEGER NOT NULL DEFAULT 0;
