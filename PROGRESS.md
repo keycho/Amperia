@@ -1,5 +1,44 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-12 READABILITY & FIRST-HOUR block (R0–R6)
+
+Production feedback ("can't tell interactables from decoration, can't find
+where to sell, overwhelmed in the first minutes, Sparks read as blobs")
+addressed in order; the loop was proven live on prod first.
+
+- **R0** — register → gather → sell verified against the LIVE production
+  server (Railway) over its real WebSocket + HTTP through the agent proxy.
+  (Chromium can't traverse the sandbox proxy, so `tools/deploy-smoke.mjs`
+  can't drive prod from here; a Node WS driver proved the loop instead.)
+- **R1** — one interaction language: every real interactable gets a bobbing
+  pictogram (within 6 tiles), a name label (within 4), and an amber hover
+  ring; decoration gets nothing. `systems/InteractionMarkers.ts`.
+- **R2** — the Nightstalls read as a market street: warm plank deck, a
+  full-length garland, the NPC merchant's taller awning + hanging coin sign
+  + vendor behind the counter, and a vertical amber beacon (retires on
+  first Bolts).
+- **R3** — guided First-Bolts loop (checklist + world arrow: gather 5 →
+  sell → buy a Warmcup) with progressive disclosure: Rested banner / Coil
+  flavor / Manifest+Goals hidden until first Bolts, then each unlocks with a
+  toast + a revealed HUD chip. `systems/firstLoop.ts`. NOTE: gather target
+  is 5 (not 3) so one sale funds the 12-Bolt Warmcup — UI-only; the coming
+  EARLY BOLTS TUNING block folds affordability into quest payouts.
+- **R4-REVISED + R4b** — the bust IS the Spark: oversized head (wider than
+  the shoulders), a solid rose mop overhanging a low goggle band, 3×3 teal
+  lenses, full-saturation hair/jacket. R4b: a SHARED animation anchor (fixed
+  foot centre) killed the per-frame walk jitter; hair bakes as one solid
+  mass so the ink contour wraps one silhouette. Creator: 2× preview on the
+  brand radial-glow backdrop with a slow auto-turntable. Nameplates smaller
+  + floated above the head.
+- **R5** — skyline backdrop deleted; the void behind the deck edges is the
+  frame (floating islands, embers only).
+- **R6 + R6b** — three notification channels: top-center toast PILLS for all
+  system messages (one at a time, bounded backlog), players-only bottom-left
+  chat (2 lines, fades when quiet), rare center-stage banners for level-ups
+  + first Bolts (max one a minute).
+
+Nothing here touched gameplay/economy logic or added token/chain code.
+
 ## Status after the 2026-07-11 DEPLOY PREP block (D1–D8)
 
 The repo is production-deployable (nothing provisioned — needs the owner's

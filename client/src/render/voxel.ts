@@ -54,6 +54,14 @@ export interface VoxelModel {
   grounding?: boolean;
   /** Bake + auto-place a directional cast shadow (default true). */
   shadow?: boolean;
+  /**
+   * R4b: shared animation anchor. Character frames each have a different
+   * bounding box (arms swing, hair spills, the passing frame lifts), so a
+   * per-frame min/max anchor makes the sprite JITTER between frames. Pass a
+   * fixed voxel-space ground point (the feet centre) and every frame anchors
+   * to the same world point — the walk cycle stays put.
+   */
+  anchor?: { x: number; y: number };
 }
 
 /**
@@ -154,7 +162,10 @@ interface Projected {
   v: Voxel;
 }
 
-function project(voxels: Voxel[]): {
+function project(
+  voxels: Voxel[],
+  anchor?: { x: number; y: number },
+): {
   points: Projected[];
   minX: number;
   minY: number;
@@ -179,11 +190,12 @@ function project(voxels: Voxel[]): {
     minY = Math.min(minY, p.py - HALF_H);
     maxY = Math.max(maxY, p.py + HALF_H + SIDE_H);
   }
-  // Anchor: south corner of the footprint's center column at z=0.
+  // Anchor: south corner of the footprint's center column at z=0. A shared
+  // anchor (R4b) overrides the per-frame footprint so animation frames align.
   const xs = voxels.map((v) => v.x);
   const ys = voxels.map((v) => v.y);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const cx = anchor?.x ?? (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = anchor?.y ?? (Math.min(...ys) + Math.max(...ys)) / 2;
   const anchorX = (cx - cy) * HALF_W;
   const anchorY = (cx + cy) * HALF_H + HALF_H + SIDE_H;
   return { points: pts, minX, minY, maxX, maxY, anchorX, anchorY };
@@ -506,6 +518,7 @@ function bakeShadow(
   scene: Phaser.Scene,
   name: string,
   voxels: Voxel[],
+  anchor?: { x: number; y: number },
 ): BakedVoxelSprite {
   const key = `vox-${name}-shadow`;
   const regKey = `${name}@shadow`;
@@ -528,11 +541,12 @@ function bakeShadow(
     minY = Math.min(minY, c.py - HALF_H * 1.8);
     maxY = Math.max(maxY, c.py + HALF_H * 1.8);
   }
-  // Anchor: identical world point to the sprite bake (footprint center).
+  // Anchor: identical world point to the sprite bake (footprint center, or
+  // the shared character anchor when given so every frame's shadow aligns).
   const xs = voxels.map((v) => v.x);
   const ys = voxels.map((v) => v.y);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const cx = anchor?.x ?? (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = anchor?.y ?? (Math.min(...ys) + Math.max(...ys)) / 2;
   const anchorX = (cx - cy) * HALF_W;
   const anchorY = (cx + cy) * HALF_H + HALF_H + SIDE_H;
   const pad = 3;
@@ -592,7 +606,7 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
   const sorted = [...visible].sort(
     (a, b) => a.x + a.y - (b.x + b.y) || a.z - b.z,
   );
-  const proj = project(sorted);
+  const proj = project(sorted, model.anchor);
   const pad = 3 + OUTLINE_OFF;
   const w = Math.ceil(proj.maxX - proj.minX) + pad * 2;
   const h = Math.ceil(proj.maxY - proj.minY) + pad * 2;
@@ -669,7 +683,7 @@ export function bakeVoxelModel(scene: Phaser.Scene, model: VoxelModel): BakedVox
     scale: 0.5 * mult,
   };
   registry.set(model.name, baked);
-  if (model.shadow !== false) bakeShadow(scene, model.name, visible);
+  if (model.shadow !== false) bakeShadow(scene, model.name, visible, model.anchor);
   return baked;
 }
 

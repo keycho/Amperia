@@ -50,7 +50,9 @@ export const firstLoop = {
    * ("Your Pack is full", sale results) always passes.
    */
   suppressFlavor(text: string): boolean {
-    if (!this.active || this.boltsEarned) return false;
+    // R6: ambient flavor stays silent for the WHOLE guided loop (markDone
+    // clears `active`), so the first minutes hold only gather → sell → buy.
+    if (!this.active) return false;
     return FLAVOR_PATTERNS.some((re) => re.test(text));
   },
 };

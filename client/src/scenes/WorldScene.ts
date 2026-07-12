@@ -98,7 +98,6 @@ import { floatText } from '../render/effects';
 import { floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
-import { addSkyline, makeSkylineTexture } from '../render/ambience';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
 import { placeAmbientNpcs } from '../render/ambientNpcs';
@@ -240,7 +239,6 @@ export class WorldScene extends Phaser.Scene {
     // Elevation-aware projection (R4): every tile-derived world position
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
-    makeSkylineTexture(this);
     this.drawFloor();
     this.placeWorldRim();
     this.placeProps();
@@ -268,7 +266,7 @@ export class WorldScene extends Phaser.Scene {
     this.decorateNightstalls();
     this.placeCanalLife();
     this.spawnAmbientBots();
-    addSkyline(this, -70);
+    // R5: no skyline — the void behind the deck edges IS the frame.
     // Catwalk lighting (I5): warm pools at the tram platform + plaza rim —
     // the spots where a Spark's look gets seen. Light only, never gameplay.
     for (const t of this.map.catwalks) {
@@ -943,8 +941,14 @@ export class WorldScene extends Phaser.Scene {
         const level = levelForXp(xp);
         if (level <= levelForXp(prev)) continue;
         sound.levelUpFanfare();
+        const label = skill.charAt(0).toUpperCase() + skill.slice(1);
+        // R6b: a big Mastery landing earns a rare center-stage banner (the
+        // UI rate-limits to one a minute); the beam + float still play local.
+        session.events.emit(SessionEvents.banner, {
+          text: `${label} — Mastery ${level}`,
+          sub: 'the city takes note',
+        });
         if (own !== undefined) {
-          const label = skill.charAt(0).toUpperCase() + skill.slice(1);
           floatText(this, own.image.x, own.image.y - 92, `${label} ${level}!`, PALETTE.neonAmber);
           const beam = this.add.image(own.image.x, own.image.y - 40, 'fx-glow');
           beam.setTint(PALETTE_INT.neonAmber);
@@ -1337,8 +1341,12 @@ export class WorldScene extends Phaser.Scene {
   private onFirstBolts(): void {
     firstLoop.boltsEarned = true;
     this.setMerchantBeacon(false);
+    // R6b: the first Bolts are a big beat — a rare center-stage banner.
+    session.events.emit(SessionEvents.banner, {
+      text: 'First Bolts!',
+      sub: 'gather · sell · buy — the loop is yours',
+    });
     const unlocks = [
-      'Your first Bolts! The city opens up a little.',
       'Rested Charge is on — a daily boost to gather XP.',
       'The Manifest is yours to fill — press J for your collection log.',
       'Weekly goals are posted — press G to see them.',

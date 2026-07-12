@@ -75,6 +75,8 @@ export class UIScene extends Phaser.Scene {
   private toastQueue: string[] = [];
   private toastRunning = false;
   private lastRested: RestedSync | null = null;
+  private banner: Phaser.GameObjects.Container | null = null;
+  private lastBannerAt = -Infinity;
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
   private hp = { hp: 0, maxHp: 0 };
@@ -207,10 +209,65 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
-  /** R3: queue unlock toasts so they play one at a time, in order. */
+  /** R3/R6b: queue toast pills so they play one at a time, in order. A short
+   *  backlog cap keeps a burst of notices from stacking up forever. */
   private queueToast(text: string): void {
+    if (this.toastQueue.length >= 4) this.toastQueue.shift();
     this.toastQueue.push(text);
     if (!this.toastRunning) this.runToasts();
+  }
+
+  /**
+   * R6b: a rare CENTER-STAGE banner for the big beats (level-ups, first
+   * Bolts) — big warm text that fades in dead-centre, holds, and fades out.
+   * Rate-limited to at most one a minute so it stays special; extras fall
+   * back to nothing (the toast pill / floatText already carried the news).
+   */
+  private showBanner(text: string, sub?: string): void {
+    if (this.time.now - this.lastBannerAt < 60_000) return;
+    this.lastBannerAt = this.time.now;
+    this.banner?.destroy();
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height * 0.34;
+    const main = this.add.text(0, 0, text, {
+      fontFamily: 'monospace',
+      fontSize: '30px',
+      fontStyle: 'bold',
+      color: PALETTE.neonAmber,
+      stroke: PALETTE.ink,
+      strokeThickness: 6,
+    }).setOrigin(0.5, 0.5);
+    const parts: Phaser.GameObjects.GameObject[] = [main];
+    if (sub !== undefined) {
+      const s = this.add.text(0, 24, sub, {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: UI_TEXT_WARM,
+        stroke: PALETTE.ink,
+        strokeThickness: 4,
+      }).setOrigin(0.5, 0.5);
+      parts.push(s);
+    }
+    const banner = this.add.container(cx, cy, parts);
+    banner.setDepth(1400);
+    banner.setAlpha(0);
+    banner.setScale(0.9);
+    this.banner = banner;
+    this.tweens.add({ targets: banner, alpha: 1, scale: 1, duration: 380, ease: 'back.out' });
+    this.time.delayedCall(2600, () => {
+      if (this.banner !== banner) return;
+      this.tweens.add({
+        targets: banner,
+        alpha: 0,
+        y: cy - 24,
+        duration: 520,
+        ease: 'quad.in',
+        onComplete: () => {
+          if (this.banner === banner) this.banner = null;
+          banner.destroy();
+        },
+      });
+    });
   }
 
   private runToasts(): void {
@@ -534,18 +591,15 @@ export class UIScene extends Phaser.Scene {
     session.events.on(SessionEvents.chat, () => sound.chatPop());
     this.buildSoundPanel();
 
-    // Tram arrivals and shop mail get a warm toast up top (the chat log
-    // keeps the line too).
-    session.events.on(SessionEvents.notice, (text: string) => {
-      if (
-        text.includes('stepped off the tram') ||
-        text.includes('rode the tram out') ||
-        text.includes('while you were away') ||
-        text.includes('rent ran out')
-      ) {
-        this.showToast(text);
-      }
-    });
+    // R6b: EVERY system message is a top-center toast PILL now (never bare
+    // text in the world), shown one at a time via the queue. The bottom-left
+    // chat is players-only.
+    session.events.on(SessionEvents.notice, (text: string) => this.queueToast(text));
+    // R6b: rare center-stage banners for the big beats (level-ups, first
+    // Bolts), rate-limited to at most one a minute.
+    session.events.on(SessionEvents.banner, (e: { text: string; sub?: string }) =>
+      this.showBanner(e.text, e.sub),
+    );
 
     this.layout();
     this.refreshAll();

@@ -379,10 +379,20 @@ function buildHair(
       break;
     }
     default: {
-      // The mascot mop: spills one voxel over the proud band, jagged, domed.
-      hairSlab(v, t, -1, lean - 2, z, 8, 6, 2, 1, true);
-      hairSlab(v, t, 0, lean - 1, z + 2, 6, 4, 1, 1, true);
-      if (back) hairSlab(v, t, 0, lean + 2, 10 + lift, 6, 1, 4, 0, true);
+      // THE MASCOT MOP (R4-REVISED): a big SOLID rounded dome that overhangs
+      // the band on every side — one silhouette mass, not a jagged scatter.
+      // Stacked shrinking layers read as the bust's rose mushroom; streaks
+      // are colour-only (never holes) so the ink contour wraps one shape.
+      hairSlab(v, t, -2, lean - 2, z, 10, 7, 2, 2, false); // wide brim
+      hairSlab(v, t, -1, lean - 1, z + 2, 8, 5, 2, 2, false);
+      hairSlab(v, t, 0, lean, z + 4, 6, 4, 1, 1, false);
+      hairSlab(v, t, 1, lean + 1, z + 5, 4, 2, 1, 1, false); // crown
+      // A couple of chunky front tufts breaking the brow line (front only).
+      if (!back) {
+        v.push({ x: 0, y: lean + 4, z: z - 1, c: t.hairDeep, mat: cloth });
+        v.push({ x: 5, y: lean + 4, z: z - 1, c: t.hairDeep, mat: cloth });
+      }
+      if (back) hairSlab(v, t, 0, lean + 3, 13 + lift, 6, 1, 4, 0, false); // nape
       break;
     }
   }
@@ -546,18 +556,25 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     v.push({ x: back ? 1 : 0, y: tailY, z: 6 + lift, c: BODY_COLORS.scarf, mat: cloth });
   }
 
-  // The oversized head (z9-13): skin block, face on the lit +y side.
-  v.push(...cbox(0, lean - 1, 9 + lift, 6, 4, 5, t.skin, skinMat));
+  // THE OVERSIZED HEAD (R4-REVISED — "the bust is the Spark"): a big skin
+  // block that runs WIDER than the shoulders so the head reads as ~half the
+  // silhouette, exactly like the mascot bust. Face on the lit +y side.
+  v.push(...cbox(-1, lean - 1, 9 + lift, 8, 5, 5, t.skin, skinMat));
   if (!back) {
-    // Mouth low on the face, under the lens gap.
-    v.push({ x: 2, y: lean + 3, z: 9 + lift, c: shade(t.skin, -0.45) });
-    v.push({ x: 3, y: lean + 3, z: 9 + lift, c: shade(t.skin, -0.45) });
-    // Two big teal lenses proud of the face.
-    v.push(...cbox(0, lean + 3, 10 + lift, 2, 1, 2, C.lens));
-    v.push(...cbox(4, lean + 3, 10 + lift, 2, 1, 2, C.lens));
+    // Mouth: a wide dark dip low on the proud face plane.
+    for (const mx of [3, 4] as const) {
+      v.push({ x: mx, y: lean + 4, z: 9 + lift, c: shade(t.skin, -0.45) });
+    }
+    // Two big teal lenses (3×3 — no feature under 3 voxels), proud of the
+    // face under the band, with a black nose-bridge gap between them.
+    v.push(...cbox(-1, lean + 4, 10 + lift, 3, 1, 3, C.lens));
+    v.push(...cbox(4, lean + 4, 10 + lift, 3, 1, 3, C.lens));
+    v.push(...cbox(2, lean + 4, 10 + lift, 2, 1, 3, C.band));
   }
-  // Goggle band: proud wrap at the crown — visible from every direction.
-  v.push(...cbox(-1, lean - 2, 12 + lift, 8, 6, 2, C.band));
+  // Goggle band: a PROUD wrap that comes down over the brow (one voxel out
+  // all round), 10 wide — the signature black strip under the mop, low like
+  // the bust so only the lenses + jaw show beneath the hair.
+  v.push(...cbox(-2, lean - 2, 13 + lift, 10, 7, 1, C.band));
 
   // Hair per the chosen style, in the chosen color (the beanie covers it).
   buildHair(v, t, b.appearance.hair, lean, lift, back, eq.head);
@@ -616,6 +633,19 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
 const SPARK_DIRS = ['se', 'sw', 'ne', 'nw'] as const;
 export type SparkDir = (typeof SPARK_DIRS)[number];
 
+/**
+ * Shared animation anchor (R4b): the ground centre under the Spark's feet
+ * (legs span x1-4 → centre 2.5, rest depth y≈1). Fixed for every frame/pose
+ * so the walk cycle and tool poses never jitter — the anchor no longer
+ * chases each frame's changing bounding box. Transposed dirs swap x/y.
+ */
+const SPARK_ANCHOR = { x: 2.5, y: 1 };
+function dirAnchor(dir: SparkDir): { x: number; y: number } {
+  return dir === 'se' || dir === 'nw'
+    ? { x: SPARK_ANCHOR.y, y: SPARK_ANCHOR.x }
+    : SPARK_ANCHOR;
+}
+
 /** view + transpose per direction (see the header comment). */
 function dirVoxels(dir: SparkDir, build: Omit<SparkBuild, 'view'>): Voxel[] {
   const view: SparkBuild['view'] = dir === 'sw' || dir === 'se' ? 'front' : 'back';
@@ -669,6 +699,7 @@ export function bakeSparkAppearance(
         voxels: dirVoxels(dir, { frame: 'idle', appearance, equipped }),
         warmRim: true,
         shadow: false,
+        anchor: dirAnchor(dir),
       });
     }
     return;
@@ -681,6 +712,7 @@ export function bakeSparkAppearance(
         voxels: dirVoxels(dir, { frame, appearance, equipped }),
         warmRim: true,
         shadow: false,
+        anchor: dirAnchor(dir),
       });
     }
     for (const pose of SPARK_POSES) {
@@ -689,6 +721,7 @@ export function bakeSparkAppearance(
         voxels: dirVoxels(dir, { frame: 'idle', pose, appearance, equipped }),
         warmRim: true,
         shadow: false,
+        anchor: dirAnchor(dir),
       });
     }
   }

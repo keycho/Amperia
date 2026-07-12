@@ -5,11 +5,15 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { swallowGameInput } from './domGuard';
 
-const MAX_LINES = 8;
+// R6/R6b: the bottom-left is PLAYERS-ONLY now (system messages moved to the
+// top-center toast pills), capped at 2 visible lines that fade when quiet.
+const MAX_LINES = 2;
+const FADE_AFTER_MS = 9000;
 
 /**
- * Bottom-left chat: a warm message log (Phaser) + a DOM input that appears on
- * Enter (canvas text input is miserable). Esc hides; Enter sends.
+ * Bottom-left chat: a warm PLAYER message log (Phaser) + a DOM input that
+ * appears on Enter (canvas text input is miserable). Esc hides; Enter sends.
+ * System notices never appear here — they are top-center pills.
  */
 export class ChatUI {
   private readonly scene: Phaser.Scene;
@@ -22,6 +26,7 @@ export class ChatUI {
   /** Whispers that landed while the input was closed. */
   private unread = 0;
   private input: HTMLInputElement | null = null;
+  private fadeEvent?: Phaser.Time.TimerEvent;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -55,10 +60,8 @@ export class ChatUI {
     this.hint.setAlpha(0.65);
     this.hint.setDepth(891);
 
+    // Players only — SessionEvents.notice is handled by the toast pills.
     session.events.on(SessionEvents.chat, (m: ChatBroadcast) => this.push(m));
-    session.events.on(SessionEvents.notice, (text: string) =>
-      this.push({ from: '⚡', sessionId: '', text, ts: Date.now() }),
-    );
     this.layout();
   }
 
@@ -118,6 +121,19 @@ export class ChatUI {
       }
     }
     this.redrawBg();
+    this.wake();
+  }
+
+  /** Show the log full-strength, then fade it out again once chat goes quiet. */
+  private wake(): void {
+    const targets = [...this.lines, this.bg];
+    this.scene.tweens.killTweensOf(targets);
+    for (const t of targets) t.setAlpha(1);
+    this.fadeEvent?.remove();
+    this.fadeEvent = this.scene.time.delayedCall(FADE_AFTER_MS, () => {
+      if (this.input !== null) return; // never fade while typing
+      this.scene.tweens.add({ targets, alpha: 0, duration: 1200, ease: 'quad.in' });
+    });
   }
 
   /** U4c: the hint doubles as the unread-whisper indicator. */
@@ -137,6 +153,7 @@ export class ChatUI {
   openInput(prefill?: string): void {
     this.unread = 0;
     this.refreshHint();
+    this.wake();
     if (this.input !== null) {
       if (prefill !== undefined) this.input.value = prefill;
       this.input.focus();
