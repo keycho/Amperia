@@ -623,8 +623,11 @@ export const CONFIG = {
       {
         id: 'tut1',
         name: 'First Salvage',
-        copy: 'Gather 10 Salvage from the alley heaps.',
-        step: { type: 'gather', itemId: 'salvage', qty: 10 },
+        // C4: one number for the first task — the FIRST BOLTS checklist and
+        // this quest both say 5 (client TUT_GATHER = 5). 5 Salvage → ~15 Bolts,
+        // enough for the cheapest ware, so the gather→sell→buy loop completes.
+        copy: 'Gather 5 Salvage from the glinting heap.',
+        step: { type: 'gather', itemId: 'salvage', qty: 5 },
         // EBT quest-step curve 10/25/15 — the welcome 2× (onboarding
         // .starterQuestBonus) doubles these for a Spark's first three turn-ins.
         rewards: { bolts: 10 },

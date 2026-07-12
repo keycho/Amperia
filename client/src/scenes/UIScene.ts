@@ -72,6 +72,9 @@ export class UIScene extends Phaser.Scene {
   private toast: Phaser.GameObjects.Container | null = null;
   /** R3: the "First Bolts" checklist panel + the two revealable HUD icons. */
   private tutorialPanel: Phaser.GameObjects.Container | null = null;
+  /** C4: true while the finished checklist is fading out — keeps its column
+   *  slot reserved (and the quest tracker suppressed) until it's destroyed. */
+  private tutorialClosing = false;
   private tutorialLines: Phaser.GameObjects.Text[] = [];
   private discloseIcons: Phaser.GameObjects.GameObject[] = [];
   private toastQueue: string[] = [];
@@ -202,7 +205,9 @@ export class UIScene extends Phaser.Scene {
   /** Render the Rested banner from a payload — gated until first Bolts (R3). */
   private applyRested(e: RestedSync): void {
     if (firstLoop.active && !firstLoop.boltsEarned) {
+      this.restedText.setText('');
       this.restedText.setAlpha(0);
+      this.layoutLeftColumn();
       return;
     }
     if (e.msLeft > 0) {
@@ -212,8 +217,18 @@ export class UIScene extends Phaser.Scene {
       this.restedText.setAlpha(1);
     } else if (this.restedText.text !== '') {
       this.restedText.setText('✦ Rested spent for today — back tomorrow');
-      this.tweens.add({ targets: this.restedText, alpha: 0, delay: 4000, duration: 600 });
+      this.tweens.add({
+        targets: this.restedText,
+        alpha: 0,
+        delay: 4000,
+        duration: 600,
+        onComplete: () => {
+          this.restedText.setText('');
+          this.layoutLeftColumn();
+        },
+      });
     }
+    this.layoutLeftColumn();
   }
 
   /** R3/R6b: queue toast pills so they play one at a time, in order. A short
@@ -389,6 +404,7 @@ export class UIScene extends Phaser.Scene {
       panel.setAlpha(0);
       this.tutorialPanel = panel;
       this.tweens.add({ targets: panel, alpha: 1, duration: 400 });
+      this.layoutLeftColumn();
     }
     m.steps.forEach((step, i) => {
       const line = this.tutorialLines[i];
@@ -401,16 +417,23 @@ export class UIScene extends Phaser.Scene {
     });
     // Reveal the previously-hidden HUD icons once the first Bolts land.
     if (firstLoop.boltsEarned && this.discloseIcons.length === 0) this.revealDiscloseIcons();
-    // Loop complete: let it read, then fade the checklist away.
-    if (m.active === -1 && this.tutorialPanel !== null) {
+    // Loop complete: let it read, then fade the checklist away. C4: the panel
+    // keeps its column slot (tutorialClosing) until it's actually destroyed,
+    // so the quest tracker doesn't jump up UNDER the still-fading checklist.
+    if (m.active === -1 && this.tutorialPanel !== null && !this.tutorialClosing) {
+      this.tutorialClosing = true;
       const panel = this.tutorialPanel;
-      this.tutorialPanel = null;
       this.time.delayedCall(3200, () =>
         this.tweens.add({
           targets: panel,
           alpha: 0,
           duration: 500,
-          onComplete: () => panel.destroy(),
+          onComplete: () => {
+            panel.destroy();
+            this.tutorialPanel = null;
+            this.tutorialClosing = false;
+            this.layoutLeftColumn();
+          },
         }),
       );
     }
@@ -569,6 +592,7 @@ export class UIScene extends Phaser.Scene {
             ? `☀ Weekend city buff — +${c.buffPct}% gather XP, with the city's thanks`
             : '',
         );
+        this.layoutLeftColumn();
         if (this.chargePanel.visible) this.chargePanel.refresh();
       },
     );
@@ -583,6 +607,7 @@ export class UIScene extends Phaser.Scene {
     this.questChip.setDepth(900);
     session.events.on(SessionEvents.questTracker, (line: string) => {
       this.questChip.setText(line === '' ? '' : `◈ ${line}`);
+      this.layoutLeftColumn();
     });
     // U5c: a quest turned in gets its stamp — a punchy chip + thunk.
     const questStates = new Map<string, string>();
@@ -717,6 +742,44 @@ export class UIScene extends Phaser.Scene {
     this.chargePanel.setPosition((w - cp.w) / 2, Math.max(30, (h - cp.h) / 2 - 10));
     this.drawHpBar();
     this.refreshAll();
+    this.layoutLeftColumn();
+  }
+
+  /**
+   * C4: stack every top-left HUD element in ONE vertical flow — measured
+   * heights, fixed gaps, nothing absolutely positioned into the column.
+   * Empty/hidden rows collapse so nothing overlaps. While the FIRST BOLTS
+   * checklist is up it takes the slot AND the separate quest-tracker line is
+   * suppressed entirely (the checklist IS the tracker).
+   */
+  private layoutLeftColumn(): void {
+    const x = 12;
+    const GAP = 6;
+    let y = 10;
+    const row = (
+      obj: Phaser.GameObjects.Text | Phaser.GameObjects.Container | null,
+      shown: boolean,
+      height: number,
+    ): void => {
+      if (obj === null) return;
+      obj.setVisible(shown);
+      if (!shown) return;
+      obj.setPosition(x, y);
+      y += height + GAP;
+    };
+    const checklistUp = this.tutorialPanel !== null;
+    row(this.lootChip, true, this.lootChip.height);
+    row(this.boltsChip, true, this.boltsChip.height);
+    row(this.tutorialPanel, checklistUp, 96);
+    // Quest tracker: only when it has a line, the checklist is gone, and the
+    // guided loop is over — otherwise the checklist speaks for it.
+    row(
+      this.questChip,
+      this.questChip.text !== '' && !checklistUp && !firstLoop.active,
+      this.questChip.height,
+    );
+    row(this.buffChip, this.buffChip.text !== '', this.buffChip.height);
+    row(this.restedText, this.restedText.text !== '', this.restedText.height);
   }
 
   /** Gear button + a small panel with the master volume slider. */

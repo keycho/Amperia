@@ -34,11 +34,11 @@ describe('quest chain', () => {
 describe('progress events', () => {
   it('gather events fill matching gather quests', () => {
     const log: QuestLog = { tut1: { state: 'active', progress: 0 } };
-    applyProgress(log, { type: 'gather', itemId: 'salvage', qty: 4, skill: 'scavving' });
+    applyProgress(log, { type: 'gather', itemId: 'salvage', qty: 3, skill: 'scavving' });
     applyProgress(log, { type: 'gather', itemId: 'brass', qty: 4, skill: 'delving' });
-    expect(log.tut1?.progress).toBe(4);
+    expect(log.tut1?.progress).toBe(3);
     applyProgress(log, { type: 'gather', itemId: 'salvage', qty: 99, skill: 'scavving' });
-    expect(log.tut1?.progress).toBe(10); // clamped at the step qty
+    expect(log.tut1?.progress).toBe(5); // clamped at the step qty (C4: tut1 = 5)
     expect(isComplete(questById('tut1')!, log.tut1)).toBe(true);
   });
 
