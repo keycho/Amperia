@@ -89,6 +89,8 @@ interface Entry {
   hovered: boolean;
   /** C3: tutorial-pinned — label stays amber and always visible. */
   highlight: boolean;
+  /** Resting label depth (a highlight lifts it above neighbour labels). */
+  labelDepth: number;
 }
 
 export class InteractionMarkers {
@@ -319,6 +321,7 @@ export class InteractionMarkers {
       labelAlpha: 0,
       hovered: false,
       highlight: false,
+      labelDepth: depth + 1,
     });
     this.drawOutline(this.entries[this.entries.length - 1]!);
   }
@@ -333,12 +336,16 @@ export class InteractionMarkers {
     this.findEntry(tx, ty)?.label.setText(text);
   }
 
-  /** C3: amber-pin a target's label (tutorial), or clear it. */
+  /** C3: amber-pin a target's label (tutorial) with an ink plate that reads
+   *  over neighbour labels, or clear it back to a plain stroked label. */
   setHighlight(tx: number, ty: number, on: boolean): void {
     const e = this.findEntry(tx, ty);
     if (e === undefined) return;
     e.highlight = on;
     e.label.setColor(on ? PALETTE.neonAmber : LABEL_COLOR);
+    e.label.setBackgroundColor(on ? PALETTE.ink : '');
+    e.label.setPadding(on ? 5 : 0, on ? 2 : 0);
+    e.label.setDepth(on ? 900_000 : e.labelDepth);
   }
 
   /** A 1px amber diamond ring around the footprint's base, for hover. */

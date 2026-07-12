@@ -1,5 +1,39 @@
 # AMPERIA — Progress
 
+## Status after the 2026-07-12 CLICK & CLARITY FIX block (C1–C4)
+
+Production-feedback fixes from real play: couldn't reliably click a stall to
+sell, clicked the tram by accident, couldn't tell which stall is THE
+merchant, top-left HUD text overlapping. Movement scheme unchanged —
+click-to-move stays.
+- C1 — central pointer resolver (WorldScene): interactables register their
+  sprite and the scene pointerdown hit-tests by FULL rendered bounds, so a
+  click anywhere on the visible sprite (awning/sign/roof) interacts, not just
+  the feet. Overlapping tall iso bounds resolve to the interactable whose
+  CENTRE is nearest the cursor; interactable always beats a ground-move;
+  decoration never registers. Per-sprite pointerdown handlers removed (hover
+  cursor kept) so nothing competes with the resolver.
+- C2 — "press E" as the reliable path: a floating "E — <verb>" pill shows on
+  the nearest in-reach interactable and E fires it (services outrank crowding
+  stalls, then Euclidean distance, so "walk to the Merchant and press E"
+  always sells). session.eInteractActive makes the emote wheel yield E in
+  range. Tutorial checklist hints now say "press E".
+- C3 — name + declutter: the NPC merchant reads "Merchant — Sable" (distinct,
+  coin pictogram); player stalls read "Empty Stall" / "<owner>'s Stall" (no
+  more nine identical "Market Stall"). Only the 3 NEAREST labels show (+hover,
+  +a tutorial-pinned target); the merchant's label amber-pins on a plate
+  during the sell/buy steps.
+- C4 — HUD left column is ONE measured vertical flow (counters, checklist,
+  quest tracker, buff, Rested) — no absolute overlap. tut1 target 10→5 so the
+  checklist and quest agree on one number; the quest tracker is suppressed
+  entirely while the checklist is up (the checklist IS the tracker).
+
+Checkpoint stills (F9 not involved): awning-top click opens the trade panel;
+"E — Trade" pill beside the merchant with the panel opening on E; the market
+cluster shows ≤3 labels with "Merchant — Sable" plated; top-left HUD with the
+checklist + counters and no overlap. Client + server typecheck clean; 187
+client + 5 server tests pass.
+
 ## Status after the 2026-07-12 FOUNDRY SHOWCASE block (S1–S4)
 
 Made the Cosmetic Foundry (premium shop) screenshot-worthy. Still DATA +
