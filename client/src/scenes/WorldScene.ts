@@ -2073,13 +2073,12 @@ export class WorldScene extends Phaser.Scene {
       return (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'decking' : 'plating';
     }
     const isTangle = this.map.district === 'tangle';
-    const inLane = !isTangle && ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
-    const onBoardwalk = !isTangle && tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
-    if (inLane || onBoardwalk) return 'decking';
+    // W3: the decked streets are the road network (data-driven from the map).
+    if (this.map.roads[ty]?.[tx] === true) return 'decking';
     const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
     if (plaza.radius > 0 && plazaDist <= plaza.radius) return 'stone';
     const distToEdge = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
-    if (distToEdge <= 6 || (!isTangle && tx >= 27 && ty >= 28)) return 'plating';
+    if (distToEdge <= 6 || (!isTangle && tx >= 44 && ty >= 44)) return 'plating';
     return 'stone';
   }
 
@@ -2205,9 +2204,8 @@ export class WorldScene extends Phaser.Scene {
         // read the district layout; no drawn gridlines anywhere. The Tangle
         // keeps only the industrial zones: plating fringe, asphalt maze.
         const isTangle = this.map.district === 'tangle';
-        const inLane = !isTangle && ty >= 19 && ty <= 21 && tx >= 27 && tx <= 36;
-        const onBoardwalk =
-          !isTangle && tx === 6 && ty >= CONFIG.canal.yMin && ty <= CONFIG.canal.yMax;
+        // W3: the decked streets come straight from the shared road network.
+        const onRoad = this.map.roads[ty]?.[tx] === true;
         const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
         const onStepRing = plaza.radius > 0 && plazaDist === plaza.radius;
         const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
@@ -2221,10 +2219,10 @@ export class WorldScene extends Phaser.Scene {
           // D2: the garden tier is WARM WOOD underfoot (§12B) — decked
           // terraces, plated entry apron, never asphalt, never lawn.
           kind = (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'deck' : 'plating';
-        } else if (inLane || onBoardwalk) kind = 'deck';
+        } else if (onRoad) kind = 'deck';
         else if (onStepRing) kind = 'paverLight';
         else if (inPlaza) kind = 'paver';
-        else if (distToEdgeT <= 6 || (!isTangle && tx >= 27 && ty >= 28)) kind = 'plating';
+        else if (distToEdgeT <= 6 || (!isTangle && tx >= 44 && ty >= 44)) kind = 'plating';
         else kind = 'asphalt';
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(floorTileScale());
@@ -2320,7 +2318,7 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Stains: quiet dark blotches, denser off the lit paths.
-        if (!inLane && !onBoardwalk && rng() < (inPlaza ? 0.03 : 0.05)) {
+        if (!onRoad && rng() < (inPlaza ? 0.03 : 0.05)) {
           g.fillStyle(this.lerpColor(MATERIAL_INT.concreteDeep, PALETTE_INT.ink, 0.55), 0.22);
           g.fillEllipse(x - 8 + rng() * 16, y - 4 + rng() * 8, 10 + rng() * 12, 5 + rng() * 5);
         }
@@ -2349,7 +2347,7 @@ export class WorldScene extends Phaser.Scene {
           // the light's hue — a flipped gradient blob under a dark glaze.
           if (
             this.puddleCount < 24 &&
-            !inLane &&
+            !onRoad &&
             rugVariant === undefined &&
             kind !== 'deck' &&
             light.d <= 3.5 &&

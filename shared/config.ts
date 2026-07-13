@@ -13,8 +13,15 @@ export const CONFIG = {
   },
 
   map: {
-    /** Map is size × size tiles. */
+    /** Map is size × size tiles (the compact districts: Tangle/Stacks/Terrarium). */
     size: 40,
+    /**
+     * W0 BREATHING ROOM: the Filament is the starter island and carries the
+     * whole first loop, so it rides a larger footprint — ~1.5×/axis, ~2.25×
+     * the area — to give the plaza, market, and gather pockets room to
+     * breathe. Only the Filament uses this; the other quarters stay 40.
+     */
+    filamentSize: 60,
     /** Seed for deterministic map decoration + node scatter. */
     seed: 20260709,
   },
@@ -40,8 +47,9 @@ export const CONFIG = {
   player: {
     /** Seconds to walk one tile (A* path steps tween at this rate). */
     secondsPerTile: 0.21,
-    /** Spawn tile: stepping off the tram at the gate, facing the lane. */
-    spawn: { x: 35, y: 20 },
+    /** Spawn tile: stepping off the tram at the east gate, onto the market
+     *  spine that runs west into the Dynamo plaza (W0 layout). */
+    spawn: { x: 52, y: 30 },
   },
 
   /** The Fortune Coil (S4): ONE free spin daily — the wheel takes NO
@@ -266,12 +274,13 @@ export const CONFIG = {
 
   /** The coolant canal (built channel, never open water) on the west side. */
   canal: {
-    xMin: 4,
-    xMax: 5,
-    yMin: 5,
-    yMax: 35,
-    /** Rows where decking bridges the channel (walkable). */
-    bridgeRows: [19, 20],
+    xMin: 8,
+    xMax: 9,
+    yMin: 8,
+    yMax: 52,
+    /** Rows where decking bridges the channel (walkable) — the market spine
+     *  crosses 3-wide (W0 layout). */
+    bridgeRows: [29, 30, 31],
   },
 
   inventory: {
@@ -754,7 +763,7 @@ export const CONFIG = {
       dynamoHealRadiusTiles: 5,
       dynamoHealPerSecond: 2.5,
       /** Downed Sparks come to in the Dynamo's warmth, not at the tram. */
-      respawnTile: { x: 20, y: 26 },
+      respawnTile: { x: 30, y: 34 },
     },
     scuttlebot: {
       count: 4,
@@ -772,8 +781,8 @@ export const CONFIG = {
       xpBrawlingPerKill: 14,
       /** Rare Manifest trophy roll per kill — the ONLY drop of any kind. */
       trophyChance: 0.04,
-      /** Home range: the SE scrap fringe among the amperite spoil. */
-      homeBox: { x0: 29, y0: 30, x1: 37, y1: 37 },
+      /** Home range: the SE scrap fringe among the amperite spoil (W0 layout). */
+      homeBox: { x0: 45, y0: 45, x1: 56, y1: 56 },
     },
     /** Placeable Heatlamp: riveted on the spot from Salvage (a real sink). */
     heatlamp: {

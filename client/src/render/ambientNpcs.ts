@@ -28,17 +28,20 @@ interface AmbientNpcDef {
 
 const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
   filament: [
-    // The Griddle cook, stirring behind the counter.
-    { code: '1:1:1:1:3:0', tile: [35, 26], dir: 'sw', turns: ['sw', 'se'] },
-    // The angler working the canal with a skimnet.
-    { code: '1:3:2:2:2:2', tile: [6, 25], dir: 'nw', pose: 'skimnet' },
-    // A loafer at the dock's east end, watching the lane.
-    { code: '1:2:5:5:1:0', tile: [18, 3], dir: 'se', turns: ['se', 'sw'] },
-    // A browser drifting along the Nightstalls.
-    { code: '1:0:3:3:4:1', tile: [29, 18], dir: 'ne', turns: ['ne', 'nw'] },
-    // R2: the Nightstalls MERCHANT, standing behind the stand (30,17) so the
-    // vendor you sell to is a visible person, not an empty counter.
-    { code: '1:2:1:0:4:1', tile: [30, 16], dir: 'se', turns: ['se', 'sw'] },
+    // W0 layout: the Griddle cook at the noodle corner, west end of the market.
+    { code: '1:1:1:1:3:0', tile: [17, 41], dir: 'nw', turns: ['nw', 'ne'] },
+    // The angler working the coolant canal from the towpath with a skimnet.
+    { code: '1:3:2:2:2:2', tile: [10, 27], dir: 'nw', pose: 'skimnet' },
+    // A loafer on the plaza's NE rim, watching the tram lane.
+    { code: '1:2:5:5:1:0', tile: [34, 22], dir: 'se', turns: ['se', 'sw'] },
+    // Browsers drifting the Nightstalls promenade — the market feels lived-in.
+    { code: '1:0:3:3:4:1', tile: [24, 45], dir: 'ne', turns: ['ne', 'nw'] },
+    { code: '1:4:3:3:1:0', tile: [19, 45], dir: 'ne' },
+    // R2: the Nightstalls MERCHANT, a visible person behind the stand (33,44)
+    // so the vendor you sell to is a face, not an empty counter.
+    { code: '1:2:1:0:4:1', tile: [33, 43], dir: 'se', turns: ['se', 'sw'] },
+    // A local warming themselves by the Great Dynamo.
+    { code: '1:2:0:5:2:0', tile: [28, 34], dir: 'ne', turns: ['ne', 'nw'] },
   ],
   tangle: [
     // The mechanic riveting at the blocked-up Draymule (ember hair + teal
