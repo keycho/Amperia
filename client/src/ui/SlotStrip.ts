@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS, type ItemDef } from '@shared/items';
-import { mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { fullDurability, type Inventory } from '@shared/inventory';
 import { itemThumbKey } from '../render/itemThumbs';
 import { gameState } from '../state/GameState';
 import { tooltip } from './Tooltip';
+import { kitPlate, kitText } from './kit';
 
 export const SLOT_SIZE = 52;
 export const SLOT_GAP = 7;
@@ -63,21 +64,9 @@ export class SlotStrip {
     // Panel chrome: Kenney 9-slice, ALWAYS re-tinted to the plum family.
     if (opts.panel === true) {
       const headroom = opts.title !== undefined ? 36 : 0;
-      const chrome = scene.add.nineslice(
-        0,
-        -headroom,
-        'ui-panel-screws',
-        undefined,
-        w,
-        h + headroom,
-        16,
-        16,
-        16,
-        16,
-      );
-      chrome.setOrigin(0, 0);
-      chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-      chrome.setAlpha(0.97);
+      // PP1: the kit plate (was a tinted Kenney nineslice).
+      const chrome = kitPlate(scene, w, h + headroom);
+      chrome.setPosition(0, -headroom);
       this.container.add(chrome);
     }
     // Slot insets (dim when empty, lit when filled/active).
@@ -147,11 +136,7 @@ export class SlotStrip {
     for (let i = 0; i < this.slotCount; i++) {
       const icon = scene.add.image(0, 0, 'thumb:icon-salvage');
       icon.setVisible(false);
-      const count = scene.add.text(0, 0, '', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: UI_TEXT_WARM,
-      });
+      const count = kitText(scene, 0, 0, '', 'body', { color: UI_TEXT_WARM });
       count.setOrigin(1, 1);
       count.setVisible(false);
       this.container.add(icon);
@@ -161,11 +146,9 @@ export class SlotStrip {
     }
 
     if (opts.title !== undefined) {
-      const title = scene.add.text(12, -26, opts.title, {
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        color: UI_TEXT_WARM,
-        fontStyle: 'bold',
+      const title = kitText(scene, 12, -27, opts.title, 'heading', {
+        color: PALETTE.neonAmber,
+        bold: true,
       });
       this.container.add(title);
     }
@@ -174,9 +157,7 @@ export class SlotStrip {
     if (source === 'hotbar') {
       const cell = SLOT_SIZE + SLOT_GAP;
       for (let i = 0; i < this.slotCount; i++) {
-        const hint = scene.add.text(SLOT_GAP + i * cell + 6, SLOT_GAP + 4, String(i + 1), {
-          fontFamily: 'monospace',
-          fontSize: '11px',
+        const hint = kitText(scene, SLOT_GAP + i * cell + 6, SLOT_GAP + 4, String(i + 1), 'caption', {
           color: UI_TEXT_WARM,
         });
         hint.setAlpha(0.85);

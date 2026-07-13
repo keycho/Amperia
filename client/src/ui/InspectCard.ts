@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { COSMETICS, decodeEquipped } from '@shared/cosmetics';
-import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { InspectInfoEvent } from '@shared/protocol';
 import { send } from '../net/NetClient';
 import { session } from '../net/session';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
+import { kitButton, kitCloseButton, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
 
 const W = 264;
 const H = 404;
@@ -20,7 +21,7 @@ export class InspectCard {
   private readonly scene: Phaser.Scene;
   private readonly container: Phaser.GameObjects.Container;
   private readonly portrait: Phaser.GameObjects.Image;
-  private lines: Phaser.GameObjects.Text[] = [];
+  private lines: Phaser.GameObjects.GameObject[] = [];
   private targetSessionId: string | null = null;
 
   constructor(scene: Phaser.Scene) {
@@ -29,11 +30,7 @@ export class InspectCard {
     this.container.setDepth(1200);
     this.container.setVisible(false);
 
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
 
     // A lit dais for the portrait.
     const g = scene.add.graphics();
@@ -49,17 +46,7 @@ export class InspectCard {
     this.portrait.setOrigin(0.5, 1);
     this.container.add(this.portrait);
 
-    const close = scene.add.text(W - 34, 10, '[x]', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: UI_TEXT_WARM,
-    });
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.hide();
-    });
-    this.container.add(close);
+    this.container.add(kitCloseButton(scene, W - SPACE.md, 18, () => this.hide()));
   }
 
   /** Populate from a fresh server answer and slide in on the right. */
@@ -75,65 +62,63 @@ export class InspectCard {
     this.portrait.setTexture(baked.key);
     this.portrait.setScale(0.9);
 
-    const add = (x: number, y: number, text: string, color: string, size = 12) => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: `${size}px`,
-        color,
-      });
+    const add = (x: number, y: number, text: string, color: string, level: TypeLevel = 'body') => {
+      const t = kitText(this.scene, x, y, text, level, { color });
       this.container.add(t);
       this.lines.push(t);
       return t;
     };
 
     const glow = eq.nameGlow !== undefined;
-    const name = add(14, 10, ev.sparkName, glow ? PALETTE.neonAmber : UI_TEXT_WARM, 15);
+    const name = add(14, 10, ev.sparkName, glow ? PALETTE.neonAmber : UI_TEXT_WARM, 'heading');
     if (glow) name.setShadow(0, 0, PALETTE.warmGlow, 6, true, true);
     if (ev.title !== null) {
       // Manifest title (S1) — the city's word for this Spark.
-      add(name.x + name.width + 8, 14, `“${ev.title}”`, PALETTE.neonTeal, 11);
+      add(name.x + name.width + 8, 14, `“${ev.title}”`, PALETTE.neonTeal, 'caption');
     }
-    add(14, 172, ev.crew ?? 'No crew — yet.', ev.crew !== null ? PALETTE.neonTeal : PALETTE.groundAccent, 11);
+    add(14, 172, ev.crew ?? 'No crew — yet.', ev.crew !== null ? PALETTE.neonTeal : PALETTE.groundAccent, 'caption');
 
     let y = 194;
-    add(14, y, 'MASTERY', PALETTE.neonAmber, 11);
+    add(14, y, 'MASTERY', PALETTE.neonAmber, 'caption');
     y += 17;
     if (ev.topSkills.length === 0) {
-      add(20, y, 'Fresh off the tram.', PALETTE.groundAccent, 11);
+      add(20, y, 'Fresh off the tram.', PALETTE.groundAccent, 'caption');
       y += 16;
     } else {
       for (const s of ev.topSkills) {
         const label = s.skill.charAt(0).toUpperCase() + s.skill.slice(1);
-        add(20, y, `${label} ${s.level}`, UI_TEXT_WARM, 11);
+        add(20, y, `${label} ${s.level}`, UI_TEXT_WARM, 'caption');
         y += 16;
       }
     }
     y += 6;
-    add(14, y, 'WEARING', PALETTE.neonAmber, 11);
+    add(14, y, 'WEARING', PALETTE.neonAmber, 'caption');
     y += 17;
     const worn = Object.values(eq)
       .map((id) => COSMETICS[id]?.label)
       .filter((l): l is string => l !== undefined);
     if (worn.length === 0) {
-      add(20, y, 'Just the jacket they came in.', PALETTE.groundAccent, 11);
+      add(20, y, 'Just the jacket they came in.', PALETTE.groundAccent, 'caption');
       y += 16;
     } else {
       for (const label of worn) {
-        add(20, y, label, UI_TEXT_WARM, 11);
+        add(20, y, label, UI_TEXT_WARM, 'caption');
         y += 16;
       }
     }
 
     // Looks lead to deals.
-    const trade = add(14, H - 26, '[offer trade]', PALETTE.neonTeal, 12);
-    trade.setInteractive({ useHandCursor: true });
-    trade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, evd: Phaser.Types.Input.EventData) => {
-      evd.stopPropagation();
-      if (session.room !== null && this.targetSessionId !== null) {
-        send.ptrade(session.room, { action: 'request', targetSessionId: this.targetSessionId });
-        this.hide();
-      }
+    const trade = kitButton(this.scene, SPACE.md, H - 42, 'offer trade', {
+      primary: true,
+      onClick: () => {
+        if (session.room !== null && this.targetSessionId !== null) {
+          send.ptrade(session.room, { action: 'request', targetSessionId: this.targetSessionId });
+          this.hide();
+        }
+      },
     });
+    this.container.add(trade);
+    this.lines.push(trade);
 
     const cam = this.scene.cameras.main;
     this.container.setPosition(cam.width - W - 14, Math.round((cam.height - H) / 2));

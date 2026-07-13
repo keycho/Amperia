@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { mixPalette, PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { sound } from '../audio/sound';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
 
 const W = 560;
 const H = 400;
@@ -86,11 +87,8 @@ export class HowToPlayPanel {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(1200);
     this.container.setVisible(false);
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'HOW THE CITY WORKS', () => this.setVisible(false));
   }
 
   /** Auto-show for brand-new Sparks (once — the [?] button remains). */
@@ -124,29 +122,32 @@ export class HowToPlayPanel {
     }
   }
 
-  private text(x: number, y: number, body: string, color: string, size = 13, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-      lineSpacing: 5,
-    });
+  private text(x: number, y: number, body: string, color: string, level: TypeLevel = 'body', bold = false) {
+    const t = kitText(this.scene, x, y, body, level, { color, bold });
+    t.setLineSpacing(5);
     this.container.add(t);
     this.dynamic.push(t);
     return t;
   }
 
-  private button(x: number, y: number, label: string, onClick: () => void) {
-    const b = this.text(x, y, label, UI_TEXT_WARM, 14, true);
-    b.setInteractive({ useHandCursor: true });
-    b.on('pointerover', () => b.setColor(PALETTE.neonAmber));
-    b.on('pointerout', () => b.setColor(UI_TEXT_WARM));
-    b.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      sound.uiClick();
-      onClick();
+  private button(
+    x: number,
+    y: number,
+    label: string,
+    opts: { width?: number; primary?: boolean },
+    onClick: () => void,
+  ) {
+    const b = kitButton(this.scene, x, y, label, {
+      width: opts.width,
+      height: 28,
+      primary: opts.primary,
+      onClick: () => {
+        sound.uiClick();
+        onClick();
+      },
     });
+    this.container.add(b);
+    this.dynamic.push(b);
     return b;
   }
 
@@ -155,40 +156,51 @@ export class HowToPlayPanel {
     this.dynamic.length = 0;
     const c = CARDS[this.card] as Card;
 
-    this.text(24, 20, 'HOW THE CITY WORKS', PALETTE.groundAccent, 11);
-    this.text(24, 42, c.title, PALETTE.neonAmber, 19, true);
-    this.text(24, 88, c.lines.join('\n'), UI_TEXT_WARM, 13);
+    this.text(SPACE.lg, HEADER_H + SPACE.sm, c.title, PALETTE.neonAmber, 'heading', true);
+    this.text(SPACE.lg, 88, c.lines.join('\n'), UI_TEXT_WARM, 'body');
 
     // Card dots — where you are in the four breaths.
     CARDS.forEach((_c2, i) => {
-      const dot = this.text(24 + i * 22, H - 44, '●', i === this.card ? PALETTE.neonAmber : PALETTE.groundAccent, 13);
+      const dot = this.text(
+        SPACE.lg + i * 22,
+        H - 44,
+        '●',
+        i === this.card ? PALETTE.neonAmber : PALETTE.groundAccent,
+        'body',
+      );
       dot.setAlpha(i === this.card ? 1 : 0.5);
     });
 
     const last = this.card === CARDS.length - 1;
-    this.button(W - (last ? 110 : 92), H - 46, last ? '[got it]' : '[next ▸]', () => {
+    const by = H - 46;
+    let rx = W - SPACE.md;
+
+    const primaryW = 96;
+    rx -= primaryW;
+    this.button(rx, by, last ? 'got it' : 'next ▸', { width: primaryW, primary: true }, () => {
       if (last) this.setVisible(false);
       else {
         this.card += 1;
         this.refresh();
       }
     });
+    rx -= SPACE.sm;
     if (this.card > 0) {
-      this.button(W - 170, H - 46, '[◂]', () => {
+      const backW = 48;
+      rx -= backW;
+      this.button(rx, by, '◂', { width: backW }, () => {
         this.card -= 1;
         this.refresh();
       });
+      rx -= SPACE.sm;
     }
     if (!last) {
-      this.button(W - 250, H - 46, '[skip]', () => this.setVisible(false));
+      const skipW = 72;
+      rx -= skipW;
+      this.button(rx, by, 'skip', { width: skipW }, () => this.setVisible(false));
     }
-    const close = this.text(W - 44, 16, '[x]', UI_TEXT_WARM, 13);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
+
     // A warm footer beat so the panel sits in the world's voice.
-    this.text(24, H - 24, 'reopen anytime with the [?] button', PALETTE.groundAccent, 10);
+    this.text(SPACE.lg, H - 24, 'reopen anytime with the [?] button', PALETTE.groundAccent, 'caption');
   }
 }

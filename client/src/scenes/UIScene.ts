@@ -29,6 +29,7 @@ import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
+import { type Chip, kitChip, kitPlate, kitText, SPACE, UIK } from '../ui/kit';
 
 interface DragState {
   strip: SlotStrip;
@@ -46,7 +47,7 @@ export class UIScene extends Phaser.Scene {
   private inventoryPanel!: SlotStrip;
   private hotbar!: SlotStrip;
   private drag: DragState | null = null;
-  private lootChip!: Phaser.GameObjects.Text;
+  private lootChip!: Chip;
   private presenceChip!: Phaser.GameObjects.Text;
   private chat!: ChatUI;
   private skillsPanel!: SkillsPanel;
@@ -68,7 +69,7 @@ export class UIScene extends Phaser.Scene {
   private chargePanel!: ChargePanel;
   private buffChip!: Phaser.GameObjects.Text;
   private questChip!: Phaser.GameObjects.Text;
-  private boltsChip!: Phaser.GameObjects.Text;
+  private boltsChip!: Chip;
   private toast: Phaser.GameObjects.Container | null = null;
   /** R3: the "First Bolts" checklist panel + the two revealable HUD icons. */
   private tutorialPanel: Phaser.GameObjects.Container | null = null;
@@ -102,22 +103,16 @@ export class UIScene extends Phaser.Scene {
       Math.round(this.scale.height * 0.32),
     );
     wrap.setDepth(1300);
-    const bg = this.add.graphics();
-    bg.fillStyle(PALETTE_INT.ink, 0.94);
-    bg.fillRoundedRect(0, 0, w, h, 12);
-    bg.lineStyle(2, PALETTE_INT.neonRose, 0.7);
-    bg.strokeRoundedRect(0, 0, w, h, 12);
-    wrap.add(bg);
+    wrap.add(kitPlate(this, w, h, 12));
     const tangle = e.district === 'tangle';
-    const title = this.add.text(w / 2, 26, tangle ? 'THE TANGLE GOT YOU' : 'KNOCKED FLAT', {
-      fontFamily: 'monospace',
-      fontSize: '19px',
-      fontStyle: 'bold',
+    const title = kitText(this, w / 2, 24, tangle ? 'THE TANGLE GOT YOU' : 'KNOCKED FLAT', 'heading', {
       color: PALETTE.neonRose,
+      bold: true,
     });
     title.setOrigin(0.5);
     wrap.add(title);
-    const body = this.add.text(
+    const body = kitText(
+      this,
       w / 2,
       62,
       tangle
@@ -125,21 +120,13 @@ export class UIScene extends Phaser.Scene {
           ? `Your Scrapcache waits at the marker —\n${e.cacheBolts} Bolts and ${e.cacheStacks} stack${e.cacheStacks === 1 ? '' : 's'} of haul. Run back fast.`
           : 'Pockets were empty — nothing dropped.\nSmall mercies.'
         : 'The city caught you as you fell.\nNothing lost — catch your breath.',
-      {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: UI_TEXT_WARM,
-        align: 'center',
-        lineSpacing: 6,
-      },
+      'body',
+      { color: UI_TEXT_WARM, align: 'center' },
     );
+    body.setLineSpacing(6);
     body.setOrigin(0.5, 0);
     wrap.add(body);
-    const count = this.add.text(w / 2, h - 24, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: PALETTE.groundAccent,
-    });
+    const count = kitText(this, w / 2, h - 24, '', 'caption', { color: PALETTE.groundAccent });
     count.setOrigin(0.5);
     wrap.add(count);
     let left = 3;
@@ -168,18 +155,17 @@ export class UIScene extends Phaser.Scene {
   /** A soft chip that slides in top-center and fades — tram arrivals etc. */
   private showToast(text: string): void {
     this.toast?.destroy();
-    const txt = this.add.text(0, 0, `⚡ ${text}`, {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: UI_TEXT_WARM,
-    });
+    const txt = kitText(this, 0, 0, `⚡ ${text}`, 'body', { color: UI_TEXT_WARM });
     txt.setOrigin(0.5, 0.5);
-    const w = txt.width + 26;
-    const h = txt.height + 14;
+    const w = txt.width + SPACE.lg;
+    const h = txt.height + SPACE.md;
+    // PP1: kit-styled pill (plate fill, border, soft shadow).
     const g = this.add.graphics();
-    g.fillStyle(PALETTE_INT.ink, 0.78);
+    g.fillStyle(UIK.shadow, 0.3);
+    g.fillRoundedRect(-w / 2 + 1, -h / 2 + 2, w, h, h / 2);
+    g.fillStyle(UIK.plate, 0.94);
     g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
-    g.lineStyle(1.5, PALETTE_INT.warmGlow, 0.5);
+    g.lineStyle(1, UIK.border, 0.95);
     g.strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2);
     const toast = this.add.container(this.scale.width / 2, 26, [g, txt]);
     toast.setDepth(940);
@@ -251,23 +237,15 @@ export class UIScene extends Phaser.Scene {
     this.banner?.destroy();
     const cx = this.scale.width / 2;
     const cy = this.scale.height * 0.34;
-    const main = this.add.text(0, 0, text, {
-      fontFamily: 'monospace',
-      fontSize: '30px',
-      fontStyle: 'bold',
+    const main = kitText(this, 0, 0, text, 'display', {
       color: PALETTE.neonAmber,
-      stroke: PALETTE.ink,
-      strokeThickness: 6,
+      bold: true,
     }).setOrigin(0.5, 0.5);
+    main.setStroke(PALETTE.ink, 6);
     const parts: Phaser.GameObjects.GameObject[] = [main];
     if (sub !== undefined) {
-      const s = this.add.text(0, 24, sub, {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: UI_TEXT_WARM,
-        stroke: PALETTE.ink,
-        strokeThickness: 4,
-      }).setOrigin(0.5, 0.5);
+      const s = kitText(this, 0, 24, sub, 'body', { color: UI_TEXT_WARM }).setOrigin(0.5, 0.5);
+      s.setStroke(PALETTE.ink, 4);
       parts.push(s);
     }
     const banner = this.add.container(cx, cy, parts);
@@ -360,11 +338,9 @@ export class UIScene extends Phaser.Scene {
     glow.setScale(Math.max(w, h) / 190);
     layer.add(glow);
     // AMPERIA wordmark, bottom-right.
-    const mark = this.add.text(w - 26, h - 22, 'AMPERIA', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      fontStyle: 'bold',
+    const mark = kitText(this, w - 26, h - 22, 'AMPERIA', 'heading', {
       color: PALETTE.neonAmber,
+      bold: true,
     });
     mark.setOrigin(1, 1);
     mark.setAlpha(0.72);
@@ -381,23 +357,14 @@ export class UIScene extends Phaser.Scene {
    */
   private renderTutorial(m: TutorialModel): void {
     if (this.tutorialPanel === null) {
-      const g = this.add.graphics();
-      g.fillStyle(PALETTE_INT.ink, 0.72);
-      g.fillRoundedRect(0, 0, 268, 96, 8);
-      g.lineStyle(1.5, PALETTE_INT.neonAmber, 0.55);
-      g.strokeRoundedRect(0, 0, 268, 96, 8);
-      const title = this.add.text(12, 8, 'FIRST BOLTS', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        fontStyle: 'bold',
+      // PP1: the checklist rides the kit plate.
+      const g = kitPlate(this, 272, 96);
+      const title = kitText(this, SPACE.md, SPACE.sm, 'FIRST BOLTS', 'caption', {
         color: PALETTE.neonAmber,
+        bold: true,
       });
       this.tutorialLines = m.steps.map((_, i) =>
-        this.add.text(12, 28 + i * 20, '', {
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          color: UI_TEXT_WARM,
-        }),
+        kitText(this, SPACE.md, 30 + i * 20, '', 'caption', { color: UI_TEXT_WARM }),
       );
       const panel = this.add.container(12, 90, [g, title, ...this.tutorialLines]);
       panel.setDepth(930);
@@ -447,13 +414,8 @@ export class UIScene extends Phaser.Scene {
   private revealDiscloseIcons(): void {
     const x = this.scale.width - 12;
     const make = (glyph: string, y: number, onClick: () => void) => {
-      const t = this.add.text(x, y, glyph, {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: PALETTE.neonTeal,
-        stroke: PALETTE.ink,
-        strokeThickness: 3,
-      });
+      const t = kitText(this, x, y, glyph, 'body', { color: PALETTE.neonTeal });
+      t.setStroke(PALETTE.ink, 3);
       t.setOrigin(1, 0);
       t.setDepth(902);
       t.setAlpha(0);
@@ -492,22 +454,11 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel.setVisible(false);
     this.hotbar.setActiveSlot(gameState.activeHotbarSlot);
 
-    this.lootChip = this.add.text(12, 10, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: UI_TEXT_WARM,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    // PP1: HUD counters are proper kit chips (pill plate + glyph + value).
+    this.lootChip = kitChip(this, 12, 10, '◆', 'Salvage 0');
     this.lootChip.setDepth(900);
 
-    this.presenceChip = this.add.text(0, 10, '', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: PALETTE.warmGlow,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    this.presenceChip = kitText(this, 0, 10, '', 'body', { color: PALETTE.warmGlow });
     this.presenceChip.setDepth(900);
     session.events.on(SessionEvents.presence, (n: number) => {
       this.presenceChip.setText(`Sparks in the city: ${n}`);
@@ -543,11 +494,7 @@ export class UIScene extends Phaser.Scene {
     );
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
-    this.restedText = this.add.text(12, 58, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: PALETTE.warmGlow,
-    });
+    this.restedText = kitText(this, 12, 58, '', 'caption', { color: PALETTE.warmGlow });
     this.restedText.setDepth(900);
     this.restedText.setShadow(0, 0, PALETTE.neonAmber, 4, true, true);
     session.events.on(SessionEvents.rested, (e: RestedSync) => {
@@ -576,13 +523,7 @@ export class UIScene extends Phaser.Scene {
 
     // The weekend city buff, worn like a banner (comms rules: a reward
     // line, never "earn"). Driven by the synced Charge meter.
-    this.buffChip = this.add.text(12, 72, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: PALETTE.neonAmber,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    this.buffChip = kitText(this, 12, 72, '', 'caption', { color: PALETTE.neonAmber });
     this.buffChip.setDepth(900);
     session.events.on(
       SessionEvents.charge,
@@ -597,13 +538,7 @@ export class UIScene extends Phaser.Scene {
       },
     );
 
-    this.questChip = this.add.text(12, 52, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: PALETTE.neonTeal,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    this.questChip = kitText(this, 12, 52, '', 'caption', { color: PALETTE.neonTeal });
     this.questChip.setDepth(900);
     session.events.on(SessionEvents.questTracker, (line: string) => {
       this.questChip.setText(line === '' ? '' : `◈ ${line}`);
@@ -619,14 +554,11 @@ export class UIScene extends Phaser.Scene {
           questStates.set(id, row.state);
           if (prev === 'active' && row.state === 'turnedIn') {
             sound.questStamp();
-            const stamp = this.add.text(this.questChip.x + 4, this.questChip.y + 22, '✔ DONE', {
-              fontFamily: 'monospace',
-              fontSize: '15px',
-              fontStyle: 'bold',
+            const stamp = kitText(this, this.questChip.x + 4, this.questChip.y + 22, '✔ DONE', 'heading', {
               color: PALETTE.solarGreen,
-              stroke: PALETTE.ink,
-              strokeThickness: 4,
+              bold: true,
             });
+            stamp.setStroke(PALETTE.ink, 4);
             stamp.setDepth(901);
             stamp.setScale(1.8);
             stamp.setAlpha(0);
@@ -650,15 +582,9 @@ export class UIScene extends Phaser.Scene {
       },
     );
 
-    this.boltsChip = this.add.text(12, 32, '', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: PALETTE.warmGlow,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    this.boltsChip = kitChip(this, 12, 32, '⚙', 'Bolts 0', { glyphColor: PALETTE.warmGlow });
     this.boltsChip.setDepth(900);
-    const refreshBolts = () => this.boltsChip.setText(`Bolts ⚙ ${gameState.bolts}`);
+    const refreshBolts = () => this.boltsChip.setValue(`Bolts ${gameState.bolts}`);
     refreshBolts();
     gameState.events.on(GameEvents.boltsChanged, () => {
       refreshBolts();
@@ -680,13 +606,7 @@ export class UIScene extends Phaser.Scene {
 
     this.hpBar = this.add.graphics();
     this.hpBar.setDepth(900);
-    this.hpText = this.add.text(0, 0, '', {
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      color: UI_TEXT_WARM,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    this.hpText = kitText(this, 0, 0, '', 'caption', { color: UI_TEXT_WARM });
     this.hpText.setDepth(901);
     session.events.on(SessionEvents.hp, (v: { hp: number; maxHp: number }) => {
       this.hp = v;
@@ -795,14 +715,8 @@ export class UIScene extends Phaser.Scene {
     this.scale.on('resize', placeGear);
 
     // H1: the [?] button under the gear — how the city works, on demand.
-    const help = this.add.text(0, 0, '?', {
-      fontFamily: 'monospace',
-      fontSize: '17px',
-      fontStyle: 'bold',
-      color: PALETTE.warmGlow,
-      stroke: PALETTE.ink,
-      strokeThickness: 3,
-    });
+    const help = kitText(this, 0, 0, '?', 'heading', { color: PALETTE.warmGlow, bold: true });
+    help.setStroke(PALETTE.ink, 3);
     help.setOrigin(0.5);
     help.setAlpha(0.85);
     help.setDepth(902);
@@ -824,15 +738,10 @@ export class UIScene extends Phaser.Scene {
     panel.setVisible(false);
     const W = 250;
     const H = 322;
-    const bg = this.add.graphics();
-    bg.fillStyle(PALETTE_INT.ink, 0.92);
-    bg.fillRoundedRect(0, 0, W, H, 9);
-    bg.lineStyle(1.5, PALETTE_INT.warmGlow, 0.5);
-    bg.strokeRoundedRect(0, 0, W, H, 9);
-    const label = this.add.text(12, 8, 'settings · sound', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: UI_TEXT_WARM,
+    const bg = kitPlate(this, W, H);
+    const label = kitText(this, SPACE.md, SPACE.sm, 'settings · sound', 'caption', {
+      color: PALETTE.neonAmber,
+      bold: true,
     });
     const track = this.add.graphics();
     const drawTrack = (v: number) => {
@@ -871,11 +780,7 @@ export class UIScene extends Phaser.Scene {
       get: () => boolean,
       set: (v: boolean) => void,
     ) => {
-      const t = this.add.text(12, y, '', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: UI_TEXT_WARM,
-      });
+      const t = kitText(this, 12, y, '', 'body', { color: UI_TEXT_WARM });
       const refresh = () => t.setText(`${get() ? '[on ]' : '[off]'} ${text}`);
       refresh();
       t.setInteractive({ useHandCursor: true });
@@ -898,11 +803,7 @@ export class UIScene extends Phaser.Scene {
       () => settings().shake,
       (v) => setSetting('shake', v),
     );
-    const gritLabel = this.add.text(12, 106, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: UI_TEXT_WARM,
-    });
+    const gritLabel = kitText(this, 12, 106, '', 'body', { color: UI_TEXT_WARM });
     const GRIT_OPTS: Array<'6' | '8' | 'none'> = ['6', '8', 'none'];
     const gritName = (g: string) => (g === 'none' ? 'smooth' : `${g}px grit`);
     const refreshGrit = () =>
@@ -916,12 +817,9 @@ export class UIScene extends Phaser.Scene {
       refreshGrit();
     });
     extras.push(gritLabel);
-    const keysHead = this.add.text(12, 136, 'keys', {
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      color: PALETTE.groundAccent,
-    });
-    const keys = this.add.text(
+    const keysHead = kitText(this, 12, 136, 'keys', 'caption', { color: PALETTE.groundAccent });
+    const keys = kitText(
+      this,
       12,
       152,
       [
@@ -934,13 +832,10 @@ export class UIScene extends Phaser.Scene {
         'Enter · chat   ? · the intro',
         '/help · everything else',
       ].join('\n'),
-      {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: UI_TEXT_WARM,
-        lineSpacing: 6,
-      },
+      'caption',
+      { color: UI_TEXT_WARM },
     );
+    keys.setLineSpacing(6);
     keys.setAlpha(0.85);
     extras.push(keysHead, keys);
     panel.add([bg, label, track, hit, ...extras]);
@@ -984,9 +879,9 @@ export class UIScene extends Phaser.Scene {
     );
     const salvage = gameState.count('salvage');
     const gilded = gameState.count('gildedScrap');
-    this.lootChip.setText(
-      `${ITEMS.salvage.name} × ${salvage}` +
-        (gilded > 0 ? `   ${ITEMS.gildedScrap.name} × ${gilded}` : ''),
+    this.lootChip.setValue(
+      `${ITEMS.salvage.name} ${salvage}` +
+        (gilded > 0 ? `  ·  ${ITEMS.gildedScrap.name} ${gilded}` : ''),
     );
   }
 
@@ -1104,9 +999,7 @@ export class UIScene extends Phaser.Scene {
     ghost.setDisplaySize(44, 44);
     ghost.setAlpha(0.85);
     ghost.setDepth(2000);
-    const ghostCount = this.add.text(pointer.x + 18, pointer.y + 20, String(stack.qty), {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+    const ghostCount = kitText(this, pointer.x + 18, pointer.y + 20, String(stack.qty), 'body', {
       color: UI_TEXT_WARM,
     });
     ghostCount.setOrigin(1, 1);

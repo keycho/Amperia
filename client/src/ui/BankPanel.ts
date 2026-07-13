@@ -6,6 +6,7 @@ import { gameState } from '../state/GameState';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { itemThumbKey } from '../render/itemThumbs';
+import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
 
 const W = 620;
 const H = 470;
@@ -32,11 +33,8 @@ export class BankPanel {
     this.container.setDepth(1150);
     this.container.setVisible(false);
 
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'THE LEDGERHOUSE', () => this.setVisible(false));
 
     session.events.on(SessionEvents.bank, (sync: BankSync) => {
       this.sync = sync;
@@ -59,12 +57,8 @@ export class BankPanel {
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-    });
+    const level: TypeLevel = size <= 11 ? 'caption' : size <= 16 ? 'body' : 'heading';
+    const t = kitText(this.scene, x, y, body, level, { color, bold });
     this.container.add(t);
     this.dynamic.push(t);
     return t;
@@ -110,14 +104,7 @@ export class BankPanel {
     const sync = this.sync;
     if (sync === null) return;
 
-    this.text(16, 12, 'THE LEDGERHOUSE', PALETTE.neonAmber, 17, true);
     this.text(216, 16, 'what the vault holds, death never touches', PALETTE.groundAccent, 11);
-    const close = this.text(W - 44, 12, '[x]', UI_TEXT_WARM, 13);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
 
     // Vault grid.
     this.text(16, 40, `VAULT · ${sync.slotCount} slots`, UI_TEXT_WARM, 12, true);
@@ -136,12 +123,15 @@ export class BankPanel {
 
     // Expansion (the hoarder sink).
     if (sync.nextCost !== null) {
-      const btn = this.text(16, y0, `[add 8 slots — ${sync.nextCost} Bolts]`, PALETTE.neonTeal, 12, true);
-      btn.setInteractive({ useHandCursor: true });
-      btn.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-        ev.stopPropagation();
-        if (session.room !== null) send.bank(session.room, { action: 'expand' });
+      const b = kitButton(this.scene, 16, y0, `add 8 slots — ${sync.nextCost} Bolts`, {
+        height: 24,
+        primary: true,
+        onClick: () => {
+          if (session.room !== null) send.bank(session.room, { action: 'expand' });
+        },
       });
+      this.container.add(b);
+      this.dynamic.push(b);
     } else {
       this.text(16, y0, 'The vault is at full stretch.', PALETTE.groundAccent, 11);
     }

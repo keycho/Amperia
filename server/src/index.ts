@@ -13,6 +13,8 @@ import { allowedOrigin } from './services/origins.js';
 import { redis, redisHealthy } from './services/redis.js';
 import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
+import { computePublicStatsResponse } from './services/publicStats.js';
+import { renderLedgerPage } from './services/ledgerPage.js';
 import { prisma } from './services/db.js';
 import { FilamentRoom } from './rooms/FilamentRoom.js';
 import { StacksRoom } from './rooms/StacksRoom.js';
@@ -31,7 +33,17 @@ const app = express();
 // (not just left without CORS headers). WS upgrades enforce the same
 // predicate below. Origin-less requests (curl, healthchecks) pass.
 app.use(cors({ origin: (origin, cb) => cb(null, allowedOrigin(origin)) }));
+// P1/P2: the public ledger surfaces are aggregate, non-personal, read-only —
+// they are exempt from the origin allow-list so any browser (the /ledger page
+// itself, a marketing page) can read them; each sets its own permissive CORS.
+const PUBLIC_PATHS = ['/api/public-stats', '/ledger'];
+const isPublicPath = (p: string): boolean =>
+  PUBLIC_PATHS.some((base) => p === base || p.startsWith(`${base}/`));
 app.use((req, res, next) => {
+  if (isPublicPath(req.path)) {
+    next();
+    return;
+  }
   if (!allowedOrigin(req.headers.origin)) {
     res.status(403).json({ error: 'Origin not allowed.' });
     return;
@@ -90,6 +102,56 @@ app.get('/healthz', (_req, res) => {
       redis: redisState,
     });
   })().catch(() => res.status(503).json({ ok: false }));
+});
+
+/**
+ * PUBLIC STATS (P1) — aggregate, non-personal city numbers. No auth, cached
+ * 60s in-memory, permissive CORS so a marketing page can read it too. The
+ * response shape is the shared PublicStatsResponse contract (P3). On a DB
+ * hiccup we serve the last good snapshot rather than an error, so the public
+ * dashboard never flashes broken.
+ */
+let statsCache: { at: number; body: unknown } | null = null;
+async function publicStatsBody(): Promise<unknown> {
+  const now = Date.now();
+  if (statsCache !== null && now - statsCache.at < 60_000) return statsCache.body;
+  const body = await computePublicStatsResponse(now);
+  statsCache = { at: now, body };
+  return body;
+}
+
+app.get('/api/public-stats', (_req, res) => {
+  void (async () => {
+    try {
+      const body = await publicStatsBody();
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cache-Control', 'public, max-age=60');
+      res.json(body);
+    } catch (err) {
+      console.error('[public-stats] failed', err);
+      if (statsCache !== null) {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.json(statsCache.body);
+      } else {
+        res.status(503).json({ error: 'stats unavailable' });
+      }
+    }
+  })();
+});
+
+// The public City Ledger dashboard (P2). Server-rendered from the same shared
+// helpers so the tiles never drift from /api/public-stats.
+app.get('/ledger', (_req, res) => {
+  void (async () => {
+    try {
+      const body = (await publicStatsBody()) as Awaited<ReturnType<typeof computePublicStatsResponse>>;
+      res.set('Cache-Control', 'public, max-age=60');
+      res.type('html').send(renderLedgerPage(body));
+    } catch (err) {
+      console.error('[ledger] page failed', err);
+      res.status(503).type('html').send('<!doctype html><meta charset="utf-8"><body style="background:#0A0814;color:#9B8BA3;font-family:monospace;padding:40px">The City Ledger is catching its breath. Try again shortly.</body>');
+    }
+  })();
 });
 
 /**

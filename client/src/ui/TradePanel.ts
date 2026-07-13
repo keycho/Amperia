@@ -6,6 +6,7 @@ import type { TradeAskEvent, TradeEndEvent, TradeSyncEvent } from '@shared/proto
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
 const PANEL_W = 560;
 const PANEL_H = 420;
@@ -106,47 +107,48 @@ export class TradePanel {
       y: number,
       text: string,
       color = UI_TEXT_WARM,
-      onClick?: () => void,
     ): Phaser.GameObjects.Text => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color,
-      });
-      if (onClick !== undefined) {
-        t.setInteractive({ useHandCursor: true });
-        t.on(
-          'pointerdown',
-          (_p: unknown, _lx: unknown, _ly: unknown, ev: { stopPropagation(): void }) => {
-            ev.stopPropagation();
-            onClick();
-          },
-        );
-        t.on('pointerover', () => t.setColor(PALETTE.neonAmber));
-        t.on('pointerout', () => t.setColor(color));
-      }
+      const t = kitText(this.scene, x, y, text, 'body', { color });
       this.container.add(t);
       this.rows.push(t);
       return t;
     };
 
+    const btn = (
+      x: number,
+      y: number,
+      label: string,
+      opts: { width?: number; height?: number; primary?: boolean; onClick: () => void },
+    ): Phaser.GameObjects.Container => {
+      const b = kitButton(this.scene, x, y, label, opts);
+      this.container.add(b);
+      this.rows.push(b);
+      return b;
+    };
+
     // ── the incoming-request prompt ─────────────────────────────────────
     if (this.ask !== null) {
-      const g = this.scene.add.graphics();
-      g.fillStyle(PALETTE_INT.ink, 0.94);
-      g.fillRoundedRect(0, 0, 360, 96, 10);
-      g.lineStyle(2, PALETTE_INT.warmGlow, 0.6);
-      g.strokeRoundedRect(0, 0, 360, 96, 10);
-      this.container.add(g);
       const askEv = this.ask;
-      add(16, 14, `${askEv.fromName} offers to trade`, PALETTE.neonAmber);
-      add(60, 54, '[accept]', PALETTE.neonTeal, () => {
-        if (session.room !== null)
-          send.ptrade(session.room, { action: 'accept', tradeId: askEv.tradeId });
+      const AW = 360;
+      const AH = 100;
+      this.container.add(kitPlate(this.scene, AW, AH));
+      kitHeader(this.scene, this.container, AW, `${askEv.fromName} offers to trade`);
+      btn(40, HEADER_H + SPACE.md, 'accept', {
+        width: 130,
+        height: 28,
+        primary: true,
+        onClick: () => {
+          if (session.room !== null)
+            send.ptrade(session.room, { action: 'accept', tradeId: askEv.tradeId });
+        },
       });
-      add(200, 54, '[decline]', PALETTE.neonRose, () => {
-        if (session.room !== null)
-          send.ptrade(session.room, { action: 'decline', tradeId: askEv.tradeId });
+      btn(190, HEADER_H + SPACE.md, 'decline', {
+        width: 130,
+        height: 28,
+        onClick: () => {
+          if (session.room !== null)
+            send.ptrade(session.room, { action: 'decline', tradeId: askEv.tradeId });
+        },
       });
       return;
     }
@@ -155,20 +157,17 @@ export class TradePanel {
     const sync = this.sync;
     const tradeId = this.tradeId;
 
-    const g = this.scene.add.graphics();
-    g.fillStyle(PALETTE_INT.ink, 0.95);
-    g.fillRoundedRect(0, 0, PANEL_W, PANEL_H, 10);
-    g.lineStyle(2, PALETTE_INT.warmGlow, 0.6);
-    g.strokeRoundedRect(0, 0, PANEL_W, PANEL_H, 10);
-    g.lineStyle(1, PALETTE_INT.structureMid, 0.8);
-    g.lineBetween(PANEL_W / 2, 56, PANEL_W / 2, PANEL_H - 130);
-    this.container.add(g);
-
-    add(16, 12, `Trading with ${sync.partnerName}`, PALETTE.neonAmber);
-    add(PANEL_W - 90, 12, '[close]', UI_TEXT_WARM, () => {
+    this.container.add(kitPlate(this.scene, PANEL_W, PANEL_H));
+    kitHeader(this.scene, this.container, PANEL_W, `Trading with ${sync.partnerName}`, () => {
       if (session.room !== null) send.ptrade(session.room, { action: 'cancel', tradeId });
     });
-    add(16, 34, 'both confirm to swap — the city holds the goods until then', PALETTE.warmGlow);
+
+    const divider = this.scene.add.graphics();
+    divider.lineStyle(1, PALETTE_INT.structureMid, 0.8);
+    divider.lineBetween(PANEL_W / 2, 62, PANEL_W / 2, PANEL_H - 130);
+    this.container.add(divider);
+
+    add(16, 44, 'both confirm to swap — the city holds the goods until then', PALETTE.warmGlow);
 
     // ── staged columns ──────────────────────────────────────────────────
     const col = (
@@ -177,19 +176,19 @@ export class TradePanel {
       side: TradeSyncEvent['you'],
       mine: boolean,
     ): void => {
-      add(x, 60, title, mine ? PALETTE.neonTeal : PALETTE.neonRose);
+      add(x, 66, title, mine ? PALETTE.neonTeal : PALETTE.neonRose);
       add(
         x + 150,
-        60,
+        66,
         side.confirmed ? '✓ confirmed' : '… unconfirmed',
         side.confirmed ? PALETTE.neonTeal : UI_TEXT_WARM,
       );
-      add(x, 84, `Bolts ⚙ ${side.bolts}`, PALETTE.warmGlow);
+      add(x, 90, `Bolts ⚙ ${side.bolts}`, PALETTE.warmGlow);
       side.items.forEach((it, i) => {
         const label =
           `${ITEMS[it.itemId].name} × ${it.qty}` +
           (it.durability !== undefined ? ` (wear ${it.durability})` : '');
-        add(x, 108 + i * ROW_H, label, UI_TEXT_WARM);
+        add(x, 114 + i * ROW_H, label, UI_TEXT_WARM);
       });
     };
     col(20, 'YOU stage', sync.you, true);
@@ -198,21 +197,28 @@ export class TradePanel {
     // ── stage controls: bolts steppers + clear ──────────────────────────
     const ctrlY = PANEL_H - 122;
     add(16, ctrlY, `stage Bolts (${gameState.bolts} held):`, UI_TEXT_WARM);
-    for (const [label, delta] of [
-      ['[+10]', 10],
-      ['[+100]', 100],
-      ['[reset]', 0],
+    for (const [label, delta, x, w] of [
+      ['+10', 10, 230, 44],
+      ['+100', 100, 280, 48],
+      ['reset', 0, 340, 54],
     ] as const) {
-      const x = 230 + (label === '[+10]' ? 0 : label === '[+100]' ? 50 : 110);
-      add(x, ctrlY, label, PALETTE.neonTeal, () => {
-        this.stagedBolts =
-          delta === 0 ? 0 : Math.min(gameState.bolts, this.stagedBolts + delta);
-        this.sendStage();
+      btn(x, ctrlY - 4, label, {
+        width: w,
+        height: 22,
+        onClick: () => {
+          this.stagedBolts =
+            delta === 0 ? 0 : Math.min(gameState.bolts, this.stagedBolts + delta);
+          this.sendStage();
+        },
       });
     }
-    add(420, ctrlY, '[clear items]', PALETTE.neonTeal, () => {
-      this.staged.clear();
-      this.sendStage();
+    btn(420, ctrlY - 4, 'clear items', {
+      width: 110,
+      height: 22,
+      onClick: () => {
+        this.staged.clear();
+        this.sendStage();
+      },
     });
 
     // ── pack rows to stage from ─────────────────────────────────────────
@@ -225,12 +231,16 @@ export class TradePanel {
       const left = slot.qty - already;
       if (left <= 0) return;
       const x = 16 + (shown % 4) * 136;
-      const y = ctrlY + 46 + Math.floor(shown / 4) * ROW_H;
-      add(x, y, `${ITEMS[slot.itemId].name}×${left}`, PALETTE.warmGlow, () => {
-        // Gear stages whole; stacks stage in tens (click again for more).
-        const step = slot.durability !== undefined ? 1 : Math.min(10, left);
-        this.staged.set(idx, Math.min(slot.qty, already + step));
-        this.sendStage();
+      const y = ctrlY + 44 + Math.floor(shown / 4) * ROW_H;
+      btn(x, y, `${ITEMS[slot.itemId].name}×${left}`, {
+        width: 128,
+        height: 22,
+        onClick: () => {
+          // Gear stages whole; stacks stage in tens (click again for more).
+          const step = slot.durability !== undefined ? 1 : Math.min(10, left);
+          this.staged.set(idx, Math.min(slot.qty, already + step));
+          this.sendStage();
+        },
       });
       shown += 1;
     });
@@ -238,16 +248,29 @@ export class TradePanel {
     // ── confirm / cancel ────────────────────────────────────────────────
     const btnY = PANEL_H - 30;
     if (sync.you.confirmed) {
-      add(20, btnY, '[unconfirm]', PALETTE.neonRose, () => {
-        if (session.room !== null) send.ptrade(session.room, { action: 'unconfirm', tradeId });
+      btn(20, btnY, 'unconfirm', {
+        width: 130,
+        height: 24,
+        onClick: () => {
+          if (session.room !== null) send.ptrade(session.room, { action: 'unconfirm', tradeId });
+        },
       });
     } else {
-      add(20, btnY, '[confirm trade]', PALETTE.neonTeal, () => {
-        if (session.room !== null) send.ptrade(session.room, { action: 'confirm', tradeId });
+      btn(20, btnY, 'confirm trade', {
+        width: 130,
+        height: 24,
+        primary: true,
+        onClick: () => {
+          if (session.room !== null) send.ptrade(session.room, { action: 'confirm', tradeId });
+        },
       });
     }
-    add(PANEL_W - 110, btnY, '[cancel]', PALETTE.neonRose, () => {
-      if (session.room !== null) send.ptrade(session.room, { action: 'cancel', tradeId });
+    btn(PANEL_W - 130, btnY, 'cancel', {
+      width: 110,
+      height: 24,
+      onClick: () => {
+        if (session.room !== null) send.ptrade(session.room, { action: 'cancel', tradeId });
+      },
     });
   }
 }

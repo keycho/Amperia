@@ -6,6 +6,7 @@ import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type Worl
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
 import { hoverTip } from '../ui/Tooltip';
+import { kitPlate, kitText, SPACE } from '../ui/kit';
 import { playTramTransition } from '../ui/tramTransition';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
@@ -4167,32 +4168,27 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const stops = (CONFIG.travel.line as readonly DistrictId[]).filter((s) => s !== this.district);
-    const rowH = 24;
-    const w = 232;
-    const h = 26 + stops.length * rowH;
+    const rowH = 26;
+    const w = 236;
+    const h = 30 + stops.length * rowH + SPACE.sm;
     const board = this.add.container(x, y - h);
     board.setDepth(1e5 + 60);
-    const bg = this.add.graphics();
-    bg.fillStyle(PALETTE_INT.ink, 0.92);
-    bg.fillRoundedRect(-w / 2, 0, w, h, 6);
-    bg.lineStyle(1.5, PALETTE_INT.neonAmber, 0.8);
-    bg.strokeRoundedRect(-w / 2, 0, w, h, 6);
-    board.add(bg);
-    const head = this.add.text(0, 8, 'TRAM — ALL STOPS', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      color: PALETTE.groundAccent,
+    // PP1: the kit plate, centred on the gate anchor.
+    const plate = kitPlate(this, w, h);
+    plate.setPosition(-w / 2, 0);
+    board.add(plate);
+    const head = kitText(this, 0, SPACE.sm, 'TRAM — ALL STOPS', 'caption', {
+      color: PALETTE.neonAmber,
+      bold: true,
     });
     head.setOrigin(0.5, 0);
     board.add(head);
     stops.forEach((stop, i) => {
       const toll = tramToll(this.district, stop);
-      const row = this.add.text(0, 24 + i * rowH, `${DISTRICT_NAMES[stop]} — ${toll} Bolts`, {
-        fontFamily: 'monospace',
-        fontSize: '12px',
+      const row = kitText(this, 0, 28 + i * rowH, `${DISTRICT_NAMES[stop]} — ${toll} Bolts`, 'body', {
         color: UI_TEXT_WARM,
-        padding: { x: 6, y: 3 },
       });
+      row.setPadding(6, 4);
       row.setOrigin(0.5, 0);
       row.setInteractive({ useHandCursor: true });
       row.on('pointerover', () => row.setColor(PALETTE.neonAmber));

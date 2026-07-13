@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
 import { COSMETICS, decodeEquipped } from '@shared/cosmetics';
 import {
   daysUntil,
@@ -15,11 +15,20 @@ import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 import { cosmeticThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
+import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
 
 const W = 812;
 const H = 528;
 const STAGE_W = 348; // the featured-stage column width
 const FACINGS = ['sw', 'se', 'ne', 'nw'] as const;
+
+/** Nearest kit type level for a legacy pixel size (locked scale 28/18/13/11). */
+function levelForSize(size: number): TypeLevel {
+  if (size >= 23) return 'display';
+  if (size >= 16) return 'heading';
+  if (size >= 12) return 'body';
+  return 'caption';
+}
 
 /**
  * THE COSMETIC FOUNDRY — the premium shop, built to be screenshot-worthy on
@@ -47,16 +56,20 @@ export class FoundryPanel {
     this.container.setDepth(1180);
     this.container.setVisible(false);
 
-    // Ink-plum boutique chrome (the screwed plate, tinted deep plum).
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'ink', 0.5));
-    chrome.setAlpha(0.98);
-    this.container.add(chrome);
+    // The kit plate + header (the one design system).
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'THE COSMETIC FOUNDRY', () => this.setVisible(false));
+    // $AMP purse, top-right of the header. No $AMP exists yet (M4) → 0.
+    const purse = kitText(scene, 0, 10, '◈ 0 $AMP', 'body', {
+      color: PALETTE.violetNeon,
+      bold: true,
+    });
+    purse.setX(W - purse.width - SPACE.xl);
+    this.container.add(purse);
     // A hairline that splits the featured stage from the collection list.
     const split = scene.add.graphics();
     split.lineStyle(1, PALETTE_INT.warmGlow, 0.25);
-    split.lineBetween(STAGE_W, 52, STAGE_W, H - 40);
+    split.lineBetween(STAGE_W, HEADER_H + SPACE.md, STAGE_W, H - 40);
     this.container.add(split);
 
     session.events.on(SessionEvents.openFoundry, () => this.setVisible(true));
@@ -108,12 +121,7 @@ export class FoundryPanel {
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-    });
+    const t = kitText(this.scene, x, y, body, levelForSize(size), { color, bold });
     this.container.add(t);
     this.dynamic.push(t);
     return t;
@@ -148,26 +156,7 @@ export class FoundryPanel {
     this.featured = null;
     const now = Date.now();
 
-    // ── header ──────────────────────────────────────────────────────────
-    // A small Dynamo glyph before the name.
-    const glyph = this.scene.add.image(24, 24, 'fx-glow');
-    glyph.setTint(PALETTE_INT.neonAmber);
-    glyph.setBlendMode(Phaser.BlendModes.ADD);
-    glyph.setScale(0.09);
-    glyph.setAlpha(0.9);
-    this.container.add(glyph);
-    this.dynamic.push(glyph);
-    this.text(38, 15, 'THE COSMETIC FOUNDRY', PALETTE.neonAmber, 18, true);
-    // $AMP purse, top-right. No $AMP exists yet (wallet-linked at M4) → 0.
-    const purse = this.text(0, 17, '◈ 0 $AMP', PALETTE.violetNeon, 13, true);
-    purse.setX(W - purse.width - 44);
-    const close = this.text(W - 34, 14, '[x]', UI_TEXT_WARM, 14);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
-
+    // Header + $AMP purse are static kit chrome built once in the constructor.
     this.drawFeatured(now);
     this.drawList(now);
 

@@ -3,10 +3,11 @@ import { CONFIG } from '@shared/config';
 import { COSMETICS } from '@shared/cosmetics';
 import { canCraft, repairQuote, type Recipe } from '@shared/crafting';
 import { ITEMS, type ItemId } from '@shared/items';
-import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
 const PANEL_W = 520;
 const ROW_H = 24;
@@ -31,7 +32,7 @@ export class BenchPanel {
 
   pixelSize(): { w: number; h: number } {
     const recipes = CONFIG.gear.recipes.length;
-    return { w: PANEL_W, h: 96 + recipes * ROW_H + 40 + 6 * ROW_H };
+    return { w: PANEL_W, h: 106 + recipes * ROW_H + 40 + 6 * ROW_H };
   }
 
   setPosition(x: number, y: number): void {
@@ -48,47 +49,21 @@ export class BenchPanel {
     this.container.removeAll(true);
 
     const { w, h } = this.pixelSize();
-    const g = this.scene.add.graphics();
-    g.fillStyle(PALETTE_INT.ink, 0.94);
-    g.fillRoundedRect(0, 0, w, h, 10);
-    g.lineStyle(2, PALETTE_INT.neonTeal, 0.6);
-    g.strokeRoundedRect(0, 0, w, h, 10);
-    this.container.add(g);
+    this.container.add(kitPlate(this.scene, w, h));
+    kitHeader(this.scene, this.container, w, 'The Tinkerbench — craft and mend', () =>
+      this.setVisible(false),
+    );
 
-    const add = (
-      x: number,
-      y: number,
-      text: string,
-      color = UI_TEXT_WARM,
-      onClick?: () => void,
-    ): void => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color,
-      });
-      if (onClick !== undefined) {
-        t.setInteractive({ useHandCursor: true });
-        t.on(
-          'pointerdown',
-          (_p: unknown, _lx: unknown, _ly: unknown, ev: { stopPropagation(): void }) => {
-            ev.stopPropagation();
-            onClick();
-          },
-        );
-        t.on('pointerover', () => t.setColor(PALETTE.neonTeal));
-        t.on('pointerout', () => t.setColor(color));
-      }
-      this.container.add(t);
+    const txt = (x: number, y: number, text: string, color = UI_TEXT_WARM): void => {
+      this.container.add(kitText(this.scene, x, y, text, 'body', { color }));
     };
 
-    add(16, 12, 'The Tinkerbench — craft and mend', PALETTE.neonTeal);
-    add(w - 90, 12, '[close]', UI_TEXT_WARM, () => this.setVisible(false));
-    add(16, 34, `Bolts: ${gameState.bolts}`, PALETTE.warmGlow);
-    add(16, 56, 'CRAFT', PALETTE.neonAmber);
+    const top = HEADER_H + SPACE.sm;
+    txt(SPACE.md, top, `Bolts: ${gameState.bolts}`, PALETTE.warmGlow);
+    txt(SPACE.md, top + 22, 'CRAFT', PALETTE.neonAmber);
 
     (CONFIG.gear.recipes as readonly Recipe[]).forEach((r, i) => {
-      const y = 78 + i * ROW_H;
+      const y = top + 44 + i * ROW_H;
       const mats = Object.entries(r.materials)
         .map(([mid, q]) => `${q} ${mid}`)
         .join(' + ');
@@ -97,17 +72,24 @@ export class BenchPanel {
       const label = r.output.startsWith('cosmetic:')
         ? `${COSMETICS[r.output.slice(9)]?.label ?? r.output} (cosmetic)`
         : ITEMS[r.output as ItemId].name;
-      add(16, y, label, UI_TEXT_WARM);
-      add(216, y, `${r.bolts} B + ${mats}`, check.ok ? PALETTE.warmGlow : PALETTE.neonRose);
+      txt(SPACE.md, y, label, UI_TEXT_WARM);
+      txt(216, y, `${r.bolts} B + ${mats}`, check.ok ? PALETTE.warmGlow : PALETTE.neonRose);
       if (check.ok) {
-        add(w - 70, y, '[craft]', PALETTE.neonTeal, () => {
-          if (session.room !== null) send.craft(session.room, { recipeId: r.id });
-        });
+        this.container.add(
+          kitButton(this.scene, w - 70, y, 'craft', {
+            width: 64,
+            height: 22,
+            primary: true,
+            onClick: () => {
+              if (session.room !== null) send.craft(session.room, { recipeId: r.id });
+            },
+          }),
+        );
       }
     });
 
-    const mendY = 78 + CONFIG.gear.recipes.length * ROW_H + 12;
-    add(16, mendY, 'MEND — worn gear, from your belt and Pack', PALETTE.neonAmber);
+    const mendY = top + 44 + CONFIG.gear.recipes.length * ROW_H + 12;
+    txt(SPACE.md, mendY, 'MEND — worn gear, from your belt and Pack', PALETTE.neonAmber);
     let row = 0;
     const listGear = (source: 'hotbar' | 'pack', slots: typeof gameState.hotbar.slots) => {
       slots.forEach((slot, idx) => {
@@ -119,15 +101,22 @@ export class BenchPanel {
         row += 1;
         const quote = repairQuote(slot.itemId, max - slot.durability);
         const mats = quote.materials.map((m) => ` + ${m.qty} ${m.itemId}`).join('');
-        add(16, y, `${def.name} (${slot.durability}/${max})`, UI_TEXT_WARM);
-        add(280, y, `${quote.bolts} B${mats}`, PALETTE.warmGlow);
-        add(w - 70, y, '[mend]', PALETTE.neonTeal, () => {
-          if (session.room !== null) send.repair(session.room, { source, slot: idx });
-        });
+        txt(SPACE.md, y, `${def.name} (${slot.durability}/${max})`, UI_TEXT_WARM);
+        txt(280, y, `${quote.bolts} B${mats}`, PALETTE.warmGlow);
+        this.container.add(
+          kitButton(this.scene, w - 70, y, 'mend', {
+            width: 64,
+            height: 22,
+            primary: true,
+            onClick: () => {
+              if (session.room !== null) send.repair(session.room, { source, slot: idx });
+            },
+          }),
+        );
       });
     };
     listGear('hotbar', gameState.hotbar.slots);
     listGear('pack', gameState.inventory.slots);
-    if (row === 0) add(16, mendY + 22, 'Everything is good as built.', UI_TEXT_WARM);
+    if (row === 0) txt(SPACE.md, mendY + 22, 'Everything is good as built.', UI_TEXT_WARM);
   }
 }
