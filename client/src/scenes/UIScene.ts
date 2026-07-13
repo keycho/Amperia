@@ -30,6 +30,7 @@ import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
 import { TradePanel } from '../ui/TradePanel';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 import { type Chip, kitChip, kitPlate, kitText, SPACE, UIK } from '../ui/kit';
+import { applyWorldPostFX } from '../render/postfx';
 
 interface DragState {
   strip: SlotStrip;
@@ -803,7 +804,17 @@ export class UIScene extends Phaser.Scene {
       () => settings().shake,
       (v) => setSetting('shake', v),
     );
-    const gritLabel = kitText(this, 12, 106, '', 'body', { color: UI_TEXT_WARM });
+    // PP3: the post pipeline toggle — applies live to the world camera.
+    toggleRow(
+      102,
+      'post effects',
+      () => settings().postfx,
+      (v) => {
+        setSetting('postfx', v);
+        applyWorldPostFX(this.scene.get('world'), v);
+      },
+    );
+    const gritLabel = kitText(this, 12, 128, '', 'body', { color: UI_TEXT_WARM });
     const GRIT_OPTS: Array<'6' | '8' | 'none'> = ['6', '8', 'none'];
     const gritName = (g: string) => (g === 'none' ? 'smooth' : `${g}px grit`);
     const refreshGrit = () =>
@@ -817,11 +828,11 @@ export class UIScene extends Phaser.Scene {
       refreshGrit();
     });
     extras.push(gritLabel);
-    const keysHead = kitText(this, 12, 136, 'keys', 'caption', { color: PALETTE.groundAccent });
+    const keysHead = kitText(this, 12, 158, 'keys', 'caption', { color: PALETTE.groundAccent });
     const keys = kitText(
       this,
       12,
-      152,
+      174,
       [
         'click · walk / work / talk',
         '1-6 · tool belt',

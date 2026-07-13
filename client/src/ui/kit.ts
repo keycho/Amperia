@@ -25,6 +25,9 @@ export const UIK = {
   amber: PALETTE_INT.neonAmber,
   amberLight: PALETTE_INT.warmGlow,
   amberDark: 0xb2711f,
+  rose: PALETTE_INT.neonRose,
+  roseLight: 0xff9db3,
+  roseDark: 0xb23a56,
   shadow: 0x000000,
 } as const;
 
@@ -147,14 +150,26 @@ export function kitCloseButton(
 export interface ButtonOpts {
   width?: number;
   height?: number;
+  /** Amber gradient — the affirmative ACT (buy, craft, confirm, accept). */
   primary?: boolean;
+  /** Rose gradient — DESTRUCTIVE / irreversible (drop, abandon, leave). */
+  danger?: boolean;
   onClick: () => void;
 }
 
 /**
- * A kit button with idle / hover / pressed states. Primary is the amber
- * gradient with dark ink text; secondary is an ink plate with an amber
- * border and amber text. Returns a Container positioned at (x,y), origin (0,0).
+ * A kit button with idle / hover / pressed states.
+ *
+ * BUTTON-COLOUR RULE (enforced by convention — keep it):
+ *   · AMBER (primary)  = ACT — affirmative, safe: buy, craft, confirm, accept,
+ *                        rent, claim, donate.
+ *   · ROSE  (danger)   = DESTROY — destructive or irreversible: drop an item,
+ *                        abandon a quest, leave with an unsaved trade, log out.
+ *                        Never dress a destructive action in the same friendly
+ *                        amber as "buy" — that is a misclick hazard.
+ *   · PLAIN plate (default) = CANCEL / SECONDARY — back, close, dismiss, and
+ *                        low-stakes steppers (+/-).
+ * Set exactly one of `primary` / `danger`; omit both for a secondary button.
  */
 export function kitButton(
   scene: Phaser.Scene,
@@ -163,7 +178,11 @@ export function kitButton(
   label: string,
   opts: ButtonOpts,
 ): Phaser.GameObjects.Container {
-  const primary = opts.primary === true;
+  const danger = opts.danger === true;
+  const filled = opts.primary === true || danger;
+  const base = danger ? UIK.rose : UIK.amber;
+  const light = danger ? UIK.roseLight : UIK.amberLight;
+  const dark = danger ? UIK.roseDark : UIK.amberDark;
   const h = opts.height ?? 30;
   const probe = kitText(scene, 0, 0, label, 'body', { bold: true });
   const w = opts.width ?? Math.max(64, Math.ceil(probe.width) + SPACE.lg);
@@ -173,26 +192,29 @@ export function kitButton(
   const g = scene.add.graphics();
   const txt = kitText(scene, w / 2, h / 2, label, 'body', {
     bold: true,
-    color: primary ? '#241a05' : PALETTE.neonAmber,
+    // Filled buttons carry dark ink text; a plain secondary reads amber.
+    color: filled ? '#201626' : PALETTE.neonAmber,
   }).setOrigin(0.5);
   c.add([g, txt]);
 
   const paint = (state: 'idle' | 'hover' | 'press'): void => {
     g.clear();
     const dy = state === 'press' ? 1 : 0;
-    if (primary) {
-      // Two-band amber "gradient": lighter top, base bottom.
-      const top = state === 'hover' ? UIK.amberLight : UIK.amber;
-      const bot = state === 'press' ? UIK.amberDark : UIK.amber;
+    if (filled) {
+      // Two-band "gradient": lighter top, base bottom — amber (act) or rose
+      // (destroy). Both filled so a destructive action never wears cancel grey.
+      const top = state === 'hover' ? light : base;
+      const bot = state === 'press' ? dark : base;
       g.fillStyle(UIK.shadow, 0.3);
       g.fillRoundedRect(1, 3, w, h, 8);
       g.fillStyle(bot, 1);
       g.fillRoundedRect(0, dy, w, h, 8);
       g.fillStyle(top, 1);
       g.fillRoundedRect(0, dy, w, Math.round(h * 0.55), { tl: 8, tr: 8, bl: 0, br: 0 });
-      g.lineStyle(1, UIK.amberLight, 0.5);
+      g.lineStyle(1, light, 0.5);
       g.strokeRoundedRect(0.5, dy + 0.5, w - 1, h - 1, 8);
     } else {
+      // Secondary: ink plate, amber hairline — cancel / back / low-stakes.
       g.fillStyle(UIK.plate, state === 'hover' ? 0.98 : 0.9);
       g.fillRoundedRect(0, dy, w, h, 8);
       g.lineStyle(1, UIK.amber, state === 'hover' ? 0.9 : 0.55);

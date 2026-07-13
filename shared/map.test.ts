@@ -182,8 +182,8 @@ describe('buildWorldMap', () => {
     expect(again.walkable).toEqual(map.walkable);
   });
 
-  it('has the configured size', () => {
-    expect(map.size).toBe(CONFIG.map.size);
+  it('has the configured (larger) Filament size', () => {
+    expect(map.size).toBe(CONFIG.map.filamentSize);
     expect(map.walkable.length).toBe(map.size);
     expect(map.walkable.every((row) => row.length === map.size)).toBe(true);
   });
@@ -262,9 +262,11 @@ describe('buildWorldMap', () => {
     });
   });
 
-  it('keeps the market lane clear between the Tramgate and the plaza', () => {
-    for (let x = 28; x <= 35; x++) {
-      expect(map.walkable[20]?.[x]).toBe(true);
+  it('keeps the market spine clear between the Tramgate and the plaza', () => {
+    // W0: arrivals walk the east spine (y=30) straight from the gate to the
+    // plaza rim — every tile of it stays walkable.
+    for (let x = 39; x <= 53; x++) {
+      expect(map.walkable[30]?.[x]).toBe(true);
     }
   });
 
