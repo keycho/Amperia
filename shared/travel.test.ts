@@ -23,8 +23,16 @@ describe('the tram line (D3)', () => {
 
   it('charges the Bolts toll per hop', () => {
     const per = CONFIG.travel.tollBolts;
-    expect(tramToll('filament', 'stacks')).toBe(per);
     expect(tramToll('filament', 'tangle')).toBe(3 * per);
+    expect(tramToll('terrarium', 'tangle')).toBe(per);
     expect(tramToll('terrarium', 'terrarium')).toBe(0);
+  });
+
+  it('PP6: The Stacks rides free from anywhere; distance keeps its price elsewhere', () => {
+    const per = CONFIG.travel.tollBolts;
+    expect(tramToll('filament', 'stacks')).toBe(0);
+    expect(tramToll('tangle', 'stacks')).toBe(0);
+    // A ride whose destination is NOT free still pays per hop.
+    expect(tramToll('stacks', 'terrarium')).toBe(per);
   });
 });

@@ -445,6 +445,12 @@ export const CONFIG = {
     line: ['filament', 'stacks', 'terrarium', 'tangle'],
     /** Bolts per hop along the line (recurring sink). */
     tollBolts: 5,
+    /**
+     * PP6: stops that ride FREE regardless of distance. The Stacks is a free
+     * second district — it widens the starter world and teaches the tram loop
+     * without a Bolts gate; distance keeps its price everywhere else.
+     */
+    freeStops: ['stacks'] as string[],
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },
     /** Stacks gate + arrival tile (districts block D1). */

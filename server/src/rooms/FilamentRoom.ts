@@ -484,14 +484,17 @@ export class FilamentRoom extends Room<FilamentState> {
     let bolts = character.bolts;
     if (character.district !== this.districtId) {
       const hops = Math.max(1, tramHops(character.district as DistrictId, this.districtId));
-      const toll = hops * CONFIG.travel.tollBolts;
+      const toll = tramToll(character.district as DistrictId, this.districtId);
       if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
       bolts -= toll;
-      ledger.log({
-        type: 'spend',
-        account: auth.accountId,
-        data: { sink: 'tramToll', bolts: toll, hops, to: this.districtId, via: 'join' },
-      });
+      // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+      if (toll > 0) {
+        ledger.log({
+          type: 'spend',
+          account: auth.accountId,
+          data: { sink: 'tramToll', bolts: toll, hops, to: this.districtId, via: 'join' },
+        });
+      }
     }
     const gate: TilePoint = this.gateSpawn(CONFIG.player.spawn);
     const spawn: TilePoint =
@@ -3293,11 +3296,14 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     rt.bolts -= toll;
     rt.pendingDistrict = msg.to;
-    ledger.log({
-      type: 'spend',
-      account: rt.accountId,
-      data: { sink: 'tramToll', bolts: toll, hops, to: msg.to },
-    });
+    // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+    if (toll > 0) {
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'tramToll', bolts: toll, hops, to: msg.to },
+      });
+    }
     this.goalEvent(client, rt.accountId, { kind: 'travel', qty: 1, district: msg.to });
     client.send(MSG.inventory, this.inventorySync(rt));
     // Commit the new district BEFORE the go-ahead: the arrival room's join

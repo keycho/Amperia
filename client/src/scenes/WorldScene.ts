@@ -4270,20 +4270,22 @@ export class WorldScene extends Phaser.Scene {
     board.add(head);
     stops.forEach((stop, i) => {
       const toll = tramToll(this.district, stop);
-      const row = kitText(this, 0, 28 + i * rowH, `${DISTRICT_NAMES[stop]} — ${toll} Bolts`, 'body', {
-        color: UI_TEXT_WARM,
+      // PP6: free stops (The Stacks) read "— Free", not "— 0 Bolts".
+      const fare = toll === 0 ? 'Free' : `${toll} Bolts`;
+      const row = kitText(this, 0, 28 + i * rowH, `${DISTRICT_NAMES[stop]} — ${fare}`, 'body', {
+        color: toll === 0 ? PALETTE.solarGreen : UI_TEXT_WARM,
       });
       row.setPadding(6, 4);
       row.setOrigin(0.5, 0);
       row.setInteractive({ useHandCursor: true });
       row.on('pointerover', () => row.setColor(PALETTE.neonAmber));
-      row.on('pointerout', () => row.setColor(UI_TEXT_WARM));
+      row.on('pointerout', () => row.setColor(toll === 0 ? PALETTE.solarGreen : UI_TEXT_WARM));
       row.on(
         'pointerdown',
         (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
           ev.stopPropagation();
           if (this.room === null) return;
-          floatText(this, x, y - 20, `to ${DISTRICT_NAMES[stop]} — ${toll} Bolts`, PALETTE.neonAmber);
+          floatText(this, x, y - 20, `to ${DISTRICT_NAMES[stop]} — ${fare}`, PALETTE.neonAmber);
           send.travel(this.room, { to: stop });
           this.tramBoard?.destroy();
           this.tramBoard = null;

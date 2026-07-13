@@ -17,7 +17,11 @@ export function tramHops(from: DistrictId, to: DistrictId): number {
   return Math.abs(a - b);
 }
 
-/** Bolts toll for the ride. 0 means the tram has nowhere to take you. */
+/**
+ * Bolts toll for the ride. 0 means the tram has nowhere to take you — OR the
+ * destination rides free (PP6: The Stacks). Distance keeps its price elsewhere.
+ */
 export function tramToll(from: DistrictId, to: DistrictId): number {
+  if (CONFIG.travel.freeStops.includes(to)) return 0;
   return tramHops(from, to) * CONFIG.travel.tollBolts;
 }
