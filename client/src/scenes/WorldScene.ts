@@ -7,6 +7,8 @@ import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
 import { hoverTip } from '../ui/Tooltip';
 import { kitPlate, kitText, SPACE } from '../ui/kit';
+import { showSpeechBubble } from '../ui/SpeechBubble';
+import { NPC_CHATTER } from '../systems/npcChatter';
 import { playTramTransition } from '../ui/tramTransition';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
@@ -173,6 +175,15 @@ export class WorldScene extends Phaser.Scene {
   private ePrompt: Phaser.GameObjects.Container | null = null;
   private ePromptText!: Phaser.GameObjects.Text;
   private eTarget: PropInteract | null = null;
+  /** PP2: NPC ambient-chatter speakers (merchant/dispatcher/warden/tram). */
+  private ambientSpeakers: Array<{
+    kind: string;
+    x: number;
+    y: number;
+    tile: { x: number; y: number };
+    lastIdx: number;
+    nextOkMs: number;
+  }> = [];
   private mobs = new Map<string, Mob>();
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
@@ -330,6 +341,7 @@ export class WorldScene extends Phaser.Scene {
     };
     this.spawnNodes();
     this.buildInteractionMarkers();
+    this.setupAmbientChatter();
     this.setupFirstLoop();
     this.setupInput();
 
@@ -1435,12 +1447,71 @@ export class WorldScene extends Phaser.Scene {
             ? 'Empty Stall'
             : undefined;
       this.markers.add(p.kind, this.propAnchor(p), { x: p.x, y: p.y, w: p.w, h: p.h }, name);
+      // PP2: register the talking NPCs for ambient chatter.
+      if (NPC_CHATTER[p.kind] !== undefined) {
+        const a = this.propAnchor(p);
+        this.ambientSpeakers.push({
+          kind: p.kind,
+          x: a.x,
+          y: a.y,
+          tile: { x: p.x, y: p.y },
+          lastIdx: -1,
+          nextOkMs: 0,
+        });
+      }
     }
     for (const n of this.map.nodes) {
       if (INTERACTABLE_STYLES[n.kind] === undefined) continue;
       const w = tileToWorld(n.x, n.y);
       this.markers.add(n.kind, { x: w.x, y: w.y + TILE_H / 2 }, { x: n.x, y: n.y, w: 1, h: 1 });
     }
+  }
+
+  /**
+   * PP2: a slow, randomized ambient-chatter timer. Every few seconds, if a
+   * Spark is near a talking NPC (merchant/dispatcher/warden/conductor), it may
+   * murmur one of its rotating lines — the cheapest "the city is alive" win.
+   */
+  private setupAmbientChatter(): void {
+    this.time.addEvent({ delay: 3400, loop: true, callback: () => this.ambientChatterTick() });
+  }
+
+  private ambientChatterTick(): void {
+    if (this.room === null || this.ambientSpeakers.length === 0) return;
+    const me = this.sparks.get(this.room.sessionId);
+    if (me === undefined) return;
+    const now = this.time.now;
+    const near = this.ambientSpeakers.filter((s) => {
+      if (now < s.nextOkMs) return false;
+      const d = Math.max(
+        Math.abs(me.settledTile.x - s.tile.x),
+        Math.abs(me.settledTile.y - s.tile.y),
+      );
+      return d <= 5;
+    });
+    if (near.length === 0) return;
+    // Only some eligible ticks actually speak, so it stays slow and unforced.
+    if (Math.random() > 0.55) return;
+    const s = near[Math.floor(Math.random() * near.length)]!;
+    const def = NPC_CHATTER[s.kind];
+    if (def === undefined) return;
+    let idx = Math.floor(Math.random() * def.lines.length);
+    if (def.lines.length > 1 && idx === s.lastIdx) idx = (idx + 1) % def.lines.length;
+    s.lastIdx = idx;
+    s.nextOkMs = now + 9000; // this speaker rests a beat before talking again
+    this.speakNpc(s.kind, s.x, s.y, def.lines[idx]!);
+  }
+
+  /** PP2: float a speech bubble over an NPC (ambient line or interaction greet). */
+  private speakNpc(kind: string, footX: number, footY: number, line: string): void {
+    const lift = NPC_CHATTER[kind]?.lift ?? 90;
+    showSpeechBubble(this, footX, footY - lift, line, depthForWorldY(footY) + 30);
+  }
+
+  /** PP2: the NPC's greeting bubble when a Spark interacts with it. */
+  private greetNpc(kind: string, img: Phaser.GameObjects.Image): void {
+    const def = NPC_CHATTER[kind];
+    if (def !== undefined) this.speakNpc(kind, img.x, img.y, def.greet);
   }
 
   // ── R3: the guided "First Bolts" loop ───────────────────────────────────
@@ -3185,7 +3256,10 @@ export class WorldScene extends Phaser.Scene {
             { x: p.x, y: p.y },
             4,
             'Tram',
-            () => this.toggleTramBoard(img.x, img.y - 60),
+            () => {
+              this.greetNpc('tramgate', img);
+              this.toggleTramBoard(img.x, img.y - 60);
+            },
             { moveTo: { x: p.x, y: p.y + 2 }, hint: 'the tram leaves from the gate' },
           );
           // Sign glow over the lane + beacon + arrival pool of light.
@@ -3218,7 +3292,10 @@ export class WorldScene extends Phaser.Scene {
             { x: p.x, y: p.y },
             CONFIG.economy.merchant.tradeRadiusTiles,
             'Trade',
-            () => session.events.emit(SessionEvents.openMerchant),
+            () => {
+              this.greetNpc('merchant', img);
+              session.events.emit(SessionEvents.openMerchant);
+            },
             { hint: 'step closer to trade' },
           );
           // Lantern glow + a warm pool: the stand is a real light source.
@@ -3268,7 +3345,10 @@ export class WorldScene extends Phaser.Scene {
             { x: p.x, y: p.y },
             CONFIG.quests.npcRadiusTiles,
             'Board',
-            () => session.events.emit(SessionEvents.openQuests),
+            () => {
+              this.greetNpc('dispatcher', img);
+              session.events.emit(SessionEvents.openQuests);
+            },
             { hint: 'step up to the board' },
           );
           const glow = this.add.image(x - 8, y - 30, 'fx-glow');
@@ -3291,6 +3371,7 @@ export class WorldScene extends Phaser.Scene {
             CONFIG.quests.npcRadiusTiles,
             'Charge',
             () => {
+              this.greetNpc('warden', img);
               if (this.room !== null) send.chargeInfo(this.room);
             },
             { hint: 'the Warden is by the Dynamo' },
