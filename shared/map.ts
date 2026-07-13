@@ -1012,20 +1012,30 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
  * Spire looms over everything from the NE. PvE-safe, no mobs.
  */
 export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMap {
-  const size = CONFIG.map.size;
+  // W0 BREATHING ROOM: the free second district rides the larger footprint
+  // too — the canyon keeps its tight alleys, but the streets breathe.
+  const size = CONFIG.map.stacksSize;
   const rng: Rng = makeRng(seed);
   const walkable: boolean[][] = Array.from({ length: size }, () => Array(size).fill(true));
   const canal: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const roads: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
   const props: Prop[] = [];
   const nodes: GatherNode[] = [];
   // The junction plaza is a crossroads, not a heal ring: radius -1.
-  const plaza = { cx: 13, cy: 15, radius: -1 };
+  const plaza = { cx: 20, cy: 28, radius: -1 };
 
   const place = (kind: PropKind, x: number, y: number, w = 1, h = 1, variant = 0) => {
     const p: Prop = { kind, x, y, w, h, variant };
     props.push(p);
     blockFootprint(walkable, p);
   };
+
+  // ── The streets FIRST (W3): three decked canyon streets — the main
+  //    east-west spine off the gate, the north street to the Roofline stair
+  //    and the Spire quarter, the south street into the deep alleys. ──────
+  for (let x = 1; x <= 58; x++) for (const y of [28, 29, 30]) (roads[y] as boolean[])[x] = true;
+  for (let y = 4; y <= 30; y++) for (const x of [19, 20, 21]) (roads[y] as boolean[])[x] = true;
+  for (let y = 31; y <= 56; y++) for (const x of [37, 38, 39]) (roads[y] as boolean[])[x] = true;
 
   // ── elevation FIRST: the Roofline plateau + its stair run ──────────────
   const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
@@ -1037,7 +1047,7 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
   // The stair run climbs the plateau's west face: three ramp steps.
   const stairX = R.x0 - 1;
   for (let step = 1; step <= 3; step++) {
-    const sy = R.y1 + 4 - step; // (16,14)+1 → (16,13)+2 → (16,12)+3
+    const sy = R.y1 + 4 - step; // (24,18)+1 → (24,17)+2 → (24,16)+3
     (elevation[sy] as number[])[stairX] = step;
     (ramp[sy] as boolean[])[stairX] = true;
   }
@@ -1049,88 +1059,79 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
     onRamp(x, y) || onRamp(x - 1, y) || onRamp(x + 1, y) || onRamp(x, y - 1) || onRamp(x, y + 1);
 
   // ── gates + landmarks ───────────────────────────────────────────────────
-  place('tramgate', 1, 18, 2, 5);
-  place('spire', 28, 3, 3, 3); // THE SIGNAL SPIRE — red crown, seen everywhere
-  place('registry', 18, 16, 4, 3); // the vanity registry office, fronting main
+  place('tramgate', 1, 27, 2, 5); // arrivals step onto the main street
+  place('spire', 48, 4, 3, 3); // THE SIGNAL SPIRE — red crown, seen everywhere
+  place('registry', 42, 25, 4, 3); // the vanity registry office, fronting main
 
   // ── the towers: canyon walls (4×4 blocking, design*3+paint variant) ────
   const towerVariant = (x: number, y: number) => ((x * 7 + y * 13) % 4) * 3 + ((x * 3 + y * 5) % 3);
   const towerAt = (x: number, y: number) => {
     // Towers may abut each other (a canyon, not a suburb) — but never the
-    // plateau, the stairs, or anything already placed.
+    // plateau, the stairs, the streets, or anything already placed.
     for (let dy = 0; dy < 4; dy++) {
       for (let dx = 0; dx < 4; dx++) {
         if (walkable[y + dy]?.[x + dx] !== true) return;
         if ((elevation[y + dy]?.[x + dx] ?? 0) !== 0) return;
         if (nearRamp(x + dx, y + dy)) return;
+        if (roads[y + dy]?.[x + dx] === true) return;
       }
     }
     place('tower', x, y, 4, 4, towerVariant(x, y));
   };
-  // West block (between the gate approach and the north street).
+  // North-west quarter (west of the north street, north of main).
   for (const [tx, ty] of [
-    [3, 5], [7, 5], [3, 9], [7, 9], [3, 13], [7, 13],
+    [3, 4], [9, 4], [15, 4], [3, 10], [9, 10], [15, 10], [3, 16], [9, 16], [15, 16], [3, 22], [9, 22],
   ] as const) towerAt(tx, ty);
-  // North-of-main row (the registry replaces one slot).
+  // North rim + the Spire quarter east of the plateau.
   for (const [tx, ty] of [
-    [22, 15], [27, 15], [32, 15],
+    [23, 2], [29, 2], [35, 2], [42, 2],
+    [41, 8], [47, 8], [53, 8], [41, 14], [47, 14], [53, 14],
+    [44, 20], [50, 20], [28, 20], [34, 20],
   ] as const) towerAt(tx, ty);
-  // Between the plateau's south face and the main-street row. (One slot
-  // stays open on purpose — the x22-25 pocket the alleys drain into.)
-  towerAt(18, 12);
-  // East quarter, around the Spire.
-  for (const [tx, ty] of [
-    [32, 3], [27, 7], [32, 8], [36, 8],
-  ] as const) towerAt(tx, ty);
-  // South of main (the south street cuts through at x25-27).
-  for (const [tx, ty] of [
-    [3, 22], [8, 22], [13, 22], [18, 22], [28, 22], [33, 22],
-  ] as const) towerAt(tx, ty);
-  // Deep south rows with the y31 cross-alley between them.
-  for (const [tx, ty] of [
-    [5, 26], [10, 26], [15, 26], [20, 26], [28, 26], [33, 26],
-    [3, 32], [8, 32], [13, 32], [18, 32], [28, 32], [33, 32],
-  ] as const) towerAt(tx, ty);
+  // South-west quarter (between main and the deep south edge).
+  for (const ty of [33, 39, 45, 51] as const) {
+    for (const tx of [3, 9, 15, 21, 27] as const) towerAt(tx, ty);
+  }
+  // South-east quarter, across the south street.
+  for (const ty of [33, 39, 45, 51] as const) {
+    for (const tx of [41, 47, 53] as const) towerAt(tx, ty);
+  }
 
   // The ONE rooftop garden in the city (§12B brief): a fixed tower wears
   // it — variant 12 is the client's special garden-roof bake.
-  const gardenTower = props.find((p) => p.kind === 'tower' && p.x === 7 && p.y === 9);
+  const gardenTower = props.find((p) => p.kind === 'tower' && p.x === 9 && p.y === 10);
   if (gardenTower !== undefined) gardenTower.variant = 12;
 
   // ── the junction plaza: noodle cart + the district's one tree ──────────
-  place('noodlecart', 11, 13, 2, 1);
-  place('treeplanter', 15, 16, 2, 2);
+  place('noodlecart', 17, 26, 2, 1);
+  place('treeplanter', 22, 25, 2, 2);
   // U1a: the dispatch post — parcel runs to the named towers start here.
-  place('dispatchpost', 12, 17, 1, 1);
+  place('dispatchpost', 16, 31, 1, 1);
 
   // ── Roofline furniture: market stalls, the shanty, the water tank ──────
-  place('watertank', 17, 6, 2, 2);
-  place('stall', 19, 7, 2, 2, 0);
-  place('stall', 22, 7, 2, 2, 2);
-  place('shanty', 24, 6, 2, 2);
+  place('watertank', 26, 9, 2, 2);
+  place('stall', 29, 9, 2, 2, 0);
+  place('stall', 32, 9, 2, 2, 2);
+  place('shanty', 33, 12, 2, 2);
 
-  // ── nodes: dense alley junk + Signal shrines (ground and Roofline) ─────
+  // ── nodes: alley junk + Signal shrines (ground and Roofline) ───────────
+  const spawn = CONFIG.travel.stacksSpawn;
   const isStreet = (x: number, y: number): boolean =>
-    (y >= 19 && y <= 21) || // main street
-    (x >= 13 && x <= 15 && y >= 3 && y <= 21) || // north street
-    (x >= 25 && x <= 27 && y >= 19 && y <= 36) || // south street
-    (x >= 11 && x <= 17 && y >= 13 && y <= 18); // the junction plaza
+    roads[y]?.[x] === true || (x >= 16 && x <= 24 && y >= 25 && y <= 31); // + the junction
   // Alley junk is HAND-laid: the scatter helper demands a free ring, and
-  // a canyon alley is one tile wide by design — junk hugs the tower walls
+  // a canyon alley is two tiles wide by design — junk hugs the tower walls
   // at alley tips and pocket corners, never sealing a route (flood-checked).
   const junkSpots: Array<[number, number]> = [
-    [7, 25], [12, 25], [17, 25], // south alley dead-ends
-    [9, 26], [14, 26], [19, 26], // deep-south alley tips
-    [26, 8], // the plateau-side slot alley
-    [23, 13], [24, 14], // the x22-25 pocket
-    [5, 3], [9, 3], // the back strip behind the west block
-    [33, 13], [35, 12], // east quarter pockets
-    [11, 11], [21, 31], [30, 31], // spares (first junkCount that fit win)
+    [7, 8], [13, 8], [14, 14], [7, 20], [13, 26], // NW alleys
+    [39, 6], [46, 3], [45, 10], [51, 12], // Spire-quarter pockets
+    [8, 37], [20, 43], [14, 49], [26, 51], // SW deep alleys
+    [46, 37], [52, 43], [46, 49], // SE deep alleys (spares — first junkCount win)
   ];
   for (const [jx, jy] of junkSpots) {
     if (nodes.filter((n) => n.kind === 'junkHeap').length >= CONFIG.stacks.junkCount) break;
     if (walkable[jy]?.[jx] !== true || (elevation[jy]?.[jx] ?? 0) !== 0) continue;
     if (isStreet(jx, jy) || nearRamp(jx, jy)) continue;
+    if (Math.max(Math.abs(jx - spawn.x), Math.abs(jy - spawn.y)) <= 6) continue; // W2: clear arrival
     if (wouldSealPocket(walkable, jx, jy, size)) continue;
     nodes.push({ id: nodes.length, kind: 'junkHeap', x: jx, y: jy });
     blockFootprint(walkable, { x: jx, y: jy, w: 1, h: 1 });
@@ -1145,21 +1146,24 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
 
   // ── Roofline rim rails + street decor (guarded like everywhere else) ───
   const decor: Prop[] = [
-    { kind: 'guardrail', x: 18, y: 11, w: 1, h: 1, variant: 0 },
-    { kind: 'guardrail', x: 20, y: 11, w: 1, h: 1, variant: 0 },
-    { kind: 'guardrail', x: 22, y: 11, w: 1, h: 1, variant: 0 },
-    { kind: 'guardrail', x: 25, y: 8, w: 1, h: 1, variant: 1 },
+    // South rim rails (the stair landing at x24-25 stays open).
+    { kind: 'guardrail', x: 27, y: 15, w: 1, h: 1, variant: 0 },
+    { kind: 'guardrail', x: 29, y: 15, w: 1, h: 1, variant: 0 },
+    { kind: 'guardrail', x: 31, y: 15, w: 1, h: 1, variant: 0 },
+    { kind: 'guardrail', x: 33, y: 15, w: 1, h: 1, variant: 0 },
+    // West rim rails.
     { kind: 'guardrail', x: 25, y: 10, w: 1, h: 1, variant: 1 },
+    { kind: 'guardrail', x: 25, y: 12, w: 1, h: 1, variant: 1 },
     // Street life: wash lines and banners in the canyon, V2 vocabulary.
-    { kind: 'laundry', x: 4, y: 17, w: 3, h: 1, variant: 0 },
-    { kind: 'laundry', x: 29, y: 12, w: 3, h: 1, variant: 1 },
-    { kind: 'banner', x: 12, y: 22, w: 1, h: 1, variant: 2 },
-    { kind: 'banner', x: 24, y: 16, w: 1, h: 1, variant: 0 },
-    { kind: 'stovepipe', x: 22, y: 30, w: 1, h: 1, variant: 0 },
-    { kind: 'stovepipe', x: 7, y: 30, w: 1, h: 1, variant: 1 },
-    { kind: 'wildbush', x: 9, y: 17, w: 1, h: 1, variant: 1 },
-    { kind: 'scrapbin', x: 23, y: 23, w: 1, h: 1, variant: 0 },
-    { kind: 'scrapbin', x: 12, y: 31, w: 1, h: 1, variant: 1 },
+    { kind: 'laundry', x: 5, y: 21, w: 3, h: 1, variant: 0 },
+    { kind: 'laundry', x: 45, y: 17, w: 3, h: 1, variant: 1 },
+    { kind: 'banner', x: 18, y: 33, w: 1, h: 1, variant: 2 },
+    { kind: 'banner', x: 35, y: 26, w: 1, h: 1, variant: 0 },
+    { kind: 'stovepipe', x: 10, y: 55, w: 1, h: 1, variant: 0 },
+    { kind: 'stovepipe', x: 50, y: 33, w: 1, h: 1, variant: 1 },
+    { kind: 'wildbush', x: 12, y: 32, w: 1, h: 1, variant: 1 },
+    { kind: 'scrapbin', x: 28, y: 37, w: 1, h: 1, variant: 0 },
+    { kind: 'scrapbin', x: 7, y: 43, w: 1, h: 1, variant: 1 },
   ];
   for (const prop of decor) {
     if (!footprintWalkable(walkable, prop)) continue;
@@ -1179,11 +1183,11 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
   // Catwalks: the gate landing, the junction plaza, and THE VISTA — the
   // Roofline's SE corner, looking down the lit canyon.
   const catwalks: TilePoint[] = [
-    { x: 4, y: 20 },
-    { x: 13, y: 15 },
-    { x: 25, y: 11 },
+    { x: 4, y: 29 },
+    { x: 20, y: 28 },
+    { x: 34, y: 15 },
   ];
-  return { district: 'stacks', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
+  return { district: 'stacks', size, walkable, canal, roads, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
 }
 
 /**

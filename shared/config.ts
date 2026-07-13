@@ -19,9 +19,11 @@ export const CONFIG = {
      * W0 BREATHING ROOM: the Filament is the starter island and carries the
      * whole first loop, so it rides a larger footprint — ~1.5×/axis, ~2.25×
      * the area — to give the plaza, market, and gather pockets room to
-     * breathe. Only the Filament uses this; the other quarters stay 40.
+     * breathe. The Stacks (the free second district, PP6) got the same
+     * treatment. Tangle/Terrarium stay 40.
      */
     filamentSize: 60,
+    stacksSize: 60,
     /** Seed for deterministic map decoration + node scatter. */
     seed: 20260709,
   },
@@ -463,7 +465,7 @@ export const CONFIG = {
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },
     /** Stacks gate + arrival tile (districts block D1). */
-    stacksSpawn: { x: 4, y: 20 },
+    stacksSpawn: { x: 4, y: 29 },
     /** Terrarium gate + arrival tile (districts block D2). */
     terrariumSpawn: { x: 4, y: 20 },
   },
@@ -478,16 +480,17 @@ export const CONFIG = {
     dailyCapBolts: 150,
     /** Chance the recipient tips the wax-sealed chit (Manifest rare). */
     rareTipChance: 0.07,
-    /** Rotating destinations: named towers, their landing tile + level. */
+    /** Rotating destinations: named towers, their landing tile + level
+     *  (W0 layout — each landing hugs its tower's wall; kestrel is up top). */
     destinations: [
-      { id: 'kestrel', tower: 'Tower Kestrel', landing: { x: 17, y: 11 }, level: 3, recipient: "Wickla's cousin", line: 'Fourth-floor landing, off the Roofline. Mind the laundry.' },
-      { id: 'marrow', tower: 'Tower Marrow', landing: { x: 2, y: 6 }, level: 0, recipient: 'Old Ferro', line: "He'll grumble. Leave it by the door anyway." },
-      { id: 'grist', tower: 'Tower Grist', landing: { x: 26, y: 7 }, level: 0, recipient: 'the antenna crew', line: 'They tip in static and good moods.' },
-      { id: 'anvil', tower: 'Tower Anvil', landing: { x: 36, y: 7 }, level: 0, recipient: "Marlow's welder", line: 'East rim, last door before the void.' },
-      { id: 'cinder', tower: 'Tower Cinder', landing: { x: 12, y: 23 }, level: 0, recipient: "the noodle cart's supplier", line: 'Smells like broth all the way up.' },
-      { id: 'lantern', tower: 'Tower Lantern', landing: { x: 11, y: 9 }, level: 0, recipient: 'the roof gardener', line: "The tower with the green crown. Can't miss it." },
-      { id: 'bellows', tower: 'Tower Bellows', landing: { x: 19, y: 28 }, level: 0, recipient: 'a night-shift tuner', line: 'Knock twice — she sleeps days.' },
-      { id: 'fathom', tower: 'Tower Fathom', landing: { x: 32, y: 33 }, level: 0, recipient: 'nobody asked who', line: "Far corner. No questions — it's paid for." },
+      { id: 'kestrel', tower: 'Tower Kestrel', landing: { x: 26, y: 14 }, level: 3, recipient: "Wickla's cousin", line: 'Fourth-floor landing, off the Roofline. Mind the laundry.' },
+      { id: 'marrow', tower: 'Tower Marrow', landing: { x: 2, y: 5 }, level: 0, recipient: 'Old Ferro', line: "He'll grumble. Leave it by the door anyway." },
+      { id: 'grist', tower: 'Tower Grist', landing: { x: 36, y: 6 }, level: 0, recipient: 'the antenna crew', line: 'They tip in static and good moods.' },
+      { id: 'anvil', tower: 'Tower Anvil', landing: { x: 57, y: 9 }, level: 0, recipient: "Marlow's welder", line: 'East rim, last door before the void.' },
+      { id: 'cinder', tower: 'Tower Cinder', landing: { x: 16, y: 20 }, level: 0, recipient: "the noodle cart's supplier", line: 'Smells like broth all the way up.' },
+      { id: 'lantern', tower: 'Tower Lantern', landing: { x: 8, y: 11 }, level: 0, recipient: 'the roof gardener', line: "The tower with the green crown. Can't miss it." },
+      { id: 'bellows', tower: 'Tower Bellows', landing: { x: 16, y: 43 }, level: 0, recipient: 'a night-shift tuner', line: 'Knock twice — she sleeps days.' },
+      { id: 'fathom', tower: 'Tower Fathom', landing: { x: 52, y: 51 }, level: 0, recipient: 'nobody asked who', line: "Far corner. No questions — it's paid for." },
     ],
   },
 
@@ -548,8 +551,9 @@ export const CONFIG = {
     antennaRoofline: 2,
     /** Yield multiplier on Roofline shrines (location-based, never paid). */
     rooflineSignalMult: 1.75,
-    /** The Roofline: the +3 walkable rooftop terrace. */
-    roofline: { x0: 17, y0: 6, x1: 25, y1: 11, level: 3 },
+    /** The Roofline: the +3 walkable rooftop terrace (W0: grown with the
+     *  60×60 quarter — 11×8 over the fused towers east of the north street). */
+    roofline: { x0: 25, y0: 8, x1: 35, y1: 15, level: 3 },
   },
   tangle: {
     /** Node-count multipliers over the Filament config counts. */
@@ -595,8 +599,8 @@ export const CONFIG = {
     respawnSeconds: 90,
     xpBrawlingPerKill: 8,
     trophyChance: 0.25,
-    /** Deep-south alleys — the dark end of the canyon. */
-    homeBox: { x0: 4, y0: 24, x1: 34, y1: 34 },
+    /** Deep-south alleys — the dark end of the canyon (W0 layout). */
+    homeBox: { x0: 4, y0: 35, x1: 56, y1: 54 },
   },
 
   /**

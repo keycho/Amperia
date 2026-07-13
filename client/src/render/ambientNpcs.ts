@@ -53,12 +53,13 @@ const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
   stacks: [
     // The highest NPC life density in the city (D1c): the junction eats,
     // the registry queues, the Roofline trades and takes in the view.
-    { code: '1:1:4:1:3:0', tile: [12, 14], dir: 'se', turns: ['se', 'sw'] }, // noodle cook
-    { code: '1:2:1:0:4:2', tile: [12, 15], dir: 'nw' }, // patron slurping
-    { code: '1:3:2:4:2:1', tile: [23, 19], dir: 'ne', turns: ['ne', 'nw'] }, // registry queue
-    { code: '1:0:5:2:0:3', tile: [22, 19], dir: 'ne' }, // second in line
-    { code: '1:4:3:3:1:0', tile: [20, 9], dir: 'ne', turns: ['ne', 'nw'] }, // roofline browser
-    { code: '1:2:0:5:2:0', tile: [21, 10], dir: 'se' }, // vista watcher
+    // (W0 layout: junction ~(20,28), registry (42,25), Roofline x25-35 y8-15.)
+    { code: '1:1:4:1:3:0', tile: [17, 25], dir: 'se', turns: ['se', 'sw'] }, // noodle cook
+    { code: '1:2:1:0:4:2', tile: [18, 27], dir: 'nw' }, // patron slurping
+    { code: '1:3:2:4:2:1', tile: [44, 29], dir: 'ne', turns: ['ne', 'nw'] }, // registry queue
+    { code: '1:0:5:2:0:3', tile: [43, 29], dir: 'ne' }, // second in line
+    { code: '1:4:3:3:1:0', tile: [30, 11], dir: 'ne', turns: ['ne', 'nw'] }, // roofline browser
+    { code: '1:2:0:5:2:0', tile: [34, 14], dir: 'se' }, // vista watcher
   ],
   terrarium: [
     // Gardeners at their beds — the gentlest shift in the city.

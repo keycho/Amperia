@@ -2077,13 +2077,13 @@ export class WorldScene extends Phaser.Scene {
     if (this.map.district === 'terrarium') {
       return (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'decking' : 'plating';
     }
-    const isTangle = this.map.district === 'tangle';
+    const isFilament = this.map.district === 'filament';
     // W3: the decked streets are the road network (data-driven from the map).
     if (this.map.roads[ty]?.[tx] === true) return 'decking';
     const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
     if (plaza.radius > 0 && plazaDist <= plaza.radius) return 'stone';
     const distToEdge = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
-    if (distToEdge <= 6 || (!isTangle && tx >= 44 && ty >= 44)) return 'plating';
+    if (distToEdge <= 6 || (isFilament && tx >= 44 && ty >= 44)) return 'plating';
     return 'stone';
   }
 
@@ -2208,7 +2208,7 @@ export class WorldScene extends Phaser.Scene {
         // Floor-fix §1: per-tile baked diamonds — the zone material changes
         // read the district layout; no drawn gridlines anywhere. The Tangle
         // keeps only the industrial zones: plating fringe, asphalt maze.
-        const isTangle = this.map.district === 'tangle';
+        const isFilament = this.map.district === 'filament';
         // W3: the decked streets come straight from the shared road network.
         const onRoad = this.map.roads[ty]?.[tx] === true;
         const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
@@ -2227,7 +2227,7 @@ export class WorldScene extends Phaser.Scene {
         } else if (onRoad) kind = 'deck';
         else if (onStepRing) kind = 'paverLight';
         else if (inPlaza) kind = 'paver';
-        else if (distToEdgeT <= 6 || (!isTangle && tx >= 44 && ty >= 44)) kind = 'plating';
+        else if (distToEdgeT <= 6 || (isFilament && tx >= 44 && ty >= 44)) kind = 'plating';
         else kind = 'asphalt';
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(floorTileScale());
