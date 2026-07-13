@@ -67,6 +67,37 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       `background:linear-gradient(to bottom, transparent, ${PALETTE.ink} 78%)`,
     ].join(';');
 
+    // The hero band: the wordmark + tagline ride UP in the dark void above
+    // the islands, never over the Dynamo's glow (which washed the 'E' out of
+    // AMPERIA and drowned the tagline). Its own dark scrim keeps the text
+    // clean against ink like the landing-page hero, whatever's behind it.
+    const hero = document.createElement('div');
+    hero.style.cssText = [
+      'position:absolute',
+      'left:0',
+      'right:0',
+      'top:0',
+      'height:46%',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'justify-content:center',
+      'gap:10px',
+      'pointer-events:none',
+    ].join(';');
+    const heroScrim = document.createElement('div');
+    heroScrim.style.cssText = [
+      'position:absolute',
+      'left:50%',
+      'top:52%',
+      'transform:translate(-50%,-50%)',
+      'width:900px',
+      'max-width:96%',
+      'height:300px',
+      `background:radial-gradient(ellipse 46% 50% at 50% 50%, ${PALETTE.ink}F2 0%, ${PALETTE.ink}D9 42%, transparent 74%)`,
+      'pointer-events:none',
+    ].join(';');
+
     const center = document.createElement('div');
     center.style.cssText = [
       'position:absolute',
@@ -88,9 +119,11 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       'text-indent:26px',
       'animation:amperia-glowpulse 5s ease-in-out infinite',
     ].join(';');
+    // Position over the scrim (both live in `hero`).
+    title.style.position = 'relative';
     const sub = document.createElement('div');
     sub.textContent = 'one city in the dark — keep it lit';
-    sub.style.cssText = `color:${UI_TEXT_WARM};opacity:.85;font-size:14px;letter-spacing:4px;margin-top:-8px;`;
+    sub.style.cssText = `position:relative;color:${UI_TEXT_WARM};opacity:.92;font-size:14px;letter-spacing:4px;margin-top:-4px;text-shadow:0 1px 6px ${PALETTE.ink};`;
 
     const enterBtn = document.createElement('button');
     enterBtn.textContent = 'Enter the City';
@@ -260,8 +293,9 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       gearPanel.style.display = gearPanel.style.display === 'none' ? 'block' : 'none';
     };
 
-    center.append(title, sub, enterBtn, panel);
-    root.append(bg, shade, floor, center, gear, gearPanel, version);
+    hero.append(heroScrim, title, sub);
+    center.append(enterBtn, panel);
+    root.append(bg, shade, floor, hero, center, gear, gearPanel, version);
     document.head.append(styleEl);
     document.body.append(root);
   });
