@@ -13,10 +13,18 @@ export interface Settings {
   grit: '6' | '8' | 'none';
   /** Corner minimap (U4a), toggled with M. */
   minimap: boolean;
+  /** PP3: the WebGL post pipeline (vignette + emissive bloom + grade). */
+  postfx: boolean;
 }
 
 const KEY = 'amperia.settings';
-const DEFAULTS: Settings = { nameplates: true, shake: true, grit: '6', minimap: true };
+const DEFAULTS: Settings = {
+  nameplates: true,
+  shake: true,
+  grit: '6',
+  minimap: true,
+  postfx: true,
+};
 
 let cache: Settings | null = null;
 
@@ -29,6 +37,7 @@ export function settings(): Settings {
       shake: typeof raw.shake === 'boolean' ? raw.shake : DEFAULTS.shake,
       grit: raw.grit === '8' || raw.grit === 'none' ? raw.grit : DEFAULTS.grit,
       minimap: typeof raw.minimap === 'boolean' ? raw.minimap : DEFAULTS.minimap,
+      postfx: typeof raw.postfx === 'boolean' ? raw.postfx : DEFAULTS.postfx,
     };
   } catch {
     cache = { ...DEFAULTS };

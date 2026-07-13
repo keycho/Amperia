@@ -9,6 +9,7 @@ import { hoverTip } from '../ui/Tooltip';
 import { kitPlate, kitText, SPACE } from '../ui/kit';
 import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
+import { applyWorldPostFX } from '../render/postfx';
 import { playTramTransition } from '../ui/tramTransition';
 import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
@@ -334,6 +335,9 @@ export class WorldScene extends Phaser.Scene {
     // so the grade can't shrink/scale with world zoom (or pixel modes).
     this.setupCamera();
     this.cameraCtl = new CameraController(this);
+    // PP3: the restrained post pipeline (vignette + emissive bloom + grade),
+    // on the world camera only, gated by the setting.
+    applyWorldPostFX(this, settings().postfx);
     this.gatherView = new GatherView(this);
     this.tuner = new TunerPanel(this);
     this.tuner.onNeedle = (nodeId, needle) => {
