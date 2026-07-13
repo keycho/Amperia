@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
-import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { intToHex, PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { UIK } from './kit';
 
 /**
  * The tooltip (U3c): one DOM card for everything hoverable — item slots,
@@ -49,8 +50,8 @@ function ensure(): void {
     'position:fixed',
     'pointer-events:none',
     'z-index:40',
-    `background:${PALETTE.ink}F0`,
-    `border:1px solid ${PALETTE.neonAmber}99`,
+    `background:${intToHex(UIK.plate)}EB`,
+    `border:1px solid ${intToHex(UIK.border)}`,
     'border-radius:9px',
     'padding:9px 11px',
     'font-family:monospace',

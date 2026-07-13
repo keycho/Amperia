@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { CHAT_LIMITS, type ChatBroadcast } from '@shared/protocol';
-import { intToHex, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { intToHex, mixPalette, PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { swallowGameInput } from './domGuard';
+import { kitText, UIK } from './kit';
 
 // R6/R6b: the bottom-left is PLAYERS-ONLY now (system messages moved to the
 // top-center toast pills), capped at 2 visible lines that fade when quiet.
@@ -33,13 +34,8 @@ export class ChatUI {
     this.bg = scene.add.graphics();
     this.bg.setDepth(890);
     for (let i = 0; i < MAX_LINES; i++) {
-      const t = scene.add.text(0, 0, '', {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: UI_TEXT_WARM,
-        stroke: PALETTE.ink,
-        strokeThickness: 3,
-      });
+      const t = kitText(scene, 0, 0, '', 'body', { color: UI_TEXT_WARM });
+      t.setStroke(PALETTE.ink, 3);
       t.setDepth(891);
       // U4c: click a name to whisper back — prefills /w <name>.
       const idx = i;
@@ -52,11 +48,7 @@ export class ChatUI {
       });
       this.lines.push(t);
     }
-    this.hint = scene.add.text(0, 0, '[Enter] to chat', {
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      color: PALETTE.warmGlow,
-    });
+    this.hint = kitText(scene, 0, 0, '[Enter] to chat', 'caption', { color: PALETTE.warmGlow });
     this.hint.setAlpha(0.65);
     this.hint.setDepth(891);
 
@@ -87,7 +79,7 @@ export class ChatUI {
     this.bg.clear();
     if (this.log.length === 0) return;
     const height = Math.min(this.log.length, MAX_LINES) * 18 + 8;
-    this.bg.fillStyle(PALETTE_INT.ink, 0.35);
+    this.bg.fillStyle(UIK.plate, 0.4);
     this.bg.fillRoundedRect(6, h - 44 - height + 14, 340, height, 8);
   }
 

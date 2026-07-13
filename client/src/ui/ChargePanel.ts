@@ -5,6 +5,7 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
 import { sound } from '../audio/sound';
+import { kitButton, kitHeader, kitPlate, kitText } from './kit';
 
 const PANEL_W = 440;
 const PANEL_H = 380;
@@ -52,43 +53,25 @@ export class ChargePanel {
     const sync = this.sync;
     if (sync === null) return;
 
-    const g = this.scene.add.graphics();
-    g.fillStyle(PALETTE_INT.ink, 0.95);
-    g.fillRoundedRect(0, 0, PANEL_W, PANEL_H, 10);
-    g.lineStyle(2, PALETTE_INT.warmGlow, 0.6);
-    g.strokeRoundedRect(0, 0, PANEL_W, PANEL_H, 10);
-    this.container.add(g);
+    this.container.add(kitPlate(this.scene, PANEL_W, PANEL_H));
+    kitHeader(
+      this.scene,
+      this.container,
+      PANEL_W,
+      `The Citywide Charge — week of ${sync.weekKey}`,
+      () => this.setVisible(false),
+    );
 
     const add = (
       x: number,
       y: number,
       text: string,
       color = UI_TEXT_WARM,
-      onClick?: () => void,
     ): Phaser.GameObjects.Text => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color,
-      });
-      if (onClick !== undefined) {
-        t.setInteractive({ useHandCursor: true });
-        t.on(
-          'pointerdown',
-          (_p: unknown, _lx: unknown, _ly: unknown, ev: { stopPropagation(): void }) => {
-            ev.stopPropagation();
-            onClick();
-          },
-        );
-        t.on('pointerover', () => t.setColor(PALETTE.neonAmber));
-        t.on('pointerout', () => t.setColor(color));
-      }
+      const t = kitText(this.scene, x, y, text, 'body', { color });
       this.container.add(t);
       return t;
     };
-
-    add(16, 12, `The Citywide Charge — week of ${sync.weekKey}`, PALETTE.neonAmber);
-    add(PANEL_W - 90, 12, '[close]', UI_TEXT_WARM, () => this.setVisible(false));
 
     // ── the meter bar with tier notches ─────────────────────────────────
     const full = sync.thresholds[sync.thresholds.length - 1] ?? 1;
@@ -124,18 +107,31 @@ export class ChargePanel {
     const have = gameState.count('amperite');
     add(16, 166, `Your Amperite: ${have}`, PALETTE.warmGlow);
     if (have > 0 && session.room !== null) {
-      add(180, 166, '[donate 5]', PALETTE.neonTeal, () => {
-        if (session.room !== null) {
-          send.donate(session.room, { itemId: 'amperite', qty: Math.min(5, have) });
-          sound.donationWhoosh();
-        }
-      });
-      add(280, 166, '[donate all]', PALETTE.neonTeal, () => {
-        if (session.room !== null) {
-          send.donate(session.room, { itemId: 'amperite', qty: have });
-          sound.donationWhoosh();
-        }
-      });
+      this.container.add(
+        kitButton(this.scene, 180, 160, 'donate 5', {
+          width: 90,
+          height: 22,
+          onClick: () => {
+            if (session.room !== null) {
+              send.donate(session.room, { itemId: 'amperite', qty: Math.min(5, have) });
+              sound.donationWhoosh();
+            }
+          },
+        }),
+      );
+      this.container.add(
+        kitButton(this.scene, 280, 160, 'donate all', {
+          width: 100,
+          height: 22,
+          primary: true,
+          onClick: () => {
+            if (session.room !== null) {
+              send.donate(session.room, { itemId: 'amperite', qty: have });
+              sound.donationWhoosh();
+            }
+          },
+        }),
+      );
     }
 
     // ── leaderboard ─────────────────────────────────────────────────────

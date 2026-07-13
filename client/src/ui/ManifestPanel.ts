@@ -13,10 +13,19 @@ import type { ManifestFoundEvent, ManifestSync } from '@shared/protocol';
 import { session, SessionEvents } from '../net/session';
 import { cosmeticThumbKey, itemThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
+import { kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
 
 const W = 560;
 const H = 430;
 const CELL = 64;
+
+/** Nearest kit type level for a legacy pixel size (locked scale 28/18/13/11). */
+function levelForSize(size: number): TypeLevel {
+  if (size >= 23) return 'display';
+  if (size >= 16) return 'heading';
+  if (size >= 12) return 'body';
+  return 'caption';
+}
 
 interface EntryState {
   count: number;
@@ -44,11 +53,8 @@ export class ManifestPanel {
     this.container.setDepth(1150);
     this.container.setVisible(false);
 
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'THE MANIFEST', () => this.setVisible(false));
 
     session.events.on(SessionEvents.manifest, (sync: ManifestSync) => {
       this.entries = new Map(
@@ -86,12 +92,7 @@ export class ManifestPanel {
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-    });
+    const t = kitText(this.scene, x, y, body, levelForSize(size), { color, bold });
     this.container.add(t);
     this.dynamic.push(t);
     return t;
@@ -101,15 +102,9 @@ export class ManifestPanel {
     for (const o of this.dynamic) o.destroy();
     this.dynamic.length = 0;
 
-    this.text(16, 12, 'THE MANIFEST', PALETTE.neonAmber, 17, true);
+    // Title + close are static kit chrome built once in the constructor.
     const discovered = [...this.entries.keys()].length;
-    this.text(190, 16, `${discovered} remembered`, PALETTE.groundAccent, 11);
-    const close = this.text(W - 44, 12, '[x]', UI_TEXT_WARM, 13);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
+    this.text(190, 12, `${discovered} remembered`, PALETTE.groundAccent, 11);
 
     // Page tabs (pill first, label on top — order IS the z-order here).
     let tx = 16;

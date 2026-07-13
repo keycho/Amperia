@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { canAccept, isComplete, questDefs, type QuestLog } from '@shared/quests';
-import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
 const PANEL_W = 470;
 const ROW_H = 42;
@@ -59,72 +60,61 @@ export class QuestPanel {
   refresh(): void {
     this.container.removeAll(true);
     const { w, h } = this.pixelSize();
-    const g = this.scene.add.graphics();
-    g.fillStyle(PALETTE_INT.ink, 0.94);
-    g.fillRoundedRect(0, 0, w, h, 10);
-    g.lineStyle(2, PALETTE_INT.neonAmber, 0.6);
-    g.strokeRoundedRect(0, 0, w, h, 10);
-    this.container.add(g);
+    this.container.add(kitPlate(this.scene, w, h));
+    kitHeader(this.scene, this.container, w, "The Dispatcher's board", () => this.setVisible(false));
 
-    const add = (
+    const txt = (
       x: number,
       y: number,
       text: string,
+      level: 'body' | 'caption',
       color = UI_TEXT_WARM,
-      onClick?: () => void,
-      size = 12,
     ): void => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: `${size}px`,
-        color,
-        wordWrap: { width: w - 120 },
-      });
-      if (onClick !== undefined) {
-        t.setInteractive({ useHandCursor: true });
-        t.on(
-          'pointerdown',
-          (_p: unknown, _lx: unknown, _ly: unknown, ev: { stopPropagation(): void }) => {
-            ev.stopPropagation();
-            onClick();
-          },
-        );
-        t.on('pointerover', () => t.setColor(PALETTE.neonAmber));
-        t.on('pointerout', () => t.setColor(color));
-      }
+      const t = kitText(this.scene, x, y, text, level, { color });
+      t.setWordWrapWidth(w - 120);
       this.container.add(t);
     };
 
-    add(16, 12, "The Dispatcher's board", PALETTE.neonAmber, undefined, 14);
-    add(w - 90, 12, '[close]', UI_TEXT_WARM, () => this.setVisible(false));
-
     const now = Date.now();
     questDefs().forEach((def, i) => {
-      const y = 44 + i * ROW_H;
+      const y = HEADER_H + SPACE.sm + i * ROW_H;
       const st = this.log[def.id];
       const daily = def.repeatable === 'daily' ? ' (daily)' : '';
-      add(16, y, `${def.name}${daily}`, UI_TEXT_WARM, undefined, 13);
-      add(16, y + 17, def.copy, PALETTE.warmGlow, undefined, 11);
+      txt(SPACE.md, y, `${def.name}${daily}`, 'body', UI_TEXT_WARM);
+      txt(SPACE.md, y + 17, def.copy, 'caption', PALETTE.warmGlow);
       const rewardText = `reward ${def.rewards.bolts} B${def.rewards.cosmetic !== undefined ? ' + scarf' : ''}`;
       if (st?.state === 'active') {
         if (isComplete(def, st)) {
-          add(w - 110, y, '[turn in]', PALETTE.neonTeal, () => {
-            if (session.room !== null)
-              send.quest(session.room, { action: 'turnIn', id: def.id });
-          });
+          this.container.add(
+            kitButton(this.scene, w - 110, y, 'turn in', {
+              width: 90,
+              height: 18,
+              primary: true,
+              onClick: () => {
+                if (session.room !== null) send.quest(session.room, { action: 'turnIn', id: def.id });
+              },
+            }),
+          );
         } else {
-          add(w - 110, y, `${st.progress}/${def.step.qty}`, PALETTE.neonTeal);
+          txt(w - 110, y, `${st.progress}/${def.step.qty}`, 'body', PALETTE.neonTeal);
         }
-        add(w - 130, y + 17, rewardText, UI_TEXT_WARM, undefined, 10);
+        txt(w - 130, y + 17, rewardText, 'caption', UI_TEXT_WARM);
       } else if (canAccept(this.log, def, now)) {
-        add(w - 110, y, '[accept]', PALETTE.neonAmber, () => {
-          if (session.room !== null) send.quest(session.room, { action: 'accept', id: def.id });
-        });
-        add(w - 130, y + 17, rewardText, UI_TEXT_WARM, undefined, 10);
+        this.container.add(
+          kitButton(this.scene, w - 110, y, 'accept', {
+            width: 90,
+            height: 18,
+            primary: true,
+            onClick: () => {
+              if (session.room !== null) send.quest(session.room, { action: 'accept', id: def.id });
+            },
+          }),
+        );
+        txt(w - 130, y + 17, rewardText, 'caption', UI_TEXT_WARM);
       } else if (st?.state === 'turnedIn') {
-        add(w - 110, y, 'done ✓', PALETTE.warmGlow);
+        txt(w - 110, y, 'done ✓', 'body', PALETTE.warmGlow);
       } else {
-        add(w - 110, y, 'locked', PALETTE.warmGlow);
+        txt(w - 110, y, 'locked', 'body', PALETTE.warmGlow);
       }
     });
   }

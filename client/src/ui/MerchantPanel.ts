@@ -1,14 +1,15 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { ITEMS, type ItemId } from '@shared/items';
-import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
 import { sound } from '../audio/sound';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
-const PANEL_W = 460;
-const ROW_H = 26;
+const PANEL_W = 468;
+const ROW_H = 28;
 
 const RESOURCES = Object.keys(CONFIG.economy.merchant.buy) as Array<
   keyof typeof CONFIG.economy.merchant.buy
@@ -39,9 +40,17 @@ export class MerchantPanel {
     session.events.on(SessionEvents.openMerchant, () => this.setVisible(true));
   }
 
-  pixelSize(): { w: number; h: number } {
+  /** Shared layout offsets so pixelSize() and refresh() never disagree. */
+  private layout(): { resStart: number; buyHdr: number; h: number } {
     const wares = CONFIG.economy.merchant.sells.length;
-    return { w: PANEL_W, h: 120 + RESOURCES.length * ROW_H + 30 + wares * ROW_H };
+    const resStart = HEADER_H + SPACE.sm + 22 + 22; // header + Bolts + SELL heading
+    const buyHdr = resStart + RESOURCES.length * ROW_H + SPACE.md;
+    const h = buyHdr + 22 + wares * ROW_H + SPACE.md;
+    return { resStart, buyHdr, h };
+  }
+
+  pixelSize(): { w: number; h: number } {
+    return { w: PANEL_W, h: this.layout().h };
   }
 
   setPosition(x: number, y: number): void {
@@ -55,86 +64,93 @@ export class MerchantPanel {
   }
 
   refresh(): void {
-    // Rebuild rows (small counts; simple beats clever here).
     for (const r of this.rows) r.destroy();
     this.rows = [];
     this.container.removeAll(true);
 
-    const g = this.scene.add.graphics();
-    const { w, h } = this.pixelSize();
-    g.fillStyle(PALETTE_INT.ink, 0.94);
-    g.fillRoundedRect(0, 0, w, h, 10);
-    g.lineStyle(2, PALETTE_INT.warmGlow, 0.6);
-    g.strokeRoundedRect(0, 0, w, h, 10);
-    this.container.add(g);
+    const { resStart, buyHdr, h } = this.layout();
+    this.container.add(kitPlate(this.scene, PANEL_W, h));
+    kitHeader(this.scene, this.container, PANEL_W, 'The Nightstalls — trading stand', () =>
+      this.setVisible(false),
+    );
 
-    const add = (
+    const label = (
       x: number,
       y: number,
-      text: string,
-      color = UI_TEXT_WARM,
-      onClick?: () => void,
+      str: string,
+      level: 'body' | 'caption',
+      color: string,
     ): Phaser.GameObjects.Text => {
-      const t = this.scene.add.text(x, y, text, {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color,
-      });
-      if (onClick !== undefined) {
-        t.setInteractive({ useHandCursor: true });
-        t.on('pointerdown', (_p: unknown, _lx: unknown, _ly: unknown, ev: { stopPropagation(): void }) => {
-          ev.stopPropagation();
-          onClick();
-        });
-        t.on('pointerover', () => t.setColor(PALETTE.neonAmber));
-        t.on('pointerout', () => t.setColor(color));
-      }
+      const t = kitText(this.scene, x, y, str, level, { color });
       this.container.add(t);
       this.rows.push(t);
       return t;
     };
 
-    add(16, 12, 'The Nightstalls — trading stand', PALETTE.neonAmber);
-    add(w - 90, 12, '[close]', UI_TEXT_WARM, () => this.setVisible(false));
-    add(16, 34, `Bolts: ${gameState.bolts}`, PALETTE.warmGlow);
-    add(16, 56, 'SELL — prices move inside each published band', PALETTE.neonTeal);
+    label(SPACE.md, HEADER_H + SPACE.sm, `Bolts ⚙ ${gameState.bolts}`, 'body', PALETTE.warmGlow);
+    label(
+      SPACE.md,
+      HEADER_H + SPACE.sm + 22,
+      'SELL — prices move inside each published band',
+      'caption',
+      PALETTE.neonTeal,
+    );
 
     RESOURCES.forEach((res, i) => {
-      const y = 78 + i * ROW_H;
+      const y = resStart + i * ROW_H;
       const band = CONFIG.economy.merchant.buy[res];
       const unit = this.prices[res] ?? band.ceiling;
       const have = gameState.count(res as ItemId);
-      add(16, y, `${ITEMS[res as ItemId].name}`, UI_TEXT_WARM);
-      add(140, y, `${unit} B (band ${band.floor}–${band.ceiling})`, PALETTE.warmGlow);
-      add(300, y, `have ${have}`, UI_TEXT_WARM);
+      label(SPACE.md, y + 5, ITEMS[res as ItemId].name, 'body', UI_TEXT_WARM);
+      label(150, y + 5, `${unit} B  ·  band ${band.floor}–${band.ceiling}`, 'body', PALETTE.warmGlow);
+      label(310, y + 6, `have ${have}`, 'caption', UI_TEXT_WARM);
       if (have > 0 && session.room !== null) {
-        add(378, y, '[10]', PALETTE.neonTeal, () => {
-          if (session.room !== null) {
-            send.trade(session.room, { action: 'sellResource', itemId: res, qty: 10 });
-            sound.kaching();
-          }
-        });
-        add(414, y, '[all]', PALETTE.neonTeal, () => {
-          if (session.room !== null) {
-            send.trade(session.room, { action: 'sellResource', itemId: res, qty: have });
-            sound.kaching();
-          }
-        });
+        this.container.add(
+          kitButton(this.scene, 372, y, '10', {
+            width: 40,
+            height: 22,
+            onClick: () => {
+              if (session.room !== null) {
+                send.trade(session.room, { action: 'sellResource', itemId: res, qty: 10 });
+                sound.kaching();
+              }
+            },
+          }),
+        );
+        this.container.add(
+          kitButton(this.scene, 418, y, 'all', {
+            width: 40,
+            height: 22,
+            primary: true,
+            onClick: () => {
+              if (session.room !== null) {
+                send.trade(session.room, { action: 'sellResource', itemId: res, qty: have });
+                sound.kaching();
+              }
+            },
+          }),
+        );
       }
     });
 
-    const buyY = 78 + RESOURCES.length * ROW_H + 10;
-    add(16, buyY, 'BUY — stand wares, fixed prices', PALETTE.neonTeal);
+    label(SPACE.md, buyHdr, 'BUY — stand wares, fixed prices', 'caption', PALETTE.neonTeal);
     CONFIG.economy.merchant.sells.forEach((ware, i) => {
-      const y = buyY + 22 + i * ROW_H;
-      add(16, y, ITEMS[ware.itemId as ItemId].name, UI_TEXT_WARM);
-      add(220, y, `${ware.price} Bolts`, PALETTE.warmGlow);
-      add(340, y, '[buy]', PALETTE.neonTeal, () => {
-        if (session.room !== null) {
-          send.trade(session.room, { action: 'buyItem', itemId: ware.itemId });
-          sound.kaching();
-        }
-      });
+      const y = buyHdr + 22 + i * ROW_H;
+      label(SPACE.md, y + 5, ITEMS[ware.itemId as ItemId].name, 'body', UI_TEXT_WARM);
+      label(230, y + 5, `${ware.price} Bolts`, 'body', PALETTE.warmGlow);
+      this.container.add(
+        kitButton(this.scene, 372, y, 'buy', {
+          width: 56,
+          height: 22,
+          primary: true,
+          onClick: () => {
+            if (session.room !== null) {
+              send.trade(session.room, { action: 'buyItem', itemId: ware.itemId });
+              sound.kaching();
+            }
+          },
+        }),
+      );
     });
   }
 }

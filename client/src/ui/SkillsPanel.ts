@@ -2,9 +2,12 @@ import Phaser from 'phaser';
 import { levelForXp, levelProgress, nextUnlock, SKILLS, type SkillId } from '@shared/mastery';
 import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { gameState } from '../state/GameState';
+import { HEADER_H, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
 const ROW_H = 46;
 const PANEL_W = 380;
+/** Body sits below the kit header bar. */
+const BODY_TOP = HEADER_H + SPACE.sm;
 
 const SKILL_LABELS: Record<SkillId, string> = {
   scavving: 'Scavving',
@@ -28,36 +31,25 @@ export class SkillsPanel {
   constructor(scene: Phaser.Scene) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(1100);
+
+    const { w, h } = this.pixelSize();
+    this.container.add(kitPlate(scene, w, h));
+
+    // The bars graphics sits above the plate; the panel background is the plate.
     this.bg = scene.add.graphics();
     this.container.add(this.bg);
 
-    const title = scene.add.text(14, -30, 'Mastery', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: UI_TEXT_WARM,
-      fontStyle: 'bold',
-    });
-    this.container.add(title);
+    kitHeader(scene, this.container, w, 'Mastery');
 
     SKILLS.forEach((skill, i) => {
-      const y = 12 + i * ROW_H;
-      const name = scene.add.text(16, y, SKILL_LABELS[skill], {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: UI_TEXT_WARM,
-      });
-      const level = scene.add.text(PANEL_W - 16, y, '1', {
-        fontFamily: 'monospace',
-        fontSize: '14px',
+      const y = BODY_TOP + i * ROW_H;
+      const name = kitText(scene, 16, y, SKILL_LABELS[skill], 'body', { color: UI_TEXT_WARM });
+      const level = kitText(scene, w - 16, y, '1', 'body', {
         color: PALETTE.neonAmber,
-        fontStyle: 'bold',
+        bold: true,
       });
       level.setOrigin(1, 0);
-      const unlock = scene.add.text(16, y + 26, '', {
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        color: UI_TEXT_WARM,
-      });
+      const unlock = kitText(scene, 16, y + 26, '', 'caption', { color: UI_TEXT_WARM });
       unlock.setAlpha(0.7);
       this.container.add(name);
       this.container.add(level);
@@ -81,23 +73,19 @@ export class SkillsPanel {
   }
 
   pixelSize(): { w: number; h: number } {
-    return { w: PANEL_W, h: SKILLS.length * ROW_H + 24 };
+    return { w: PANEL_W, h: BODY_TOP + SKILLS.length * ROW_H + SPACE.md };
   }
 
   refresh(): void {
     const g = this.bg;
-    const { w, h } = this.pixelSize();
+    const { w } = this.pixelSize();
     g.clear();
-    g.fillStyle(PALETTE_INT.structureMid, 0.94);
-    g.fillRoundedRect(0, -40, w, h + 40, 12);
-    g.lineStyle(2, PALETTE_INT.ink, 1);
-    g.strokeRoundedRect(0, -40, w, h + 40, 12);
 
     SKILLS.forEach((skill, i) => {
       const xp = gameState.skills[skill];
       const level = levelForXp(xp);
       const progress = levelProgress(xp);
-      const y = 12 + i * ROW_H;
+      const y = BODY_TOP + i * ROW_H;
       const row = this.rows[i];
       if (row === undefined) return;
       row.level.setText(String(level));

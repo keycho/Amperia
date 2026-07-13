@@ -2,14 +2,23 @@ import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
 import { COSMETICS } from '@shared/cosmetics';
 import { type GoalDef, goalWeekKey, weeklyGoals } from '@shared/goals';
-import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { GoalsSync } from '@shared/protocol';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
 
 const W = 520;
 const H = 420;
 const ROW_H = 34;
+
+/** Nearest kit type level for a legacy pixel size (locked scale 28/18/13/11). */
+function levelForSize(size: number): TypeLevel {
+  if (size >= 23) return 'display';
+  if (size >= 16) return 'heading';
+  if (size >= 12) return 'body';
+  return 'caption';
+}
 
 interface RowState {
   progress: number;
@@ -38,11 +47,8 @@ export class GoalPanel {
     this.container.setDepth(1150);
     this.container.setVisible(false);
 
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'THE GOAL BOARD', () => this.setVisible(false));
 
     session.events.on(SessionEvents.goals, (sync: GoalsSync) => {
       if (sync.weekKey !== this.weekKey) {
@@ -77,12 +83,7 @@ export class GoalPanel {
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-    });
+    const t = kitText(this.scene, x, y, body, levelForSize(size), { color, bold });
     this.container.add(t);
     this.dynamic.push(t);
     return t;
@@ -92,29 +93,24 @@ export class GoalPanel {
     for (const o of this.dynamic) o.destroy();
     this.dynamic.length = 0;
 
-    this.text(16, 12, 'THE GOAL BOARD', PALETTE.neonAmber, 17, true);
-    this.text(196, 16, `week of ${this.weekKey}`, PALETTE.groundAccent, 11);
-    const close = this.text(W - 44, 12, '[x]', UI_TEXT_WARM, 13);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
+    // Title + close are static kit chrome built once in the constructor.
+    this.text(196, 12, `week of ${this.weekKey}`, PALETTE.groundAccent, 11);
     this.text(
       16,
-      36,
+      HEADER_H + SPACE.sm,
       `Rewards claimable on any ${CONFIG.goals.maxClaims} — ${this.claimsUsed}/${CONFIG.goals.maxClaims} this week. Miss a week, lose nothing.`,
       UI_TEXT_WARM,
       11,
     );
 
     const goals = weeklyGoals(this.weekKey);
-    goals.forEach((g, i) => this.drawRow(g, 16, 62 + i * ROW_H));
+    const rowTop = HEADER_H + SPACE.sm + 26;
+    goals.forEach((g, i) => this.drawRow(g, 16, rowTop + i * ROW_H));
 
     const seasonal = COSMETICS[CONFIG.goals.seasonalCosmetic]?.label ?? 'seasonal regalia';
     this.text(
       16,
-      62 + goals.length * ROW_H + 10,
+      rowTop + goals.length * ROW_H + 10,
       `Regalia tokens: ${Math.min(this.tokens, CONFIG.goals.tokensForSeasonal)}/${CONFIG.goals.tokensForSeasonal} toward the ${seasonal} — one per full week of five.`,
       PALETTE.neonTeal,
       11,
@@ -143,12 +139,16 @@ export class GoalPanel {
     if (st.claimed) {
       this.text(x + 232, y, '✓ rewarded', PALETTE.neonAmber, 11);
     } else if (done && this.claimsUsed < CONFIG.goals.maxClaims) {
-      const btn = this.text(x + 232, y, `[+${g.bolts} B]`, PALETTE.neonTeal, 12, true);
-      btn.setInteractive({ useHandCursor: true });
-      btn.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-        ev.stopPropagation();
-        if (session.room !== null) send.goalClaim(session.room, { goalId: g.id });
+      const btn = kitButton(this.scene, x + 232, y - SPACE.xs, `+${g.bolts} B`, {
+        width: 62,
+        height: 22,
+        primary: true,
+        onClick: () => {
+          if (session.room !== null) send.goalClaim(session.room, { goalId: g.id });
+        },
       });
+      this.container.add(btn);
+      this.dynamic.push(btn);
     }
   }
 }

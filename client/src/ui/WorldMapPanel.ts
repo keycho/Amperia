@@ -6,8 +6,9 @@ import {
   type DistrictId,
   type WorldMap,
 } from '@shared/map';
-import { blendInt, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { blendInt, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { session } from '../net/session';
+import { kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
 
 const W = 780;
 const H = 470;
@@ -48,11 +49,8 @@ export class WorldMapPanel {
     this.container.setDepth(1150);
     this.container.setVisible(false);
 
-    const chrome = scene.add.nineslice(0, 0, 'ui-panel-screws', undefined, W, H, 16, 16, 16, 16);
-    chrome.setOrigin(0, 0);
-    chrome.setTint(mixPalette('duskSky', 'structureMid', 0.55));
-    chrome.setAlpha(0.97);
-    this.container.add(chrome);
+    this.container.add(kitPlate(scene, W, H));
+    kitHeader(scene, this.container, W, 'AMPERIA — THE CITY', () => this.setVisible(false));
   }
 
   toggle(): void {
@@ -96,13 +94,8 @@ export class WorldMapPanel {
     };
   }
 
-  private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
-    const t = this.scene.add.text(x, y, body, {
-      fontFamily: 'monospace',
-      fontSize: `${size}px`,
-      color,
-      fontStyle: bold ? 'bold' : 'normal',
-    });
+  private text(x: number, y: number, body: string, color: string, level: TypeLevel = 'body', bold = false) {
+    const t = kitText(this.scene, x, y, body, level, { color, bold });
     this.container.add(t);
     this.dynamic.push(t);
     return t;
@@ -117,14 +110,7 @@ export class WorldMapPanel {
     }
 
     const here = (session.room?.name ?? 'filament') as DistrictId;
-    this.text(16, 12, 'AMPERIA — THE CITY', PALETTE.neonAmber, 17, true);
-    this.text(16, H - 28, 'the tram line runs every stop · TAB closes', PALETTE.groundAccent, 10);
-    const close = this.text(W - 44, 12, '[x]', UI_TEXT_WARM, 13);
-    close.setInteractive({ useHandCursor: true });
-    close.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-      ev.stopPropagation();
-      this.setVisible(false);
-    });
+    this.text(16, H - 28, 'the tram line runs every stop · TAB closes', PALETTE.groundAccent, 'caption');
 
     const line = CONFIG.travel.line as readonly DistrictId[];
 
@@ -202,7 +188,7 @@ export class WorldMapPanel {
         at.y + 130 / 4 + 18,
         d === here ? `▸ ${DISTRICT_NAMES[d]}` : DISTRICT_NAMES[d],
         d === here ? PALETTE.neonAmber : UI_TEXT_WARM,
-        12,
+        'body',
         d === here,
       );
       name.setOrigin(0.5, 0);
@@ -228,7 +214,7 @@ export class WorldMapPanel {
         repeat: -1,
         ease: 'sine.inout',
       });
-      const you = this.text(pt.x, pt.y - 14, 'you', PALETTE.neonRose, 10, true);
+      const you = this.text(pt.x, pt.y - 14, 'you', PALETTE.neonRose, 'caption', true);
       you.setOrigin(0.5, 1);
     }
   }
