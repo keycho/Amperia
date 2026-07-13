@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { EMOTE_IDS, type EmoteId } from '@shared/protocol';
-import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { kitText, UIK } from './kit';
 
 /** Ring radius the four glyphs sit on. */
 const RADIUS = 74;
@@ -43,10 +44,14 @@ export class EmoteWheel {
     this.container.setDepth(1250);
     this.container.setVisible(false);
 
+    // PP1: kit-plate chrome (round hub — the kit has no circular plate, so we
+    // match its ink fill + border here).
     const shade = scene.add.graphics();
-    shade.fillStyle(PALETTE_INT.ink, 0.55);
+    shade.fillStyle(UIK.shadow, 0.3);
+    shade.fillCircle(1, 3, RADIUS + 44);
+    shade.fillStyle(UIK.plate, 0.72);
     shade.fillCircle(0, 0, RADIUS + 44);
-    shade.lineStyle(1.5, mixPalette('groundBase', 'warmGlow', 0.3), 0.7);
+    shade.lineStyle(1, UIK.border, 0.95);
     shade.strokeCircle(0, 0, RADIUS + 44);
     this.ring = scene.add.graphics();
     this.container.add([shade, this.ring]);
@@ -61,18 +66,12 @@ export class EmoteWheel {
         this.onPick(id);
         this.close();
       });
-      const label = scene.add.text(x, y + 26, LABEL[id], {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: UI_TEXT_WARM,
-      });
+      const label = kitText(scene, x, y + 26, LABEL[id], 'caption', { color: UI_TEXT_WARM });
       label.setOrigin(0.5, 0);
       this.container.add([icon, label]);
       this.icons.set(id, icon);
     }
-    const hint = this.scene.add.text(0, RADIUS + 52, 'release E on a glyph · Esc closes', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
+    const hint = kitText(this.scene, 0, RADIUS + 52, 'release E on a glyph · Esc closes', 'caption', {
       color: PALETTE.groundAccent,
     });
     hint.setOrigin(0.5, 0);

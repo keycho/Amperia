@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type WorldMap } from '@shared/map';
 import type { MobStateShape, PlayerStateShape } from '@shared/protocol';
-import { blendInt, mixPalette, PALETTE, PALETTE_INT } from '@shared/palette';
+import { blendInt, PALETTE, PALETTE_INT } from '@shared/palette';
 import { session } from '../net/session';
 import { setSetting, settings } from '../settings';
+import { kitPlate, kitText } from './kit';
 
 /** Panel box; the district diamond is fitted inside it. */
 const W = 172;
@@ -30,18 +31,10 @@ export class Minimap {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(890);
 
-    const bg = scene.add.graphics();
-    bg.fillStyle(PALETTE_INT.ink, 0.78);
-    bg.fillRoundedRect(0, 0, W, H, 9);
-    bg.lineStyle(1.5, mixPalette('groundBase', 'warmGlow', 0.3), 0.8);
-    bg.strokeRoundedRect(0, 0, W, H, 9);
+    const bg = kitPlate(scene, W, H, 9);
     this.terrain = scene.add.graphics();
     this.blips = scene.add.graphics();
-    this.title = scene.add.text(W / 2, H - 15, '', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      color: PALETTE.groundAccent,
-    });
+    this.title = kitText(scene, W / 2, H - 15, '', 'caption', { color: PALETTE.groundAccent });
     this.title.setOrigin(0.5, 0);
     this.container.add([bg, this.terrain, this.blips, this.title]);
 
