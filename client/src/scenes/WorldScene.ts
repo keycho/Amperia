@@ -574,14 +574,19 @@ export class WorldScene extends Phaser.Scene {
       for (const bot of this.ambientBots) bot.update(time, sparkTiles);
     }
     // R1: bob pictograms + fade labels/rings against the Spark's position.
+    // Photo mode hides all interaction chrome (markers snap away on entry).
     if (this.markers !== undefined) {
       const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
       this.markers.update(me?.settledTile ?? null, deltaMs);
       // C2: keep the "E — …" prompt on the nearest in-reach interactable.
-      this.updateEPrompt(me);
+      if (this.photoMode === null) this.updateEPrompt(me);
+      else this.ePrompt?.setVisible(false);
     }
     // R3: aim the guided-loop arrow at the current target.
-    if (this.tutorialArrow !== undefined) this.updateTutorialArrow(time);
+    if (this.tutorialArrow !== undefined) {
+      if (this.photoMode === null) this.updateTutorialArrow(time);
+      else this.tutorialArrow.setVisible(false);
+    }
     if (sound.ready && time > this.spatialAt && this.room !== null) {
       this.spatialAt = time + 250;
       const own = this.sparks.get(this.room.sessionId);
@@ -4571,8 +4576,12 @@ export class WorldScene extends Phaser.Scene {
     const c = tileToWorld(opts.tile.x, opts.tile.y);
     cam.centerOn(c.x, c.y);
     this.hoverMarker?.setVisible(false);
-    // Placement affordances (empty berth pads) read as dev chrome on film.
+    // Placement affordances (empty berth pads) read as dev chrome on film —
+    // and so do the pictograms, labels, "E —" prompt, and the guided arrow.
     for (const m of this.berthMarkers) m.setVisible(false);
+    this.markers?.setPhotoHidden(true);
+    this.ePrompt?.setVisible(false);
+    this.tutorialArrow?.setVisible(false);
   }
 
   /** Back to gameplay: UI, camera bounds, follow, nameplate fading. */
@@ -4582,6 +4591,7 @@ export class WorldScene extends Phaser.Scene {
     this.setupCamera();
     this.cameraCtl.setLocked(false);
     for (const m of this.berthMarkers) m.setVisible(true);
+    this.markers?.setPhotoHidden(false);
     const me = this.room !== null ? this.sparks.get(this.room.sessionId) : undefined;
     if (me !== undefined) this.cameraCtl.followTarget(me.image);
   }

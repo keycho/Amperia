@@ -99,6 +99,8 @@ export class InteractionMarkers {
   private t = 0;
   private acc = 0;
   private enabled = true;
+  /** Photo mode: all marker chrome snapped invisible (setPhotoHidden). */
+  private photoHidden = false;
 
   constructor(scene: Phaser.Scene) {
     InteractionMarkers.ensureTextures(scene);
@@ -348,6 +350,23 @@ export class InteractionMarkers {
     e.label.setDepth(on ? 900_000 : e.labelDepth);
   }
 
+  /** Photo mode (marketing shots): pictograms, labels, chips, and hover
+   *  rings all read as dev chrome on film — snap them away, restore after. */
+  setPhotoHidden(hidden: boolean): void {
+    this.photoHidden = hidden;
+    if (!hidden) return; // update() lerps everything back by proximity
+    for (const e of this.entries) {
+      e.iconAlpha = 0;
+      e.labelAlpha = 0;
+      e.icon.setAlpha(0);
+      (e.icon as unknown as { _ink: Phaser.GameObjects.Image })._ink.setAlpha(0);
+      e.chip.setAlpha(0);
+      e.label.setAlpha(0);
+      e.hovered = false;
+      e.outline.setVisible(false);
+    }
+  }
+
   /** A 1px amber diamond ring around the footprint's base, for hover. */
   private drawOutline(e: Entry): void {
     // Convert the four footprint corners to world space via the same iso
@@ -384,6 +403,7 @@ export class InteractionMarkers {
   /** Per-frame: bob + proximity fade + hover outline. */
   update(player: { x: number; y: number } | null, dtMs: number): void {
     if (!this.enabled || this.entries.length === 0) return;
+    if (this.photoHidden) return; // photo mode: everything stays snapped away
     this.t += dtMs;
     this.acc += dtMs;
     const doProx = this.acc >= 160;
