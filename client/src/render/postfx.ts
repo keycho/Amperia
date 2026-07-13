@@ -43,14 +43,15 @@ void main(){
   vec2 uv = outTexCoord;
   vec3 base = texture2D(uMainSampler, uv).rgb;
 
-  // (b) emissive bloom — thresholded bright-pass over two small rings.
+  // (b) emissive bloom — thresholded bright-pass over two TIGHT rings
+  // (bloom tune: radius down so a lamp's halo stays ~1.5x the bulb).
   vec2 px = 1.0 / uResolution;
   vec3 bloom = vec3(0.0);
   for (int i = 0; i < 12; i++){
     float a = (float(i) + 0.5) * 0.5235988; // 2*PI/12
     vec2 dir = vec2(cos(a), sin(a));
-    bloom += brightPass(texture2D(uMainSampler, uv + dir * px * 2.5).rgb) * 0.7;
-    bloom += brightPass(texture2D(uMainSampler, uv + dir * px * 5.5).rgb) * 0.4;
+    bloom += brightPass(texture2D(uMainSampler, uv + dir * px * 1.5).rgb) * 0.7;
+    bloom += brightPass(texture2D(uMainSampler, uv + dir * px * 3.0).rgb) * 0.4;
   }
   bloom /= 12.0;
 
@@ -64,8 +65,19 @@ void main(){
   float r = length(uv - 0.5) * 1.2;
   float vig = mix(1.0, smoothstep(0.95, 0.35, r), uVignette);
 
-  vec3 col = graded * vig + bloom * uBloom;
-  gl_FragColor = vec4(col, 1.0);
+  // Bloom keeps HUE (bloom tune): saturate the halo toward the emitter's
+  // colour so overlapping halos never accumulate to white...
+  vec3 b = bloom * uBloom;
+  float bl = luma(b);
+  b = max(mix(vec3(bl), b, 1.45), 0.0);
+  // ...and cap the summed pixel below clipping inside the halo (uniform
+  // scale preserves hue). Near-white stays reserved for the emitter's own
+  // core pixels, which arrive already bright in the base frame.
+  vec3 cb = graded * vig;
+  float m = max(b.r, max(b.g, b.b));
+  float room = 0.95 - min(0.95, max(cb.r, max(cb.g, cb.b)));
+  b *= m > 0.0001 ? min(1.0, room / m) : 1.0;
+  gl_FragColor = vec4(cb + b, 1.0);
 }
 `;
 
@@ -76,8 +88,10 @@ export class WorldGradePipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPi
 
   onPreRender(): void {
     this.set1f('uVignette', 0.5);
-    this.set1f('uThreshold', 0.64);
-    this.set1f('uBloom', 0.85);
+    // Bloom tune: threshold up so only true emitters bloom (never their
+    // in-scene halos), strength cut ~47% — the halo is modest by design.
+    this.set1f('uThreshold', 0.8);
+    this.set1f('uBloom', 0.45);
     this.set1f('uGrade', 0.5);
     this.set2f('uResolution', this.renderer.width, this.renderer.height);
   }

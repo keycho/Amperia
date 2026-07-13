@@ -73,9 +73,18 @@ export function worldSpriteTint(): number | null {
   return mixInt(0xffffff, mixPalette('warmGlow', 'duskSky', 0.45), STYLE.spriteInkMix * 1.4);
 }
 
+/**
+ * BLOOM TUNE (de-stack): since PP3 the post pipeline owns the SOFT HALO, so
+ * the in-scene additive sprites are only the tight core glow — every emissive
+ * alpha runs at half strength. Never two full-strength glow systems on the
+ * same emitter: that stacked to featureless white blobs on the Dynamo and
+ * washed the string lights white.
+ */
+const DESTACK = 0.5;
+
 /** Emissive alpha through the bloom boost (clamped). */
 export function bloom(alpha: number): number {
-  return Math.min(1, alpha * STYLE.bloomBoost);
+  return Math.min(1, alpha * DESTACK * STYLE.bloomBoost);
 }
 
 /** Plain integer color mix (styling only — palette blends stay in palette.ts). */
