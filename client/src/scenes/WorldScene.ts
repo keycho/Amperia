@@ -1951,11 +1951,15 @@ export class WorldScene extends Phaser.Scene {
     if (identity === null || this.room === null) return;
     const room = this.room;
     this.creatorMode = mode;
+    // A first wallet sign-in seats the Spark under a machine placeholder
+    // (Spark-xxxxxx); don't pre-fill that into the name field — pass it blank
+    // so the creator seeds a cozy rolled name for the player to keep or change.
+    const isPlaceholder = /^Spark-[0-9a-f]{6}$/.test(identity.sparkName);
     this.creator = showCreatorOverlay({
       scene: this,
       mode,
       currentCode: identity.appearance,
-      currentName: identity.sparkName,
+      currentName: mode === 'first' && isPlaceholder ? '' : identity.sparkName,
       owned: identity.owned,
       currentEquipped: identity.equipped,
       onConfirm: (code, name) => {

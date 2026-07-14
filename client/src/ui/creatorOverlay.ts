@@ -185,7 +185,9 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     nameRow.style.cssText = 'display:flex;gap:6px;align-items:center;';
     nameInput = document.createElement('input');
     nameInput.type = 'text';
-    nameInput.value = opts.currentName;
+    // First sign-in arrives with a blank name (the machine placeholder is
+    // stripped upstream) — seed a cozy rolled name so no one starts nameless.
+    nameInput.value = opts.currentName !== '' ? opts.currentName : rollName();
     nameInput.maxLength = 16;
     nameInput.placeholder = 'Spark name';
     nameInput.style.cssText = [
@@ -254,6 +256,8 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
           .catch(() => undefined);
       }, 350);
     });
+    // Check availability of the seeded name right away.
+    nameInput.dispatchEvent(new Event('input'));
   }
 
   const rowLabel = (text: string) => {
