@@ -91,10 +91,10 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       'left:50%',
       'top:52%',
       'transform:translate(-50%,-50%)',
-      'width:900px',
-      'max-width:96%',
-      'height:300px',
-      `background:radial-gradient(ellipse 46% 50% at 50% 50%, ${PALETTE.ink}F2 0%, ${PALETTE.ink}D9 42%, transparent 74%)`,
+      'width:1240px',
+      'max-width:94%',
+      'height:440px',
+      `background:radial-gradient(ellipse 52% 48% at 50% 50%, ${PALETTE.ink}F7 0%, ${PALETTE.ink}E6 46%, transparent 78%)`,
       'pointer-events:none',
     ].join(';');
 
@@ -112,18 +112,34 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     const title = document.createElement('div');
     title.textContent = 'AMPERIA';
     title.style.cssText = [
+      // A crisp INK OUTLINE (text-stroke, painted under the fill) separates the
+      // amber letters from whatever's behind — so the wordmark reads BOLD on
+      // the lit island at any viewport, not just over the void. The animated
+      // glow rides on top.
       `color:${PALETTE.warmGlow}`,
-      'font-size:72px',
+      'font-size:78px',
       'font-weight:bold',
-      'letter-spacing:26px',
-      'text-indent:26px',
+      'letter-spacing:24px',
+      'text-indent:24px',
+      `-webkit-text-stroke:4px ${PALETTE.ink}`,
+      'paint-order:stroke fill',
+      'position:relative',
       'animation:amperia-glowpulse 5s ease-in-out infinite',
     ].join(';');
-    // Position over the scrim (both live in `hero`).
-    title.style.position = 'relative';
     const sub = document.createElement('div');
     sub.textContent = 'one city in the dark — keep it lit';
-    sub.style.cssText = `position:relative;color:${UI_TEXT_WARM};opacity:.92;font-size:14px;letter-spacing:4px;margin-top:-4px;text-shadow:0 1px 6px ${PALETTE.ink};`;
+    // Bold + a hard multi-offset ink outline so the tagline is legible over
+    // the island, not washed into it.
+    sub.style.cssText = [
+      'position:relative',
+      `color:${PALETTE.warmGlow}`,
+      'opacity:1',
+      'font-size:16px',
+      'font-weight:bold',
+      'letter-spacing:5px',
+      'margin-top:4px',
+      `text-shadow:1px 1px 0 ${PALETTE.ink},-1px 1px 0 ${PALETTE.ink},1px -1px 0 ${PALETTE.ink},-1px -1px 0 ${PALETTE.ink},0 2px 10px ${PALETTE.ink}`,
+    ].join(';');
 
     const enterBtn = document.createElement('button');
     enterBtn.textContent = 'Enter the City';
