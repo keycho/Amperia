@@ -58,7 +58,8 @@ export const SERVER_URL: string = resolveServerUrl();
 export interface AuthResponse {
   token: string;
   sparkName: string;
-  email: string | null;
+  /** The signed-in wallet (lowercased) — the account identity. */
+  walletAddress: string;
   /** Last persisted district — rejoin the Spark where they left off. */
   district: DistrictId;
 }
@@ -74,11 +75,21 @@ async function authPost(path: string, body: Record<string, unknown>): Promise<Au
   return data;
 }
 
+/**
+ * Wallet-only auth (W2–W5). `nonce()` fetches a single-use server nonce; the
+ * wallet module folds it into an EIP-4361 message, signs it, and `wallet()`
+ * posts the message + signature for server-side verification + find-or-create.
+ */
 export const auth = {
-  register: (email: string, password: string, sparkName: string) =>
-    authPost('/auth/register', { email, password, sparkName }),
-  login: (email: string, password: string) => authPost('/auth/login', { email, password }),
-  guest: (sparkName?: string) => authPost('/auth/guest', sparkName ? { sparkName } : {}),
+  nonce: async (): Promise<{ nonce: string }> => {
+    const res = await fetch(`${SERVER_URL}/auth/nonce`);
+    const data = (await res.json()) as { nonce?: string; error?: string };
+    if (!res.ok || typeof data.nonce !== 'string') {
+      throw new Error(data.error ?? 'Could not start sign-in.');
+    }
+    return { nonce: data.nonce };
+  },
+  wallet: (message: string, signature: string) => authPost('/auth/wallet', { message, signature }),
 };
 
 export const TOKEN_KEY = 'amperia.token';

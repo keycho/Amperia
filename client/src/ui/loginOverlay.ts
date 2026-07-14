@@ -1,14 +1,16 @@
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
-import { auth, SERVER_URL, type AuthResponse } from '../net/NetClient';
+import { SERVER_URL, type AuthResponse } from '../net/NetClient';
+import { connectWallet, hasWallet, WalletRejectedError } from '../net/wallet';
 import { VERSION } from '../version';
 import { sound } from '../audio/sound';
 import { swallowGameInput } from './domGuard';
 
 /**
  * THE TITLE SCREEN (U3a) — the first thing every player and stream sees.
- * The city poster pans slowly behind the wordmark; "Enter the City"
- * reveals the account form (email-first, guest always open — a wallet is
- * never required, CLAUDE.md). All colors from the locked palette.
+ * The city poster pans slowly behind the wordmark; the ONE way in is
+ * "Connect Wallet to play" (wallet-only auth, W5). No email, no password, no
+ * guest. All colors from the locked palette; copy obeys the comms rules
+ * (never "earn").
  */
 export function showLoginOverlay(): Promise<AuthResponse> {
   return new Promise((resolve) => {
@@ -68,9 +70,8 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     ].join(';');
 
     // The hero band: the wordmark + tagline ride UP in the dark void above
-    // the islands, never over the Dynamo's glow (which washed the 'E' out of
-    // AMPERIA and drowned the tagline). Its own dark scrim keeps the text
-    // clean against ink like the landing-page hero, whatever's behind it.
+    // the islands, never over the Dynamo's glow. Its own dark scrim keeps the
+    // text clean against ink like the landing-page hero.
     const hero = document.createElement('div');
     hero.style.cssText = [
       'position:absolute',
@@ -112,10 +113,6 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     const title = document.createElement('div');
     title.textContent = 'AMPERIA';
     title.style.cssText = [
-      // A crisp INK OUTLINE (text-stroke, painted under the fill) separates the
-      // amber letters from whatever's behind — so the wordmark reads BOLD on
-      // the lit island at any viewport, not just over the void. The animated
-      // glow rides on top.
       `color:${PALETTE.warmGlow}`,
       'font-size:78px',
       'font-weight:bold',
@@ -128,8 +125,6 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     ].join(';');
     const sub = document.createElement('div');
     sub.textContent = 'one city in the dark — keep it lit';
-    // Bold + a hard multi-offset ink outline so the tagline is legible over
-    // the island, not washed into it.
     sub.style.cssText = [
       'position:relative',
       `color:${PALETTE.warmGlow}`,
@@ -141,9 +136,10 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       `text-shadow:1px 1px 0 ${PALETTE.ink},-1px 1px 0 ${PALETTE.ink},1px -1px 0 ${PALETTE.ink},-1px -1px 0 ${PALETTE.ink},0 2px 10px ${PALETTE.ink}`,
     ].join(';');
 
-    const enterBtn = document.createElement('button');
-    enterBtn.textContent = 'Enter the City';
-    enterBtn.style.cssText = [
+    // ── the ONE way in: Connect Wallet ────────────────────────────────────
+    const connectBtn = document.createElement('button');
+    connectBtn.textContent = 'Connect Wallet to play';
+    connectBtn.style.cssText = [
       'margin-top:22px',
       'padding:14px 44px',
       `background:${PALETTE.neonAmber}`,
@@ -158,112 +154,55 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       'box-shadow:0 0 30px rgba(255,178,102,0.45)',
     ].join(';');
 
-    // ── the account form (hidden until Enter) ──────────────────────────────
-    const panel = document.createElement('div');
-    panel.style.cssText = [
-      `background:${PALETTE.structureMid}F2`,
-      `border:2px solid ${PALETTE.ink}`,
-      'border-radius:14px',
-      'padding:24px 26px',
-      'width:320px',
-      'box-shadow:0 12px 40px rgba(0,0,0,0.5)',
-      'display:none',
+    const msg = document.createElement('div');
+    msg.style.cssText = [
+      `color:${PALETTE.neonRose}`,
+      'font-size:13px',
+      'min-height:18px',
+      'margin-top:12px',
+      'text-align:center',
+      'max-width:420px',
     ].join(';');
 
-    const msg = document.createElement('div');
-    msg.style.cssText = `color:${PALETTE.neonRose};font-size:12px;min-height:16px;margin-bottom:8px;text-align:center;`;
+    // A quiet helper line under the button (comms-clean).
+    const hint = document.createElement('div');
+    hint.textContent = hasWallet()
+      ? 'Sign in with your wallet — it moves no funds.'
+      : 'Install a browser wallet (e.g. MetaMask) to play.';
+    hint.style.cssText = [
+      `color:${UI_TEXT_WARM}`,
+      'opacity:.7',
+      'font-size:12px',
+      'letter-spacing:1px',
+      'margin-top:8px',
+      'text-align:center',
+    ].join(';');
 
-    const input = (placeholder: string, type = 'text') => {
-      const el = document.createElement('input');
-      el.type = type;
-      el.placeholder = placeholder;
-      el.style.cssText = [
-        'display:block',
-        'width:100%',
-        'box-sizing:border-box',
-        'margin-bottom:10px',
-        'padding:9px 10px',
-        `background:${PALETTE.ink}`,
-        `color:${UI_TEXT_WARM}`,
-        `border:1px solid ${PALETTE.groundBase}`,
-        'border-radius:8px',
-        'font-family:monospace',
-        'font-size:13px',
-        'outline:none',
-      ].join(';');
-      return el;
-    };
-
-    const email = input('email', 'email');
-    const password = input('password (8+)', 'password');
-    const sparkName = input('Spark name (for new accounts)');
-
-    const button = (label: string, primary: boolean) => {
-      const el = document.createElement('button');
-      el.textContent = label;
-      el.style.cssText = [
-        'display:block',
-        'width:100%',
-        'margin-top:8px',
-        'padding:10px',
-        `background:${primary ? PALETTE.neonAmber : PALETTE.ink}`,
-        `color:${primary ? PALETTE.ink : UI_TEXT_WARM}`,
-        'border:none',
-        'border-radius:8px',
-        'font-family:monospace',
-        'font-size:14px',
-        'font-weight:bold',
-        'cursor:pointer',
-      ].join(';');
-      return el;
-    };
-
-    const loginBtn = button('Sign in', true);
-    const registerBtn = button('Register a new Spark', false);
-    const guestBtn = button('Wander in as a guest', false);
-
-    const busy = (b: boolean) => {
-      for (const el of [loginBtn, registerBtn, guestBtn]) el.disabled = b;
-      root.style.cursor = b ? 'progress' : 'default';
-    };
-    const finish = (r: AuthResponse) => {
+    const finish = (r: AuthResponse): void => {
       root.remove();
       styleEl.remove();
       resolve(r);
     };
-    const fail = (err: unknown) => {
-      msg.textContent = err instanceof Error ? err.message : 'Something sputtered. Try again.';
-      busy(false);
+    const busy = (b: boolean): void => {
+      connectBtn.disabled = b;
+      connectBtn.textContent = b ? 'Connecting…' : 'Connect Wallet to play';
+      root.style.cursor = b ? 'progress' : 'default';
     };
 
-    loginBtn.onclick = () => {
-      busy(true);
-      auth.login(email.value, password.value).then(finish, fail);
-    };
-    registerBtn.onclick = () => {
-      busy(true);
-      auth.register(email.value, password.value, sparkName.value).then(finish, fail);
-    };
-    guestBtn.onclick = () => {
-      busy(true);
-      auth.guest(sparkName.value.trim() === '' ? undefined : sparkName.value).then(finish, fail);
-    };
-    password.onkeydown = (e) => {
-      if (e.key === 'Enter') loginBtn.click();
-    };
-
-    enterBtn.onclick = () => {
+    connectBtn.onclick = () => {
       sound.uiClick();
-      enterBtn.style.display = 'none';
-      panel.style.display = 'block';
-      panel.classList.add('form-in');
-      email.focus();
+      msg.textContent = '';
+      busy(true);
+      connectWallet().then(finish, (err: unknown) => {
+        // A dismissed wallet prompt is "not now", not an error.
+        if (!(err instanceof WalletRejectedError)) {
+          msg.textContent = err instanceof Error ? err.message : 'Something sputtered. Try again.';
+        }
+        busy(false);
+      });
     };
 
-    panel.append(msg, email, password, sparkName, loginBtn, registerBtn, guestBtn);
-
-    // ── chrome: version tag + a small title-screen settings gear ──────────
-    // Footer, bottom-right: the public City Ledger link beside the version tag.
+    // ── chrome: version tag + public City Ledger link + settings gear ─────
     const footer = document.createElement('div');
     footer.style.cssText =
       'position:absolute;right:14px;bottom:12px;display:flex;align-items:center;gap:10px;';
@@ -273,8 +212,12 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     ledgerLink.target = '_blank';
     ledgerLink.rel = 'noopener noreferrer';
     ledgerLink.style.cssText = `color:${PALETTE.neonAmber};opacity:.8;font-size:11px;letter-spacing:1px;text-decoration:none;cursor:pointer;`;
-    ledgerLink.onmouseenter = () => { ledgerLink.style.opacity = '1'; };
-    ledgerLink.onmouseleave = () => { ledgerLink.style.opacity = '.8'; };
+    ledgerLink.onmouseenter = () => {
+      ledgerLink.style.opacity = '1';
+    };
+    ledgerLink.onmouseleave = () => {
+      ledgerLink.style.opacity = '.8';
+    };
     const version = document.createElement('div');
     version.textContent = VERSION;
     version.style.cssText = `color:${UI_TEXT_WARM};opacity:.55;font-size:11px;letter-spacing:1px;`;
@@ -323,7 +266,7 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     };
 
     hero.append(heroScrim, title, sub);
-    center.append(enterBtn, panel);
+    center.append(connectBtn, msg, hint);
     root.append(bg, shade, floor, hero, center, gear, gearPanel, footer);
     document.head.append(styleEl);
     document.body.append(root);
