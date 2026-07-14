@@ -32,6 +32,7 @@ import {
   type KoiRoll,
 } from '@shared/minigames';
 import {
+  makeSkillXp,
   effectiveSeconds,
   levelForXp,
   SKILL_BY_NODE,
@@ -264,6 +265,9 @@ interface PlayerRuntime {
   tendDayDate: string;
   /** Cue reaction deltas (ms) — behavioral-entropy logging habit (C7). */
   glintReactionsMs: number[];
+  /** W7 spectate: a no-wallet visitor. Read-only, non-persistent — every value
+   *  codepath refuses it server-side; nothing is ever written to the DB. */
+  spectator: boolean;
 }
 
 /**
@@ -370,47 +374,51 @@ export class FilamentRoom extends Room<FilamentState> {
     this.spawnMobs();
     this.scheduleDraymule();
 
+    // W7 spectate: value-action handlers run through `guarded`, which refuses a
+    // read-only visitor with ONE prompt before any value logic — impossible to
+    // forget a handler. move / inspect / chargeInfo stay open (looking is free).
+    const guarded = <T>(type: string, handler: (client: Client, msg: T) => void): void => {
+      this.onMessage<T>(type, (client, msg) => {
+        const rt = this.runtimes.get(client.sessionId);
+        if (rt?.spectator === true) {
+          this.promptConnect(client);
+          return;
+        }
+        handler(client, msg);
+      });
+    };
+
     this.onMessage<MoveIntent>(MSG.move, (client, msg) => this.handleMove(client, msg));
-    this.onMessage<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
-    this.onMessage<GlintClickIntent>(MSG.glintClick, (client, msg) =>
-      this.handleGlintClick(client, msg),
-    );
-    this.onMessage<NodeActionIntent>(MSG.nodeAction, (client, msg) =>
-      this.handleNodeAction(client, msg),
-    );
-    this.onMessage<SelectSlotIntent>(MSG.selectSlot, (client, msg) => {
+    guarded<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
+    guarded<GlintClickIntent>(MSG.glintClick, (client, msg) => this.handleGlintClick(client, msg));
+    guarded<NodeActionIntent>(MSG.nodeAction, (client, msg) => this.handleNodeAction(client, msg));
+    guarded<SelectSlotIntent>(MSG.selectSlot, (client, msg) => {
       const rt = this.runtimes.get(client.sessionId);
       if (rt === undefined || !Number.isInteger(msg.slot)) return;
       if (msg.slot < 0 || msg.slot >= CONFIG.inventory.hotbarSlots) return;
       rt.activeSlot = msg.slot;
     });
-    this.onMessage<MoveStackIntent>(MSG.moveStack, (client, msg) =>
-      this.handleMoveStack(client, msg),
-    );
-    this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
-    this.onMessage<AppearanceIntent>(MSG.appearance, (client, msg) => {
+    guarded<MoveStackIntent>(MSG.moveStack, (client, msg) => this.handleMoveStack(client, msg));
+    guarded<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
+    guarded<AppearanceIntent>(MSG.appearance, (client, msg) => {
       void this.handleAppearance(client, msg);
     });
-    this.onMessage<WardrobeIntent>(MSG.wardrobe, (client, msg) =>
-      this.handleWardrobe(client, msg),
-    );
-    this.onMessage<InspectIntent>(MSG.inspect, (client, msg) =>
-      this.handleInspect(client, msg),
-    );
-    this.onMessage<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
+    guarded<WardrobeIntent>(MSG.wardrobe, (client, msg) => this.handleWardrobe(client, msg));
+    this.onMessage<InspectIntent>(MSG.inspect, (client, msg) => this.handleInspect(client, msg));
+    guarded<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
       void this.handleGoalClaim(client, msg);
     });
-    this.onMessage<BankIntent>(MSG.bank, (client, msg) => {
+    guarded<BankIntent>(MSG.bank, (client, msg) => {
       void this.handleBank(client, msg).catch((err) =>
         console.error('[bank] action failed', err),
       );
     });
-    this.onMessage<LoftpodIntent>(MSG.loftpod, (client, msg) => {
+    guarded<LoftpodIntent>(MSG.loftpod, (client, msg) => {
       void this.handleLoftpod(client, msg).catch((err) =>
         console.error('[loftpod] action failed', err),
       );
     });
-    this.onMessage<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
+    guarded<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
       void this.handleCoilSpin(client, msg).catch((err) => {
         // The no-currency assert tripping is an anomaly worth remembering.
         const rt = this.runtimes.get(client.sessionId);
@@ -423,13 +431,11 @@ export class FilamentRoom extends Room<FilamentState> {
         }
       });
     });
-    this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
-    this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
-    this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
-    this.onMessage<PlayerTradeIntent>(MSG.ptrade, (client, msg) =>
-      this.handlePlayerTrade(client, msg),
-    );
-    this.onMessage<ShopIntent>(MSG.shop, (client, msg) => {
+    guarded<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
+    guarded(MSG.placeHeatlamp, (client: Client) => this.handlePlaceHeatlamp(client));
+    guarded<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
+    guarded<PlayerTradeIntent>(MSG.ptrade, (client, msg) => this.handlePlayerTrade(client, msg));
+    guarded<ShopIntent>(MSG.shop, (client, msg) => {
       void this.handleShop(client, msg);
     });
     this.onMessage(MSG.chargeInfo, (client) => {
@@ -443,17 +449,15 @@ export class FilamentRoom extends Room<FilamentState> {
         .catch((err) => console.error('[loftpod] boot load failed', err));
     }
     void this.refreshCharge(true);
-    this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
-    this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
-    this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
-    this.onMessage<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
-    this.onMessage<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
-    this.onMessage<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
-    this.onMessage<DeliveryIntent>(MSG.delivery, (client, msg) =>
-      this.handleDelivery(client, msg),
-    );
-    this.onMessage<TendIntent>(MSG.tend, (client, msg) => this.handleTend(client, msg));
-    this.onMessage<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
+    guarded<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
+    guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
+    guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
+    guarded<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
+    guarded<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
+    guarded<DeliveryIntent>(MSG.delivery, (client, msg) => this.handleDelivery(client, msg));
+    guarded<TendIntent>(MSG.tend, (client, msg) => this.handleTend(client, msg));
+    guarded<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
     void merchant.load();
 
     this.setSimulationInterval((dt) => {
@@ -465,10 +469,19 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   async onJoin(client: Client, options: unknown): Promise<void> {
-    const token =
+    const opts =
       typeof options === 'object' && options !== null
-        ? String((options as Record<string, unknown>).token ?? '')
-        : '';
+        ? (options as Record<string, unknown>)
+        : {};
+    const token = String(opts.token ?? '');
+    // W7 spectate: no token + spectate:true → a read-only visitor. A real
+    // player MUST present a valid JWT, so a client can never claim non-spectator
+    // without one; the spectator flag is set here, server-side, and every value
+    // handler refuses it.
+    if (token === '' && opts.spectate === true) {
+      this.joinSpectator(client);
+      return;
+    }
     const auth = verifyToken(token); // throws → join rejected
     // One live session per account.
     for (const rt of this.runtimes.values()) {
@@ -554,6 +567,7 @@ export class FilamentRoom extends Room<FilamentState> {
       tendDayCount: character.tendDayCount,
       tendDayDate: character.tendDayDate,
       glintReactionsMs: [],
+      spectator: false,
     };
     this.runtimes.set(client.sessionId, runtime);
 
@@ -621,6 +635,90 @@ export class FilamentRoom extends Room<FilamentState> {
     );
   }
 
+  /**
+   * W7 — seat a read-only spectator: a no-wallet visitor with a temporary,
+   * NON-PERSISTENT Spark. It can move and see the world + live players, but
+   * every value handler refuses it (server-authoritative) and {@link persist}
+   * never touches the DB for it. No account is created, nothing is written.
+   */
+  private joinSpectator(client: Client): void {
+    const spawn: TilePoint = this.gateSpawn(CONFIG.player.spawn);
+    const runtime: PlayerRuntime = {
+      // Synthetic ids so the one-session-per-account check never collides; they
+      // are NEVER used as a DB key (persist() bails for spectators).
+      accountId: `spectator:${client.sessionId}`,
+      characterId: `spectator:${client.sessionId}`,
+      sparkName: 'Visitor',
+      move: makeMoveState(spawn),
+      pack: makeInventory(CONFIG.inventory.slots),
+      hotbar: makeStarterHotbar(),
+      activeSlot: 0,
+      skills: makeSkillXp(),
+      bolts: 0,
+      dailySaleBolts: 0,
+      dailySaleDate: '',
+      tradeDayDate: '',
+      tradeDayValueBolts: 0,
+      tradeDayCount: 0,
+      accountCreatedAtMs: 0,
+      quests: {} as QuestLog,
+      cosmetics: [],
+      appearance: '',
+      equipped: {},
+      titles: [],
+      goalTokens: 0,
+      restedMsUsed: 0,
+      restedDate: '',
+      bank: null,
+      hp: CONFIG.combat.player.maxHp,
+      pendingDistrict: null,
+      healAcc: 0,
+      lastAttackAtMs: 0,
+      gatherTargetNode: null,
+      session: null,
+      lastChatAtMs: 0,
+      chatWindow: [],
+      chatCooldownNoticed: false,
+      mutes: new Set(),
+      delivery: null,
+      deliveryDayBolts: 0,
+      deliveryDayDate: '',
+      tend: null,
+      tendDayCount: 0,
+      tendDayDate: '',
+      glintReactionsMs: [],
+      spectator: true,
+    };
+    this.runtimes.set(client.sessionId, runtime);
+
+    const ps = new PlayerState();
+    ps.sparkName = 'Visitor';
+    ps.tileX = spawn.x;
+    ps.tileY = spawn.y;
+    ps.hp = runtime.hp;
+    ps.maxHp = CONFIG.combat.player.maxHp;
+    ps.equipped = '';
+    ps.trim = '';
+    ps.appearance = DEFAULT_APPEARANCE_CODE;
+    this.state.players.set(client.sessionId, ps);
+
+    // chosen:true so the client never pops the creator for a visitor.
+    client.send(MSG.identity, {
+      appearance: DEFAULT_APPEARANCE_CODE,
+      sparkName: 'Visitor',
+      chosen: true,
+      owned: [],
+      equipped: '',
+    });
+    client.send(MSG.inventory, this.inventorySync(runtime));
+    client.send(MSG.notice, { text: 'Spectating — connect your wallet to play.' });
+  }
+
+  /** The single spectator refusal (W7) — one prompt for any value action. */
+  private promptConnect(client: Client): void {
+    client.send(MSG.notice, { text: 'Connect your wallet to play.' });
+  }
+
   async onLeave(client: Client): Promise<void> {
     // A vanished trader closes the window; the swap either fully happened
     // before this or not at all (settleTrade commits synchronously).
@@ -629,6 +727,9 @@ export class FilamentRoom extends Room<FilamentState> {
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     if (rt !== undefined) {
+      // A spectator leaves no trace: no session to settle, no DB write, no
+      // "rode the tram out" (it never rode in).
+      if (rt.spectator) return;
       // Partial veins/strikes pay out what was worked.
       this.settleSession(client, rt, false);
       this.broadcast(MSG.notice, { text: `${rt.sparkName} rode the tram out.` });
@@ -4396,6 +4497,9 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private async persist(rt: PlayerRuntime): Promise<void> {
+    // W7: a spectator is non-persistent — never write it to the DB (this one
+    // guard covers onLeave, onDispose, the 30s tick, and every inline call).
+    if (rt.spectator) return;
     const district = rt.pendingDistrict ?? this.districtId;
     // A tram rider's saved tile belongs to the ORIGIN district's geometry —
     // persist the destination gate instead so arrivals step off the tram.

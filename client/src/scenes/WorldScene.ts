@@ -90,11 +90,14 @@ import {
   DISTRICT_KEY,
   getStateCallbacks,
   joinDistrict,
+  joinDistrictSpectate,
   MSG,
   send,
   TOKEN_KEY,
+  type AuthResponse,
   type FilamentRoom,
 } from '../net/NetClient';
+import { connectWallet, WalletRejectedError } from '../net/wallet';
 import { session, SessionEvents } from '../net/session';
 import { showCreatorOverlay, type CreatorHandle } from '../ui/creatorOverlay';
 import { sound } from '../audio/sound';
@@ -192,6 +195,9 @@ export class WorldScene extends Phaser.Scene {
   private room: FilamentRoom | null = null;
   private token = '';
   private district: DistrictId = 'filament';
+  /** W7: joined with no wallet — read-only, with a persistent Connect button. */
+  private spectate = false;
+  private spectateBanner: HTMLElement | null = null;
   private dynamoWorld = { x: 0, y: 0 };
   private stallsWorld = { x: 0, y: 0 };
   /** Shop-stall presence layers (shingle + counter goods), by stall id. */
@@ -238,9 +244,12 @@ export class WorldScene extends Phaser.Scene {
     super('world');
   }
 
-  init(data: { token?: string; district?: DistrictId }): void {
+  init(data: { token?: string; district?: DistrictId; spectate?: boolean }): void {
     this.token = data.token ?? this.token;
     this.district = data.district ?? 'filament';
+    // A promotion (spectate → wallet) restarts with a token and no spectate
+    // flag, so this correctly clears spectate mode on the way in.
+    this.spectate = data.spectate === true;
     // Scene restarts (tram travel) reuse this instance: field initializers
     // don't re-run, so the entity maps still point at destroyed objects.
     this.nodes = new Map();
@@ -612,11 +621,21 @@ export class WorldScene extends Phaser.Scene {
 
   private async connect(): Promise<void> {
     try {
-      const room = await joinDistrict(this.token, this.district);
+      const room = this.spectate
+        ? await joinDistrictSpectate(this.district)
+        : await joinDistrict(this.token, this.district);
       this.bindRoom(room);
       this.connectingText?.destroy();
       this.connectingText = null;
+      if (this.spectate) this.showSpectateBanner();
     } catch (err) {
+      // A spectate join has no token to salvage — just return to the title.
+      if (this.spectate) {
+        console.error('[net] spectate join failed', err);
+        this.scene.stop('ui');
+        this.scene.start('login');
+        return;
+      }
       // A remembered district can go stale (or its toll be short) — fall
       // back to the Filament once before treating the token as bad.
       if (this.district !== 'filament') {
@@ -631,6 +650,82 @@ export class WorldScene extends Phaser.Scene {
       this.scene.stop('ui');
       this.scene.start('login');
     }
+  }
+
+  /**
+   * W7: the persistent "Spectating — connect your wallet to play" bar, shown
+   * the whole time a visitor is in the world. Connecting promotes them from a
+   * read-only Visitor to a real signed-in Spark (rejoin with the new token).
+   */
+  private showSpectateBanner(): void {
+    if (this.spectateBanner !== null) return;
+    const bar = document.createElement('div');
+    bar.style.cssText = [
+      'position:fixed',
+      'left:50%',
+      'bottom:18px',
+      'transform:translateX(-50%)',
+      'z-index:20',
+      'display:flex',
+      'align-items:center',
+      'gap:12px',
+      'padding:9px 14px',
+      'background:rgba(10,8,20,0.86)',
+      'border:1px solid #6d5a86',
+      'border-radius:12px',
+      'font-family:monospace',
+      'color:#e9dcc7',
+      'font-size:13px',
+      'box-shadow:0 6px 22px rgba(0,0,0,0.5)',
+    ].join(';');
+    const label = document.createElement('span');
+    label.textContent = 'Spectating — connect your wallet to play';
+    const btn = document.createElement('button');
+    btn.textContent = 'Connect Wallet';
+    btn.style.cssText = [
+      'padding:7px 16px',
+      'background:#ffb266',
+      'color:#0a0814',
+      'border:none',
+      'border-radius:8px',
+      'font-family:monospace',
+      'font-size:13px',
+      'font-weight:bold',
+      'letter-spacing:1px',
+      'cursor:pointer',
+    ].join(';');
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      connectWallet().then(
+        (auth) => this.promoteFromSpectate(auth),
+        (err: unknown) => {
+          btn.disabled = false;
+          btn.textContent = 'Connect Wallet';
+          if (!(err instanceof WalletRejectedError)) {
+            label.textContent =
+              err instanceof Error ? err.message : 'Something sputtered — try again.';
+          }
+        },
+      );
+    };
+    bar.append(label, btn);
+    document.body.append(bar);
+    this.spectateBanner = bar;
+    // Never leak the DOM node across a scene restart / shutdown.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.spectateBanner?.remove();
+      this.spectateBanner = null;
+    });
+  }
+
+  /** Promote a spectator to a real Spark: store the session + rejoin with it. */
+  private promoteFromSpectate(auth: AuthResponse): void {
+    this.spectateBanner?.remove();
+    this.spectateBanner = null;
+    localStorage.setItem(TOKEN_KEY, auth.token);
+    localStorage.setItem(DISTRICT_KEY, auth.district);
+    this.scene.restart({ token: auth.token, district: auth.district });
   }
 
   private bindRoom(room: FilamentRoom): void {

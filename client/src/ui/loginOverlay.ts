@@ -6,13 +6,19 @@ import { sound } from '../audio/sound';
 import { swallowGameInput } from './domGuard';
 
 /**
- * THE TITLE SCREEN (U3a) — the first thing every player and stream sees.
- * The city poster pans slowly behind the wordmark; the ONE way in is
- * "Connect Wallet to play" (wallet-only auth, W5). No email, no password, no
- * guest. All colors from the locked palette; copy obeys the comms rules
- * (never "earn").
+ * The result of the title screen: either a wallet sign-in, or a choice to
+ * spectate the city read-only (W7).
  */
-export function showLoginOverlay(): Promise<AuthResponse> {
+export type TitleChoice = { kind: 'auth'; auth: AuthResponse } | { kind: 'spectate' };
+
+/**
+ * THE TITLE SCREEN (U3a) — the first thing every player and stream sees.
+ * The city poster pans slowly behind the wordmark. The way in is
+ * "Connect Wallet to play" (wallet-only auth, W5); "Spectate the city" enters
+ * read-only with no wallet (W7). No email, no password, no playable guest. All
+ * colors from the locked palette; copy obeys the comms rules (never "earn").
+ */
+export function showLoginOverlay(): Promise<TitleChoice> {
   return new Promise((resolve) => {
     const root = document.createElement('div');
     root.id = 'amperia-login';
@@ -178,13 +184,34 @@ export function showLoginOverlay(): Promise<AuthResponse> {
       'text-align:center',
     ].join(';');
 
-    const finish = (r: AuthResponse): void => {
+    // ── the no-wallet option: spectate the city, read-only ────────────────
+    const spectateBtn = document.createElement('button');
+    spectateBtn.textContent = 'Spectate the city';
+    spectateBtn.style.cssText = [
+      'margin-top:12px',
+      'padding:9px 22px',
+      'background:transparent',
+      `color:${UI_TEXT_WARM}`,
+      `border:1px solid ${PALETTE.groundBase}`,
+      'border-radius:9px',
+      'font-family:monospace',
+      'font-size:13px',
+      'letter-spacing:1px',
+      'cursor:pointer',
+      'opacity:.9',
+    ].join(';');
+
+    const close = (): void => {
       root.remove();
       styleEl.remove();
-      resolve(r);
+    };
+    const finish = (r: AuthResponse): void => {
+      close();
+      resolve({ kind: 'auth', auth: r });
     };
     const busy = (b: boolean): void => {
       connectBtn.disabled = b;
+      spectateBtn.disabled = b;
       connectBtn.textContent = b ? 'Connecting…' : 'Connect Wallet to play';
       root.style.cursor = b ? 'progress' : 'default';
     };
@@ -200,6 +227,11 @@ export function showLoginOverlay(): Promise<AuthResponse> {
         }
         busy(false);
       });
+    };
+    spectateBtn.onclick = () => {
+      sound.uiClick();
+      close();
+      resolve({ kind: 'spectate' });
     };
 
     // ── chrome: version tag + public City Ledger link + settings gear ─────
@@ -266,7 +298,7 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     };
 
     hero.append(heroScrim, title, sub);
-    center.append(connectBtn, msg, hint);
+    center.append(connectBtn, spectateBtn, msg, hint);
     root.append(bg, shade, floor, hero, center, gear, gearPanel, footer);
     document.head.append(styleEl);
     document.body.append(root);

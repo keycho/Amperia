@@ -115,6 +115,16 @@ export async function joinDistrict(token: string, district: DistrictId): Promise
   return client.joinOrCreate(district, { token });
 }
 
+/**
+ * Join a district as a read-only spectator (W7) — no token, no account. The
+ * server seats a temporary, non-persistent Visitor; every value action is
+ * refused with a "connect your wallet" prompt until they connect one.
+ */
+export async function joinDistrictSpectate(district: DistrictId): Promise<FilamentRoom> {
+  const client = new Client(SERVER_URL);
+  return client.joinOrCreate(district, { spectate: true });
+}
+
 export { getStateCallbacks, MSG };
 
 /** Typed intent senders. */
