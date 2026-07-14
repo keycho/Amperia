@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { TOKEN_GATE } from '@shared/chain';
 import {
-  checkGate,
   decideAccess,
   gateActive,
   holdsKey,
   isEvmAddress,
   readAmpBalance,
-  verifySiwe,
   type GateState,
 } from './tokenGate.js';
 
@@ -36,21 +34,8 @@ describe('token gate — thresholds + activation', () => {
     expect(gateActive({ rpcUrl: 'https://rpc', tokenAddress: `0x${'a'.repeat(40)}` })).toBe(true);
   });
 
-  it('the live seams throw NotActivated (no chain call in the stub)', async () => {
+  it('the balance seam throws NotActivated (no chain call in the stub)', async () => {
     await expect(readAmpBalance(`0x${'a'.repeat(40)}`)).rejects.toThrow(/not activated/i);
-    await expect(
-      verifySiwe({ address: `0x${'a'.repeat(40)}`, message: 'm', signature: 's' }),
-    ).rejects.toThrow(/not activated/i);
-  });
-
-  it('checkGate returns guest access while the gate is inactive', async () => {
-    const d = await checkGate(
-      { address: `0x${'a'.repeat(40)}`, message: 'm', signature: 's' },
-      1_000,
-      { kind: 'none' },
-    );
-    expect(d.access).toBe('denied'); // guest/demo — never a ban
-    expect(d.warn).toBe(false);
   });
 });
 

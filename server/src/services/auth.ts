@@ -1,15 +1,19 @@
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { makeStarterHotbar } from '@shared/inventory';
 import { prisma } from './db.js';
-import { isEvmAddress, verifySiwe } from './tokenGate.js';
+import { verifySignIn } from './siwe.js';
 
 /**
- * Accounts start on the guest/demo path (no wallet needed to try the city).
- * Guests are real accounts without an email so they can upgrade later. SIWE
- * (Sign-In-With-Ethereum) wallet linking is the front door to the 1,000-$AMP
- * token gate (M4) — optional and late; the endpoint exists but stays inactive
- * until AMP_TOKEN_ADDRESS is set (see tokenGate.ts).
+ * WALLET-ONLY AUTH (W2). Sign-In-With-Ethereum (EIP-4361) is the ONE front
+ * door: {@link authenticateWallet} verifies a real signature (siwe.ts, no
+ * token / no RPC needed) and finds-or-creates the account keyed by the
+ * lowercased wallet address. A brand-new wallet gets a placeholder Spark with
+ * an unchosen appearance, so the creator (W6) opens on first entry.
+ *
+ * The legacy email/password + guest helpers below are removed in W4; they are
+ * kept here only so this commit builds while the SIWE path lands.
  */
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'amperia-dev-secret-change-me';
@@ -24,7 +28,8 @@ export interface JoinedAuth {
 export interface AuthResult {
   token: string;
   sparkName: string;
-  email: string | null;
+  /** The signed-in wallet (lowercased), or null for a legacy account. */
+  walletAddress: string | null;
   /** Last persisted district — the client rejoins the Spark where they left. */
   district: string;
 }
@@ -70,7 +75,7 @@ async function createAccountWithCharacter(
   return {
     token: signToken({ accountId: account.id, characterId: character.id }),
     sparkName: character.sparkName,
-    email: account.email,
+    walletAddress: account.walletAddress,
     district: character.district,
   };
 }
@@ -113,7 +118,7 @@ export async function loginEmail(email: string, password: string): Promise<AuthR
   return {
     token: signToken({ accountId: account.id, characterId: account.character.id }),
     sparkName: account.character.sparkName,
-    email: account.email,
+    walletAddress: account.walletAddress,
     district: account.character.district,
   };
 }
@@ -136,35 +141,74 @@ export async function guestJoin(requestedName: string | undefined): Promise<Auth
   return createAccountWithCharacter(null, null, name);
 }
 
+/** A newly seated wallet Spark carries a placeholder name until the creator. */
+const PLACEHOLDER_NAME = (): string => `Spark-${randomBytes(3).toString('hex')}`;
+
 /**
- * SIWE (Sign-In-With-Ethereum, EIP-4361) wallet linking — optional and late by
- * design (M4). The signed message must embed the account id (prevents replaying
- * another account's signature). Signature verification runs through the token
- * gate (`tokenGate.verifySiwe`), which is **inactive until AMP_TOKEN_ADDRESS is
- * set** — so this endpoint shape-checks the request, then throws
- * NotActivated until the token launches. The guest/demo path is unaffected.
+ * Create the account + its one placeholder Spark for a fresh wallet. The name
+ * is a throwaway (`Spark-xxxxxx`) that the creator (W6) overwrites on first
+ * entry; appearance is left unset so the identity snapshot pops the creator.
+ * Retries on the rare placeholder-name collision; on a concurrent same-wallet
+ * race the caller re-fetches.
  */
-export async function linkWallet(
+async function seatWalletSpark(walletAddress: string): Promise<AuthResult> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const account = await prisma.account.create({
+        data: {
+          walletAddress,
+          character: {
+            create: { sparkName: PLACEHOLDER_NAME(), hotbarJson: makeStarterHotbar().slots as object[] },
+          },
+        },
+        include: { character: true },
+      });
+      if (account.character === null) throw new Error('Character creation failed');
+      return resultFor(account.walletAddress, account.id, account.character);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const target = (err as { meta?: { target?: string[] } }).meta?.target ?? [];
+      if (code === 'P2002' && target.includes('sparkName')) continue; // name clash → retry
+      if (code === 'P2002' && target.includes('walletAddress')) break; // raced → re-fetch
+      throw err;
+    }
+  }
+  const raced = await prisma.account.findUnique({
+    where: { walletAddress },
+    include: { character: true },
+  });
+  if (raced?.character != null) return resultFor(raced.walletAddress, raced.id, raced.character);
+  throw new Error('Could not seat a new Spark — reconnect and try again.');
+}
+
+function resultFor(
+  walletAddress: string | null,
   accountId: string,
-  walletAddress: string,
-  message: string,
-  signature: string,
-): Promise<void> {
-  if (!message.includes(accountId)) {
-    throw new Error('Signed message must reference this account.');
+  character: { id: string; sparkName: string; district: string },
+): AuthResult {
+  return {
+    token: signToken({ accountId, characterId: character.id }),
+    sparkName: character.sparkName,
+    walletAddress,
+    district: character.district,
+  };
+}
+
+/**
+ * THE login (W2): verify a Sign-In-With-Ethereum signature, then find-or-create
+ * the account keyed by the lowercased wallet address and hand back a session
+ * token. Needs no token address and no RPC — it works before $AMP exists. Hold
+ * mode adds a balance gate around this in W3; connect mode plays on any valid
+ * sign-in.
+ */
+export async function authenticateWallet(message: string, signature: string): Promise<AuthResult> {
+  const { address } = await verifySignIn(message, signature); // real SIWE; lowercased
+  const existing = await prisma.account.findUnique({
+    where: { walletAddress: address },
+    include: { character: true },
+  });
+  if (existing?.character != null) {
+    return resultFor(existing.walletAddress, existing.id, existing.character);
   }
-  if (!isEvmAddress(walletAddress)) {
-    throw new Error('Malformed wallet address.');
-  }
-  // EIP-4361 verification (stub until the token gate is activated — no live
-  // chain call). Returns the recovered address; must match the claimed wallet.
-  const recovered = await verifySiwe({ address: walletAddress, message, signature });
-  if (recovered.toLowerCase() !== walletAddress.toLowerCase()) {
-    throw new Error('Signature does not verify.');
-  }
-  const existing = await prisma.account.findUnique({ where: { walletAddress } });
-  if (existing !== null && existing.id !== accountId) {
-    throw new Error('That wallet is linked to another Spark.');
-  }
-  await prisma.account.update({ where: { id: accountId }, data: { walletAddress } });
+  return seatWalletSpark(address);
 }

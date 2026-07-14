@@ -1,24 +1,24 @@
 import { CHAIN_ENV, TOKEN_GATE } from '@shared/chain';
 
 /**
- * M4 — THE $AMP TOKEN GATE (EVM). Interface + STUB.
+ * THE $AMP TOKEN GATE (EVM) — the balance half of hold mode (W3).
  *
- * The front door: a Spark proves control of a wallet via **Sign-In-With-
- * Ethereum** (EIP-4361), then the server reads that wallet's $AMP balance via
- * ERC-20 `balanceOf` against `ROBINHOOD_RPC_URL`. Balance ≥ 1,000 × 10^18 ⇒
- * the Charged key. It is **server-authoritative** (never client-reported),
- * re-checked on login and periodically; a dip below the threshold opens a
- * **24h grace** window with an in-game warning — never an instant boot. The
- * **guest/demo** path is unaffected: no wallet, no gate, full trial.
+ * Sign-in itself is SIWE-only and lives in `siwe.ts` (real, needs no token).
+ * This module is the SECOND check that runs ONLY when `GATE_MODE=hold`: after a
+ * valid sign-in, read the wallet's $AMP balance via ERC-20 `balanceOf` against
+ * `ROBINHOOD_RPC_URL` and require ≥ 1,000 × 10^18. It is **server-authoritative**
+ * (never client-reported); a dip below the threshold opens a **24h grace**
+ * window with an in-game warning — never an instant boot. In `connect` mode the
+ * balance is never read and this module stays dormant.
  *
- * NOT ACTIVATED. No token is deployed (`AMP_TOKEN_ADDRESS` is unset), and this
- * module performs **no live chain call**. The two live seams — {@link verifySiwe}
- * and {@link readAmpBalance} — throw {@link TokenGateNotActivatedError} until
- * they are wired with viem and the address exists. The pure decision logic
- * ({@link holdsKey}, {@link decideAccess}) is complete and unit-tested now.
+ * INERT until the token exists. No token is deployed (`AMP_TOKEN_ADDRESS` is
+ * unset), so the one live seam — {@link readAmpBalance} — throws
+ * {@link TokenGateNotActivatedError} until wired with viem and the address is
+ * set. The pure decision logic ({@link holdsKey}, {@link decideAccess}) is
+ * complete and unit-tested now.
  */
 
-/** Thrown by the live seams until the gate is wired + `AMP_TOKEN_ADDRESS` set. */
+/** Thrown by the live seam until the gate is wired + `AMP_TOKEN_ADDRESS` set. */
 export class TokenGateNotActivatedError extends Error {
   constructor(what: string) {
     super(`Token gate not activated: ${what} awaits AMP_TOKEN_ADDRESS + viem wiring (M4).`);
@@ -107,30 +107,7 @@ export function decideAccess(balanceBase: bigint, nowMs: number, prev: GateState
   return { access: 'denied', warn: false, graceUntilMs, state: { kind: 'none' } };
 }
 
-// ── the live seams (STUBS until AMP_TOKEN_ADDRESS + viem) ─────────────────
-
-export interface SiweRequest {
-  /** The wallet claiming access. */
-  address: string;
-  /** The EIP-4361 message the wallet signed (must embed the account id). */
-  message: string;
-  /** The signature over `message`. */
-  signature: string;
-}
-
-/**
- * Verify a Sign-In-With-Ethereum (EIP-4361) message + signature and return the
- * recovered address. LIVE (when the token launches), with viem:
- *
- *   const ok = await publicClient.verifyMessage({ address, message, signature });
- *   if (!ok) throw new Error('Signature does not verify.');
- *   return address;
- *
- * against `ROBINHOOD_RPC_URL`. Stub until then.
- */
-export async function verifySiwe(_req: SiweRequest): Promise<string> {
-  throw new TokenGateNotActivatedError('SIWE verification');
-}
+// ── the live seam (STUB until AMP_TOKEN_ADDRESS + viem; wired in W3) ───────
 
 /**
  * Read a wallet's $AMP balance in base units via ERC-20 `balanceOf`. LIVE:
@@ -142,24 +119,4 @@ export async function verifySiwe(_req: SiweRequest): Promise<string> {
  */
 export async function readAmpBalance(_wallet: string): Promise<bigint> {
   throw new TokenGateNotActivatedError('balanceOf');
-}
-
-/**
- * The front-door check (server-authoritative): verify SIWE → read balance →
- * decide access with grace. Inert while the gate is inactive — callers fall
- * back to the guest/demo path (play is never blocked). Pass `nowMs` (and the
- * wallet's persisted {@link GateState}) so the decision stays testable.
- */
-export async function checkGate(
-  req: SiweRequest,
-  nowMs: number,
-  prev: GateState,
-): Promise<GateDecision> {
-  if (!gateActive()) {
-    // No token address yet ⇒ everyone is a guest; nothing is gated.
-    return { access: 'denied', warn: false, graceUntilMs: null, state: { kind: 'none' } };
-  }
-  const address = await verifySiwe(req); // stub throws until wired
-  const balance = await readAmpBalance(address); // stub throws until wired
-  return decideAccess(balance, nowMs, prev);
 }

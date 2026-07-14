@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import jwt from 'jsonwebtoken';
-import { linkWallet, validSparkName, verifyToken } from './auth.js';
+import { authenticateWallet, validSparkName, verifyToken } from './auth.js';
 
 describe('verifyToken', () => {
   const SECRET = process.env.JWT_SECRET ?? 'amperia-dev-secret-change-me';
@@ -29,26 +29,27 @@ describe('validSparkName', () => {
   });
 });
 
-describe('linkWallet (EVM SIWE) pre-DB validation', () => {
-  const ADDR = `0x${'a'.repeat(40)}`;
-
-  it('rejects a message that does not reference the account', async () => {
-    await expect(linkWallet('acct1', ADDR, 'unrelated message', '0xsig')).rejects.toThrow(
-      /reference this account/,
-    );
+describe('authenticateWallet (SIWE) — rejects before any DB write', () => {
+  // The find-or-create half is exercised end-to-end against a live server in
+  // the checkpoint (siwe.e2e). Here we prove a bad sign-in never reaches the
+  // DB: a malformed message and a bogus signature both throw first.
+  it('rejects a malformed sign-in message', async () => {
+    await expect(authenticateWallet('not a siwe message', '0xdead')).rejects.toThrow(/malformed/i);
   });
 
-  it('rejects a malformed EVM address before touching the DB', async () => {
-    await expect(linkWallet('acct1', '0xnothex', 'msg acct1', '0xsig')).rejects.toThrow(
-      /Malformed wallet address/,
-    );
-  });
-
-  it('stays inactive until the token gate is wired (no live chain call)', async () => {
-    // A well-formed request still cannot verify: SIWE verification is a stub
-    // until AMP_TOKEN_ADDRESS is set, so linkWallet throws NotActivated.
-    await expect(
-      linkWallet('acct1', ADDR, 'link acct1 to this wallet', '0xsig'),
-    ).rejects.toThrow(/not activated/i);
+  it('rejects a non-hex signature', async () => {
+    const msg = [
+      'amperia.example wants you to sign in with your Ethereum account:',
+      `0x${'a'.repeat(40)}`,
+      '',
+      'Sign in to AMPERIA.',
+      '',
+      'URI: https://amperia.example',
+      'Version: 1',
+      'Chain ID: 1',
+      'Nonce: deadbeef',
+      'Issued At: 2026-07-14T00:00:00.000Z',
+    ].join('\n');
+    await expect(authenticateWallet(msg, 'not-hex')).rejects.toThrow(/verify|expired/i);
   });
 });
