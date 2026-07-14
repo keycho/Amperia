@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import jwt from 'jsonwebtoken';
-import nacl from 'tweetnacl';
-import bs58 from 'bs58';
 import { linkWallet, validSparkName, verifyToken } from './auth.js';
 
 describe('verifyToken', () => {
@@ -31,20 +29,26 @@ describe('validSparkName', () => {
   });
 });
 
-describe('linkWallet signature checks (pre-DB validation)', () => {
+describe('linkWallet (EVM SIWE) pre-DB validation', () => {
+  const ADDR = `0x${'a'.repeat(40)}`;
+
   it('rejects a message that does not reference the account', async () => {
-    await expect(linkWallet('acct1', 'x', 'unrelated message', 'x')).rejects.toThrow(
+    await expect(linkWallet('acct1', ADDR, 'unrelated message', '0xsig')).rejects.toThrow(
       /reference this account/,
     );
   });
 
-  it('rejects malformed keys and bad signatures before touching the DB', async () => {
-    await expect(linkWallet('acct1', '!!notbase58!!', 'msg acct1', 'sig')).rejects.toThrow();
-    const kp = nacl.sign.keyPair();
-    const msg = 'link acct1 to this wallet';
-    const wrongSig = nacl.sign.detached(new TextEncoder().encode('other'), kp.secretKey);
+  it('rejects a malformed EVM address before touching the DB', async () => {
+    await expect(linkWallet('acct1', '0xnothex', 'msg acct1', '0xsig')).rejects.toThrow(
+      /Malformed wallet address/,
+    );
+  });
+
+  it('stays inactive until the token gate is wired (no live chain call)', async () => {
+    // A well-formed request still cannot verify: SIWE verification is a stub
+    // until AMP_TOKEN_ADDRESS is set, so linkWallet throws NotActivated.
     await expect(
-      linkWallet('acct1', bs58.encode(kp.publicKey), msg, bs58.encode(wrongSig)),
-    ).rejects.toThrow(/does not verify/);
+      linkWallet('acct1', ADDR, 'link acct1 to this wallet', '0xsig'),
+    ).rejects.toThrow(/not activated/i);
   });
 });

@@ -1,15 +1,15 @@
 import bcrypt from 'bcryptjs';
-import bs58 from 'bs58';
 import jwt from 'jsonwebtoken';
-import nacl from 'tweetnacl';
 import { makeStarterHotbar } from '@shared/inventory';
 import { prisma } from './db.js';
+import { isEvmAddress, verifySiwe } from './tokenGate.js';
 
 /**
- * Accounts are email-first (the full free game needs no wallet — CLAUDE.md).
- * Guests are real accounts without an email so they can upgrade later.
- * SIWS wallet linking is optional and late; the endpoint exists but nothing
- * in the game requires it.
+ * Accounts start on the guest/demo path (no wallet needed to try the city).
+ * Guests are real accounts without an email so they can upgrade later. SIWE
+ * (Sign-In-With-Ethereum) wallet linking is the front door to the 1,000-$AMP
+ * token gate (M4) — optional and late; the endpoint exists but stays inactive
+ * until AMP_TOKEN_ADDRESS is set (see tokenGate.ts).
  */
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'amperia-dev-secret-change-me';
@@ -137,30 +137,31 @@ export async function guestJoin(requestedName: string | undefined): Promise<Auth
 }
 
 /**
- * SIWS (Sign-In-With-Solana) wallet linking — optional and late by design.
- * The signed message must embed the account id (prevents replaying another
- * account's signature). Hardening (nonce store, expiry) comes with M4.
+ * SIWE (Sign-In-With-Ethereum, EIP-4361) wallet linking — optional and late by
+ * design (M4). The signed message must embed the account id (prevents replaying
+ * another account's signature). Signature verification runs through the token
+ * gate (`tokenGate.verifySiwe`), which is **inactive until AMP_TOKEN_ADDRESS is
+ * set** — so this endpoint shape-checks the request, then throws
+ * NotActivated until the token launches. The guest/demo path is unaffected.
  */
 export async function linkWallet(
   accountId: string,
   walletAddress: string,
   message: string,
-  signatureBase58: string,
+  signature: string,
 ): Promise<void> {
   if (!message.includes(accountId)) {
     throw new Error('Signed message must reference this account.');
   }
-  let pubkey: Uint8Array;
-  let signature: Uint8Array;
-  try {
-    pubkey = bs58.decode(walletAddress);
-    signature = bs58.decode(signatureBase58);
-  } catch {
-    throw new Error('Malformed wallet address or signature.');
+  if (!isEvmAddress(walletAddress)) {
+    throw new Error('Malformed wallet address.');
   }
-  if (pubkey.length !== 32) throw new Error('Malformed wallet address.');
-  const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, pubkey);
-  if (!ok) throw new Error('Signature does not verify.');
+  // EIP-4361 verification (stub until the token gate is activated — no live
+  // chain call). Returns the recovered address; must match the claimed wallet.
+  const recovered = await verifySiwe({ address: walletAddress, message, signature });
+  if (recovered.toLowerCase() !== walletAddress.toLowerCase()) {
+    throw new Error('Signature does not verify.');
+  }
   const existing = await prisma.account.findUnique({ where: { walletAddress } });
   if (existing !== null && existing.id !== accountId) {
     throw new Error('That wallet is linked to another Spark.');
