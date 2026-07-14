@@ -1078,7 +1078,7 @@ export class FilamentRoom extends Room<FilamentState> {
   /**
    * The Fortune Coil (S4): ONE free spin daily, at the wheel. HARD RULE
    * asserted right here — the intent carries no currency field, this
-   * handler never reads or debits Bolts/$AMP/SOL, and no other spin
+   * handler never reads or debits Bolts/$AMP/ETH, and no other spin
    * entry point exists. Prizes are all untradeable. (CLAUDE.md rule 6:
    * $AMP never touches the wheel on either side.)
    */

@@ -1039,9 +1039,10 @@ postcard; before/after pairs for the graphics pass).
   clock. One session per account. Joins/leaves broadcast tram notices;
   `/near` and `/help` commands.
 - **Accounts**: email+password (bcrypt) and guest accounts (email-less rows,
-  upgradeable later); JWT room auth; **SIWS wallet-link endpoint**
-  (tweetnacl verify, message must embed the account id) — optional and late
-  per CLAUDE.md; nothing in the game requires a wallet.
+  upgradeable later); JWT room auth; **SIWE (Sign-In-With-Ethereum, EIP-4361)
+  wallet-link endpoint** (message must embed the account id) — optional and
+  late per CLAUDE.md, the front door to the 1,000-$AMP token gate (M4,
+  inactive until AMP_TOKEN_ADDRESS is set); the guest/demo path needs no wallet.
 - **Persistence**: PostgreSQL 16 + Prisma 6 (`/db`): Account, Character
   (tile, pack, hotbar, skills), **LedgerEvent** — every yield writes a row
   (kind, qty, rare, glintHit/lockRatio metadata) + glint reaction-time
