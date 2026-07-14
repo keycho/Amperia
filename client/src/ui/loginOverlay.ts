@@ -1,5 +1,5 @@
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
-import { auth, type AuthResponse } from '../net/NetClient';
+import { auth, SERVER_URL, type AuthResponse } from '../net/NetClient';
 import { VERSION } from '../version';
 import { sound } from '../audio/sound';
 import { swallowGameInput } from './domGuard';
@@ -263,9 +263,22 @@ export function showLoginOverlay(): Promise<AuthResponse> {
     panel.append(msg, email, password, sparkName, loginBtn, registerBtn, guestBtn);
 
     // ── chrome: version tag + a small title-screen settings gear ──────────
+    // Footer, bottom-right: the public City Ledger link beside the version tag.
+    const footer = document.createElement('div');
+    footer.style.cssText =
+      'position:absolute;right:14px;bottom:12px;display:flex;align-items:center;gap:10px;';
+    const ledgerLink = document.createElement('a');
+    ledgerLink.textContent = 'City Ledger ↗';
+    ledgerLink.href = `${SERVER_URL}/ledger`;
+    ledgerLink.target = '_blank';
+    ledgerLink.rel = 'noopener noreferrer';
+    ledgerLink.style.cssText = `color:${PALETTE.neonAmber};opacity:.8;font-size:11px;letter-spacing:1px;text-decoration:none;cursor:pointer;`;
+    ledgerLink.onmouseenter = () => { ledgerLink.style.opacity = '1'; };
+    ledgerLink.onmouseleave = () => { ledgerLink.style.opacity = '.8'; };
     const version = document.createElement('div');
     version.textContent = VERSION;
-    version.style.cssText = `position:absolute;right:14px;bottom:12px;color:${UI_TEXT_WARM};opacity:.55;font-size:11px;letter-spacing:1px;`;
+    version.style.cssText = `color:${UI_TEXT_WARM};opacity:.55;font-size:11px;letter-spacing:1px;`;
+    footer.append(ledgerLink, version);
 
     const gear = document.createElement('button');
     gear.textContent = '⚙';
@@ -311,7 +324,7 @@ export function showLoginOverlay(): Promise<AuthResponse> {
 
     hero.append(heroScrim, title, sub);
     center.append(enterBtn, panel);
-    root.append(bg, shade, floor, hero, center, gear, gearPanel, version);
+    root.append(bg, shade, floor, hero, center, gear, gearPanel, footer);
     document.head.append(styleEl);
     document.body.append(root);
   });

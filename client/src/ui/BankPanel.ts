@@ -3,7 +3,7 @@ import { ITEMS, type ItemId } from '@shared/items';
 import { mixPalette, PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import type { BankSync } from '@shared/protocol';
 import { gameState } from '../state/GameState';
-import { send } from '../net/NetClient';
+import { send, SERVER_URL } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { itemThumbKey } from '../render/itemThumbs';
 import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
@@ -35,6 +35,25 @@ export class BankPanel {
 
     this.container.add(kitPlate(scene, W, H));
     kitHeader(scene, this.container, W, 'THE LEDGERHOUSE', () => this.setVisible(false));
+
+    // The public City Ledger (the whole city's books) opens in a new tab —
+    // static (built once, survives every refresh()), sitting just under the
+    // header clear of the vault grid. Comms-clean: it's a ledger.
+    const ledgerLink = kitText(scene, W - 16, 42, 'City Ledger ↗', 'caption', {
+      color: PALETTE.neonAmber,
+    });
+    ledgerLink.setOrigin(1, 0);
+    ledgerLink.setInteractive({ useHandCursor: true });
+    ledgerLink.on('pointerover', () => ledgerLink.setColor(PALETTE.warmGlow));
+    ledgerLink.on('pointerout', () => ledgerLink.setColor(PALETTE.neonAmber));
+    ledgerLink.on(
+      'pointerdown',
+      (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev.stopPropagation();
+        window.open(`${SERVER_URL}/ledger`, '_blank', 'noopener');
+      },
+    );
+    this.container.add(ledgerLink);
 
     session.events.on(SessionEvents.bank, (sync: BankSync) => {
       this.sync = sync;
