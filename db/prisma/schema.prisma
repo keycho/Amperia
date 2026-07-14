@@ -1,7 +1,7 @@
 // AMPERIA persistence — PostgreSQL via Prisma.
-// Accounts are email-first; guests are accounts without an email; SIWS wallet
-// linking is optional and late (walletAddress nullable). All value movements
-// append to LedgerEvent (the economy ledger habit).
+// Auth is wallet-only (W4): the lowercased wallet address IS the account
+// identity (unique, required) — no email, no password, no guest. Sign-in is
+// SIWE (EIP-4361). All value movements append to LedgerEvent (the ledger habit).
 
 generator client {
   provider = "prisma-client-js"
@@ -19,9 +19,8 @@ datasource db {
 
 model Account {
   id            String      @id @default(cuid())
-  email         String?     @unique
-  passwordHash  String?
-  walletAddress String?     @unique
+  /// The wallet address, lowercased — the account identity (SIWE, W4).
+  walletAddress String      @unique
   createdAt     DateTime    @default(now())
   character     Character?
   ledgerEvents  LedgerEvent[]
