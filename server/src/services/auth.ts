@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { makeStarterHotbar } from '@shared/inventory';
 import { prisma } from './db.js';
 import { verifySignIn } from './siwe.js';
+import { runHoldGate } from './tokenGate.js';
 
 /**
  * WALLET-ONLY AUTH (W2). Sign-In-With-Ethereum (EIP-4361) is the ONE front
@@ -203,6 +204,11 @@ function resultFor(
  */
 export async function authenticateWallet(message: string, signature: string): Promise<AuthResult> {
   const { address } = await verifySignIn(message, signature); // real SIWE; lowercased
+  // W3: in hold mode, a valid sign-in is not enough — the wallet must also hold
+  // >= 1,000 $AMP (with 24h grace). A no-op in connect mode and while hold mode
+  // is inert (no token deployed). Runs BEFORE any account is seated, so a
+  // gated-out wallet never creates a Spark.
+  await runHoldGate(address);
   const existing = await prisma.account.findUnique({
     where: { walletAddress: address },
     include: { character: true },

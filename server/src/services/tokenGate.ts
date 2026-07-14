@@ -1,4 +1,5 @@
-import { CHAIN_ENV, TOKEN_GATE } from '@shared/chain';
+import { createPublicClient, erc20Abi, getAddress, http } from 'viem';
+import { CHAIN_ENV, resolveGateMode, TOKEN_GATE, type GateMode } from '@shared/chain';
 
 /**
  * THE $AMP TOKEN GATE (EVM) — the balance half of hold mode (W3).
@@ -107,16 +108,109 @@ export function decideAccess(balanceBase: bigint, nowMs: number, prev: GateState
   return { access: 'denied', warn: false, graceUntilMs, state: { kind: 'none' } };
 }
 
-// ── the live seam (STUB until AMP_TOKEN_ADDRESS + viem; wired in W3) ───────
+// ── the live seam (wired, but INERT until AMP_TOKEN_ADDRESS + RPC exist) ───
 
 /**
- * Read a wallet's $AMP balance in base units via ERC-20 `balanceOf`. LIVE:
- *
- *   publicClient.readContract({ address: AMP_TOKEN_ADDRESS, abi: erc20Abi,
- *     functionName: 'balanceOf', args: [wallet] })  // → bigint, base units
- *
- * against `ROBINHOOD_RPC_URL`. Stub until `AMP_TOKEN_ADDRESS` is set.
+ * Read a wallet's $AMP balance in base units via ERC-20 `balanceOf` against
+ * `ROBINHOOD_RPC_URL`. The viem call is real; it just never runs until the
+ * gate is active (no token deployed), so it throws {@link TokenGateNotActivatedError}
+ * while inert. {@link runHoldGate} only calls it once {@link gateActive}.
  */
-export async function readAmpBalance(_wallet: string): Promise<bigint> {
-  throw new TokenGateNotActivatedError('balanceOf');
+export async function readAmpBalance(wallet: string): Promise<bigint> {
+  const env = readGateEnv();
+  if (!gateActive(env)) throw new TokenGateNotActivatedError('balanceOf');
+  const client = createPublicClient({ transport: http(env.rpcUrl) });
+  return client.readContract({
+    // `env.tokenAddress` is present (gateActive guaranteed it).
+    address: getAddress(env.tokenAddress as string),
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [getAddress(wallet)],
+  });
+}
+
+// ── hold mode: the balance gate around a valid sign-in (W3) ────────────────
+
+/** The live gate mode, from the `GATE_MODE` env var (default 'connect'). */
+export function gateMode(): GateMode {
+  return resolveGateMode(process.env[CHAIN_ENV.gateMode]);
+}
+
+/** Both a holder ('charged') and a warned-but-still-in dip ('grace') may play;
+ *  only 'denied' blocks. Grace is never an instant boot. */
+export function holdAllows(access: GateAccess): boolean {
+  return access === 'charged' || access === 'grace';
+}
+
+/** Injectable dependencies so the gate decision is unit-testable with a mocked
+ *  balance + clock (no env, no RPC). */
+export interface HoldGateDeps {
+  mode: GateMode;
+  /** Whether the token gate is live (token address + RPC configured). */
+  active: boolean;
+  readBalance: (wallet: string) => Promise<bigint>;
+  loadState: (wallet: string) => GateState;
+  saveState: (wallet: string, state: GateState) => void;
+  nowMs: number;
+}
+
+export interface HoldGateResult {
+  allowed: boolean;
+  warn: boolean;
+  access: GateAccess;
+}
+
+/**
+ * PURE-CORE hold gate. In `connect` mode — or in `hold` mode while the gate is
+ * inert (no token deployed) — it permits play without ever reading a balance.
+ * In active `hold` mode it reads `balanceOf`, runs the 24h-grace decision, and
+ * persists the next state. This is the seam the checkpoint drives with a mocked
+ * balance: ≥ 1,000 $AMP passes, < 1,000 is blocked, a dip enters grace.
+ */
+export async function evaluateHoldGate(
+  wallet: string,
+  deps: HoldGateDeps,
+): Promise<HoldGateResult> {
+  if (deps.mode !== 'hold' || !deps.active) {
+    // connect mode, or hold configured but inert until the token exists.
+    return { allowed: true, warn: false, access: 'charged' };
+  }
+  const balance = await deps.readBalance(wallet);
+  const decision = decideAccess(balance, deps.nowMs, deps.loadState(wallet));
+  deps.saveState(wallet, decision.state);
+  return { allowed: holdAllows(decision.access), warn: decision.warn, access: decision.access };
+}
+
+/**
+ * Per-wallet grace state between checks. In-memory for now: hold mode is inert
+ * until a token is deployed, so nothing durable is at stake yet. When hold mode
+ * goes live this is the ONE seam to move to Redis/DB (loadState/saveState).
+ */
+const holdGateStates = new Map<string, GateState>();
+
+/** Message shown when a hold-mode wallet lacks the key (comms-clean). */
+export class HoldGateError extends Error {
+  constructor() {
+    super('This wallet holds under 1,000 $AMP — hold the key to play.');
+    this.name = 'HoldGateError';
+  }
+}
+
+/**
+ * Run the hold gate around a just-verified wallet during login. A no-op in
+ * connect mode and while hold mode is inert; in active hold mode it throws
+ * {@link HoldGateError} when the wallet is below the threshold past its grace.
+ */
+export async function runHoldGate(wallet: string, nowMs: number = Date.now()): Promise<void> {
+  const result = await evaluateHoldGate(wallet, {
+    mode: gateMode(),
+    active: gateActive(),
+    readBalance: readAmpBalance,
+    loadState: (w) => holdGateStates.get(w) ?? { kind: 'none' },
+    saveState: (w, s) => {
+      holdGateStates.set(w, s);
+    },
+    nowMs,
+  });
+  if (!result.allowed) throw new HoldGateError();
 }
