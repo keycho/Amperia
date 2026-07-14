@@ -65,7 +65,34 @@ export const CHAIN_ENV = {
    *  Robinhood Chain, so this defaults ON ({@link CREATOR_REWARDS_DEFAULT});
    *  set the env var to 'false' to disable the monthly buyback. */
   creatorRewardsEnabled: 'CREATOR_REWARDS_ENABLED',
+  /** W1 access gate mode: 'connect' | 'hold' ({@link resolveGateMode}); flip
+   *  to 'hold' via env, never code. */
+  gateMode: 'GATE_MODE',
 } as const;
+
+/**
+ * The two access modes for wallet-only auth (W1). Both are BUILT; the live
+ * mode is chosen by the `GATE_MODE` env var, never a code change:
+ *  - `'connect'` (launch, the default): any wallet that completes Sign-In-With-
+ *    Ethereum plays. No balance is read; {@link TOKEN_GATE} is not consulted.
+ *  - `'hold'` (later): a valid SIWE is not enough — the wallet must also hold
+ *    ≥ {@link TOKEN_GATE.minTokens} $AMP (read server-side via `balanceOf`),
+ *    with the 24h grace on a dip. Inert until `AMP_TOKEN_ADDRESS` is set.
+ */
+export type GateMode = 'connect' | 'hold';
+
+/** The mode used when `GATE_MODE` is unset or unrecognized: launch-friendly. */
+export const GATE_MODE_DEFAULT: GateMode = 'connect';
+
+/**
+ * Resolve the gate mode from a raw env string (the value of `GATE_MODE`). Only
+ * the exact word `hold` (case/space-insensitive) selects hold mode; everything
+ * else — including unset — is `connect`. Pure so it is unit-testable and so
+ * `/shared` never touches `process.env` (server reads the env and calls this).
+ */
+export function resolveGateMode(raw: string | undefined): GateMode {
+  return raw?.trim().toLowerCase() === 'hold' ? 'hold' : 'connect';
+}
 
 /**
  * Default for {@link CHAIN_ENV.creatorRewardsEnabled} when the env var is

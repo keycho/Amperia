@@ -6,6 +6,8 @@ import {
   CHAIN_ENV,
   CREATOR_REWARDS_DEFAULT,
   DEAD_ADDRESS,
+  GATE_MODE_DEFAULT,
+  resolveGateMode,
   SPEND_SPLIT,
   TOKEN_GATE,
 } from './chain';
@@ -53,8 +55,20 @@ describe('chain config (Robinhood Chain)', () => {
     expect(CHAIN_ENV.tokenAddress).toBe('AMP_TOKEN_ADDRESS');
     expect(CHAIN_ENV.treasury).toBe('TREASURY_ADDRESS');
     expect(CHAIN_ENV.creatorRewardsEnabled).toBe('CREATOR_REWARDS_ENABLED');
+    expect(CHAIN_ENV.gateMode).toBe('GATE_MODE');
     // The map holds NAMES, not addresses/keys/urls.
     for (const v of Object.values(CHAIN_ENV)) expect(v).toMatch(/^[A-Z_]+$/);
+  });
+
+  it('defaults the access gate to connect mode, flipped only by GATE_MODE', () => {
+    expect(GATE_MODE_DEFAULT).toBe('connect');
+    // Only the literal word "hold" opens hold mode — unset/anything else = connect.
+    expect(resolveGateMode(undefined)).toBe('connect');
+    expect(resolveGateMode('')).toBe('connect');
+    expect(resolveGateMode('connect')).toBe('connect');
+    expect(resolveGateMode('anything-else')).toBe('connect');
+    expect(resolveGateMode('hold')).toBe('hold');
+    expect(resolveGateMode('  HOLD ')).toBe('hold');
   });
 
   it('burns to the canonical EVM dead address', () => {
