@@ -61,10 +61,19 @@ export const CHAIN_ENV = {
   treasury: 'TREASURY_ADDRESS',
   /** The treasury signer key — server-side ONLY, never client/repo. */
   treasuryPrivateKey: 'TREASURY_PRIVATE_KEY',
-  /** M3 flag: hood.fun creator rewards / buyback. OFF until volume + creator
-   *  fees are confirmed; flipping to 'true' re-adds the monthly buyback. */
+  /** M3 flag: hood.fun creator-fee buyback. Creator fees are CONFIRMED on
+   *  Robinhood Chain, so this defaults ON ({@link CREATOR_REWARDS_DEFAULT});
+   *  set the env var to 'false' to disable the monthly buyback. */
   creatorRewardsEnabled: 'CREATOR_REWARDS_ENABLED',
 } as const;
+
+/**
+ * Default for {@link CHAIN_ENV.creatorRewardsEnabled} when the env var is
+ * unset: ON. Robinhood Chain confirmed ETH trading-volume creator fees, so the
+ * monthly buyback runs by default; a reader treats `CREATOR_REWARDS_ENABLED`
+ * as on unless it is explicitly `'false'`.
+ */
+export const CREATOR_REWARDS_DEFAULT = true;
 
 /**
  * The Charged-membership token gate (M4). Holding at least this much $AMP in
@@ -89,10 +98,10 @@ export const TOKEN_GATE = {
 export const SPEND_SPLIT = { burnPct: 30, treasuryPct: 70 } as const;
 
 /**
- * The buyback split IF {@link CHAIN_ENV.creatorRewardsEnabled} is ever
- * flipped on (M3): bought-back $AMP is half burned, half routed to the
- * champions' purse. Source would be hood.fun ETH creator rewards. Inert
- * while the flag is false.
+ * The buyback split (M3, active by default): bought-back $AMP is half burned,
+ * half routed to the champions' purse. Source = hood.fun ETH trading-volume
+ * creator fees on Robinhood Chain, executed as a monthly randomized TWAP.
+ * Runs whenever {@link CHAIN_ENV.creatorRewardsEnabled} is on (the default).
  */
 export const BUYBACK_SPLIT = { burnPct: 50, pursePct: 50 } as const;
 

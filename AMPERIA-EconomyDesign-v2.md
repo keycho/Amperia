@@ -2,7 +2,7 @@
 
 *The operating manual for Amperia's economy. Supersedes v1 and the v2 Dynamo-Bond design. Aligned with `AMPERIA-GameBible-v2.md` Part C and `CLAUDE.md` — where the bible states the rules, this doc states the numbers, the levers, and the reasoning. $AMP is an **ERC-20 on Robinhood Chain** (fair-launched via hood.fun) — fixed 1B supply, 18 decimals, LP permanently locked, mint renounced — so no reward is ever printed. Value accrues only through buy/hold pressure, burns, locks, and (flag-gated) buybacks. All chain constants live in `/shared/chain.ts`.*
 
-> **v3 migration note.** $AMP moved from its previous chain/launchpad to **Robinhood Chain** (Ethereum L2 on Arbitrum Orbit, native currency ETH; ERC-20 via hood.fun). Two model changes came with it: (1) the **Dynamo Bond** bridge is replaced by a **1,000-$AMP token gate** — hold the key in your own wallet (non-custodial) and you're Charged; a guest/demo path trials the city; (2) the two-payment-rail model is replaced by **$AMP-only** purchases that split **30% burn / 70% treasury**, with the treasury funding the champions' purse and discretionary burns. There is no second rail. The buyback is **flag-gated off** (`CREATOR_REWARDS_ENABLED`) until hood.fun confirms creator-fee volume.
+> **v3 migration note.** $AMP moved from its previous chain/launchpad to **Robinhood Chain** (Ethereum L2 on Arbitrum Orbit, native currency ETH; ERC-20 via hood.fun). Two model changes came with it: (1) the **Dynamo Bond** bridge is replaced by a **1,000-$AMP token gate** — hold the key in your own wallet (non-custodial) and you're Charged; a guest/demo path trials the city; (2) the two-payment-rail model is replaced by **$AMP-only** purchases that split **30% burn / 70% treasury**, with the treasury funding the champions' purse and discretionary burns. There is no second rail. Robinhood Chain ETH trading-volume creator fees are confirmed, so the **monthly buyback is on by default** (`CREATOR_REWARDS_ENABLED=true`, toggleable), split half burn / half champions' purse.
 
 ---
 
@@ -10,7 +10,7 @@
 
 - **Supply is fixed** (1B, 18 decimals) and **cannot be minted** (mint renounced; LP locked). Player rewards can never come from emission.
 - **The prime directive:** the game must be worth playing with the token switched off. Every token-game economy that inverted this (Axie, StepN, Pegaxy, Crabada) died the same death regardless of sink design: token yield attracted extractors instead of customers, and the economy required accelerating new entrants to pay existing ones. $AMP is the premium layer of a game that retains on fun — never the reason to play, never a wage.
-- **The studio's survival is decoupled from token volume.** The treasury only ever grows (the 70% of every spend) and only ever shrinks by burns + the champions' purse — it never market-sells, so nothing depends on trading volume. The buyback is a flag-gated hygiene option, never a pillar.
+- **The studio's survival is decoupled from token volume.** The treasury only ever grows (the 70% of every spend) and only ever shrinks by burns + the champions' purse — it never market-sells, so nothing depends on trading volume. The buyback (creator-fee-funded, on by default) is supply hygiene on top, never a pillar — even at zero volume the design holds.
 
 ## 2. The flywheel (v3)
 
@@ -33,13 +33,13 @@
              │                                  ▼
              └───────────────────────►  supply only ever FALLS
 
-  Buyback — flag-gated (CREATOR_REWARDS_ENABLED, off for now):
-  if hood.fun creator-fee volume is confirmed, flipping the flag adds a
-  monthly ETH-creator-reward buyback, split 50% burn / 50% champions'
-  purse. Off ⇒ it does not run and nothing else changes.
+  Trading volume → creator fees → buyback (on by default):
+  ETH trading-volume creator fees on Robinhood Chain fund a monthly
+  randomized-TWAP buyback, split 50% BURNED / 50% champions' purse. Runs
+  whenever CREATOR_REWARDS_ENABLED is on (the default; toggle to disable).
 ```
 
-**In one line (the canonical statement):** *hold the 1,000-$AMP key → play for Bolts → spend $AMP → 30% burn / 70% treasury → the treasury funds the champions' purse and discretionary burns → supply only falls.*
+**In one line (the canonical statement):** *hold the 1,000-$AMP key → play for Bolts → spend $AMP → 30% burn / 70% treasury → the treasury funds the champions' purse and discretionary burns → and trading-volume creator fees fund a monthly buyback (half burn / half purse) → supply only falls.*
 
 **The failure mode to never build:** any loop where playing produces tokens (or freely produces something sanctioned-convertible to tokens). Demand flows through *holding and spending*; the only player-bound $AMP is a narrow, refereed prize purse (§8).
 
@@ -106,12 +106,12 @@ Every faucet needs a sink, and sinks must be **recurring** (one-time purchases d
 ## 7. Treasury policy (programmatic, published)
 
 - **$AMP-only, 30/70:** every spend burns **30% on-chain at the till** (ERC-20 transfer to the dead address `0x…dEaD`) and routes **70% to the treasury wallet**. Treasury $AMP is only ever **burned later or routed to the champions' purse within its cap. It is never sold on market and never transferred to team wallets.** Published policy — the treasury only grows (the 70%) and only shrinks by burns + purse.
-- **Buyback — flag-gated (`CREATOR_REWARDS_ENABLED`, off for now):** hood.fun has not confirmed creator-fee volume, so there is **no buyback at launch**. If confirmed, flipping the flag adds a **monthly buyback sourced from ETH creator rewards**, executed as randomized TWAP across the month (a published lump-sum buy on a thin pool is an MEV/front-running target). Bought $AMP: **50% burn / 50% champions' purse** until the purse cap, then 100% burn. Reported after the fact. While off, none of this runs.
-- **The City Ledger** (monthly, public, EVE-MER-style): burns by source, buyback totals (0 while the flag is off), purse level, treasury balances and movements, faucet/sink totals, active wallets (Charged key-holders), bot-share estimate. **All disclosure is backward-looking. No forward promises, ever** — any buyback is automated precisely so no discretionary "we'll support the price" narrative can form (a Howey aggravator and, empirically — large programmatic buyback programs have not held price — a losing strategy anyway).
+- **Buyback (`CREATOR_REWARDS_ENABLED`, on by default):** Robinhood Chain confirmed ETH trading-volume creator fees, so a **monthly buyback runs by default**, sourced from those fees and executed as **randomized TWAP** across the month (a published lump-sum buy on a thin pool is an MEV/front-running target). Bought $AMP: **50% burn / 50% champions' purse** until the purse cap, then 100% burn. Reported after the fact. The flag stays so the program can be paused (set `false`); creator fees decay toward zero for most launchpad tokens, so the buyback is treated as bonus hygiene, never a pillar.
+- **The City Ledger** (monthly, public, EVE-MER-style): burns by source, buyback totals, purse level, treasury balances and movements, faucet/sink totals, active wallets (Charged key-holders), bot-share estimate. **All disclosure is backward-looking. No forward promises, ever** — the buyback is automated precisely so no discretionary "we'll support the price" narrative can form (a Howey aggravator and, empirically — large programmatic buyback programs have not held price — a losing strategy anyway).
 
 ## 8. The champions' purse (the only path from game to token)
 
-- **Dual hard caps:** purse balance ≤ **5M $AMP (0.5% of supply)** at any time, **and** rolling-year payouts ≤ **10M $AMP (1%)**. The annual cap is what actually bounds flow — a balance cap alone allows unlimited drain-and-refill. Funding: the treasury (the 70% share) and, only if `CREATOR_REWARDS_ENABLED` is set, the buyback's purse half.
+- **Dual hard caps:** purse balance ≤ **5M $AMP (0.5% of supply)** at any time, **and** rolling-year payouts ≤ **10M $AMP (1%)**. The annual cap is what actually bounds flow — a balance cap alone allows unlimited drain-and-refill. Funding: the treasury (the 70% share) and the monthly buyback's purse half (creator-fee funded, on by default).
 - **What pays $AMP:** only achievements that are **neither purchasable nor cheaply colludable** — the refereed seasonal Circuit finals bracket (entry-gated, reviewed for win-trading) and a small set of world-first Mastery records. **Never** contribution ladders, Charge leaderboards, or participation metrics: anything a player can buy with Bolts or stuff with alts would become a sanctioned Bolts→$AMP laundry. Those pay untradeable regalia.
 - **Population indexing:** winner counts and prize sizes scale with verified-active population, with minimum-participation floors; payouts **vest over the following season** (dampens post-season sell pulses). A 100-CCU game pays a handful of small prizes.
 - **Eligibility:** account ≥ 30 days + Charged during the season (holding the key) + humanity verification at claim + one claim wallet per verified account.
@@ -147,14 +147,14 @@ A tradeable token plus tradeable in-game value means players *can* settle Bolts�
 
 ## 12. Instrumentation (build the dashboard early)
 
-Weekly internal + monthly public (City Ledger): Bolts faucet vs. sink totals per source and net supply growth %; median/P90 player Bolts; per-resource price index vs. NPC bands; **Bolts sink/faucet ratio — the health of the soft loop** (levers pre-committed in §5); $AMP circulating / locked / burned / treasury / purse + Charged key-holder count; (flag-gated) buyback volume vs. prize payouts (payouts ≤ inflow, always); D1/D7/D30 retention and first-sale funnel; unique cosmetic buyers; bot-share estimate (< 5% target).
+Weekly internal + monthly public (City Ledger): Bolts faucet vs. sink totals per source and net supply growth %; median/P90 player Bolts; per-resource price index vs. NPC bands; **Bolts sink/faucet ratio — the health of the soft loop** (levers pre-committed in §5); $AMP circulating / locked / burned / treasury / purse + Charged key-holder count; buyback volume vs. prize payouts (payouts ≤ inflow, always); D1/D7/D30 retention and first-sale funnel; unique cosmetic buyers; bot-share estimate (< 5% target).
 
 **Launch health targets:** D1 ≥ 40% · D7 ≥ 20% · D30 ≥ 10% · payer conversion ≥ 3% · sink/faucet 0.9–1.1. **Retention — not token price — is the health metric that predicts everything else.**
 
 ## 13. Implementation invariants (for code review)
 
 1. Server-authoritative for all value; the treasury **wallet key** is server-side only (env var; never client/repo).
-2. No codepath grants $AMP to a player except the champions'-purse payout path (both caps enforced: balance ≤ 5M, rolling-year ≤ 10M; funded by treasury / flag-gated buyback purse-half).
+2. No codepath grants $AMP to a player except the champions'-purse payout path (both caps enforced: balance ≤ 5M, rolling-year ≤ 10M; funded by treasury + the buyback's purse half).
 3. No codepath converts Bolts, resources, or items into $AMP. The token gate is a read-only `balanceOf` check — it never moves, holds, or converts anyone's $AMP.
 4. Every premium purchase is $AMP-only and emits exactly one burn event (30% to the dead address) + one treasury event (70%), on-chain, logged.
 5. Access: the Charged key is holding ≥ 1,000 × 10^18 $AMP, verified server-side via SIWE + `balanceOf`; the guest/demo path grants no Charged content. Nothing is minted, sold, or bound to grant access.
@@ -167,7 +167,7 @@ Weekly internal + monthly public (City Ledger): Bolts faucet vs. sink totals per
 
 ## 14. Interim-token policy (the build-period gap)
 
-The token launches on hood.fun now; full utility ships at M4. Unmanaged, the gap reads as abandonment. Policy: (1) publish the treasury + token addresses from day one; if `CREATOR_REWARDS_ENABLED` is set, claim hood.fun ETH creator rewards into the disclosed accounting; (2) publish the City Ledger from month one, even when it only says "nothing sold, N burned"; (3) ship the **vanity registry at M2** as the first live, logged sink; (4) communicate build progress openly under the comms rules — progress, never price.
+The token launches on hood.fun now; full utility ships at M4. Unmanaged, the gap reads as abandonment. Policy: (1) publish the treasury + token addresses from day one, and claim hood.fun ETH creator fees into the disclosed accounting (feeding the monthly buyback, on by default); (2) publish the City Ledger from month one, even when it only says "nothing sold, N burned, buyback X"; (3) ship the **vanity registry at M2** as the first live, logged sink; (4) communicate build progress openly under the comms rules — progress, never price.
 
 ## 15. Launch parameters (tunable — start here, tune weekly)
 
@@ -177,8 +177,8 @@ The token launches on hood.fun now; full utility ships at M4. Unmanaged, the gap
 | $AMP purchase split | 30% burn / 70% treasury |
 | Token gate threshold | 1,000 $AMP (= 1,000 × 10^18) to hold the Charged key |
 | Token-gate dip grace | 24h with in-game warning before access is revoked |
-| Buyback program | **Off** (`CREATOR_REWARDS_ENABLED=false`); if on: monthly ETH-creator-reward buyback, randomized TWAP |
-| Bought-token split (if buyback on) | 50% burn / 50% champions' purse (100% burn when purse full) |
+| Buyback program | **On** (`CREATOR_REWARDS_ENABLED=true`, default): monthly ETH-creator-fee buyback, randomized TWAP; toggle `false` to pause |
+| Bought-token split | 50% burn / 50% champions' purse (100% burn when purse full) |
 | Champions' purse caps | 5M balance / 10M rolling-year payouts |
 | Sink/faucet target | 0.9–1.1 weekly |
 | Exchange population gate | ~2–3k CCU |

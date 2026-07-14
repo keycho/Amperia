@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { AMP, BUYBACK_SPLIT, CHAIN, CHAIN_ENV, DEAD_ADDRESS, SPEND_SPLIT, TOKEN_GATE } from './chain';
+import {
+  AMP,
+  BUYBACK_SPLIT,
+  CHAIN,
+  CHAIN_ENV,
+  CREATOR_REWARDS_DEFAULT,
+  DEAD_ADDRESS,
+  SPEND_SPLIT,
+  TOKEN_GATE,
+} from './chain';
 
 describe('chain config (Robinhood Chain)', () => {
   it('is Robinhood Chain: EVM L2, native ETH, hood.fun / Uniswap v3', () => {
@@ -33,8 +42,10 @@ describe('chain config (Robinhood Chain)', () => {
     expect(SPEND_SPLIT.burnPct + SPEND_SPLIT.treasuryPct).toBe(100);
   });
 
-  it('the (flag-gated) buyback splits half burn / half purse', () => {
+  it('the buyback splits half burn / half purse and is on by default', () => {
     expect(BUYBACK_SPLIT.burnPct + BUYBACK_SPLIT.pursePct).toBe(100);
+    expect(BUYBACK_SPLIT.burnPct).toBe(50);
+    expect(CREATOR_REWARDS_DEFAULT).toBe(true);
   });
 
   it('names env vars but never their secret values', () => {
