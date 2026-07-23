@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { makeStarterHotbar } from '@shared/inventory';
+import { rollSparkName } from '@shared/sparkNames';
 import { prisma } from './db.js';
 import { verifySignIn } from './siwe.js';
 import { runHoldGate } from './tokenGate.js';
@@ -58,24 +58,32 @@ export function validSparkName(name: string): boolean {
   return NAME_RE.test(name.trim());
 }
 
-/** A newly seated wallet Spark carries a placeholder name until the creator. */
-const PLACEHOLDER_NAME = (): string => `Spark-${randomBytes(3).toString('hex')}`;
+/**
+ * F5: a fresh wallet's Spark is seated under a COZY rolled name (shared
+ * city-voice list), never a machine name — other Sparks see the nameplate
+ * the moment the newcomer spawns, before the creator confirms. After a few
+ * collision retries, a numbered fallback still stays in-voice.
+ */
+function seatName(attempt: number): string {
+  if (attempt < 4) return rollSparkName();
+  return `Spark ${100 + Math.floor(Math.random() * 900)}`;
+}
 
 /**
- * Create the account + its one placeholder Spark for a fresh wallet. The name
- * is a throwaway (`Spark-xxxxxx`) that the creator (W6) overwrites on first
- * entry; appearance is left unset so the identity snapshot pops the creator.
- * Retries on the rare placeholder-name collision; on a concurrent same-wallet
- * race the caller re-fetches.
+ * Create the account + its one Spark for a fresh wallet. The seated name is
+ * a keeper the creator (W6) pre-fills and may overwrite on first entry;
+ * appearance is left unset so the identity snapshot pops the creator.
+ * Retries on name collision; on a concurrent same-wallet race the caller
+ * re-fetches.
  */
 async function seatWalletSpark(walletAddress: string): Promise<AuthResult> {
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     try {
       const account = await prisma.account.create({
         data: {
           walletAddress,
           character: {
-            create: { sparkName: PLACEHOLDER_NAME(), hotbarJson: makeStarterHotbar().slots as object[] },
+            create: { sparkName: seatName(attempt), hotbarJson: makeStarterHotbar().slots as object[] },
           },
         },
         include: { character: true },
