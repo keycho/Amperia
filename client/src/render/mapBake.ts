@@ -166,6 +166,89 @@ export function districtIslandKey(d: DistrictId, islandW: number): string {
   return `map-island-${d}-${islandW}`;
 }
 
+/** Landmark kinds that get a pictogram pin on the world map (M2). */
+export const MAP_LANDMARKS = [
+  'dynamo',
+  'merchant',
+  'tramgate',
+  'ledgerhouse',
+  'fortunecoil',
+] as const;
+export type MapLandmark = (typeof MAP_LANDMARKS)[number];
+
+export function landmarkMarkerKey(kind: MapLandmark): string {
+  return `map-mark-${kind}`;
+}
+
+/**
+ * Bake the landmark pictogram set (M2): a dark roundel + a small glyph in
+ * the landmark's signature color — the same shorthand the interaction
+ * markers use in-world, shrunk to map scale. Idempotent per session.
+ */
+export function ensureMapMarkers(scene: Phaser.Scene): void {
+  if (scene.textures.exists(landmarkMarkerKey('dynamo'))) return;
+  const S = 14; // texture size; the glyph sits in a 10px core
+  const draw = (kind: MapLandmark, glyph: (g: Phaser.GameObjects.Graphics) => void): void => {
+    const g = scene.add.graphics();
+    g.setVisible(false);
+    g.fillStyle(PALETTE_INT.ink, 0.92);
+    g.fillCircle(S / 2, S / 2, S / 2 - 0.5);
+    g.lineStyle(1, PALETTE_INT.structureMid, 0.9);
+    g.strokeCircle(S / 2, S / 2, S / 2 - 1);
+    glyph(g);
+    g.generateTexture(landmarkMarkerKey(kind), S, S);
+    g.destroy();
+  };
+  // The Dynamo: amber core with its stacked rings.
+  draw('dynamo', (g) => {
+    g.fillStyle(PALETTE_INT.neonAmber, 1);
+    g.fillRect(4, 6, 6, 1);
+    g.fillRect(5, 8, 4, 1);
+    g.fillRect(5, 4, 4, 1);
+  });
+  // The Nightstalls: a rose awning over the stand.
+  draw('merchant', (g) => {
+    g.fillStyle(PALETTE_INT.neonRose, 1);
+    g.fillRect(3, 4, 8, 2);
+    g.fillStyle(PALETTE_INT.warmGlow, 1);
+    g.fillRect(4, 7, 2, 3);
+    g.fillRect(8, 7, 2, 3);
+  });
+  // The Tramgate: the amber stop diamond (the minimap's own language).
+  draw('tramgate', (g) => {
+    g.fillStyle(PALETTE_INT.neonAmber, 1);
+    g.fillPoints(
+      [
+        new Phaser.Geom.Point(7, 3),
+        new Phaser.Geom.Point(11, 7),
+        new Phaser.Geom.Point(7, 11),
+        new Phaser.Geom.Point(3, 7),
+      ],
+      true,
+    );
+    g.fillStyle(PALETTE_INT.ink, 1);
+    g.fillRect(6, 6, 2, 2);
+  });
+  // The Ledgerhouse: the vault slot.
+  draw('ledgerhouse', (g) => {
+    g.fillStyle(PALETTE_INT.warmGlow, 1);
+    g.fillRect(4, 4, 6, 6);
+    g.fillStyle(PALETTE_INT.ink, 1);
+    g.fillRect(6, 6, 2, 3);
+  });
+  // The Fortune Coil: a violet wheel with spokes.
+  draw('fortunecoil', (g) => {
+    g.lineStyle(1.4, PALETTE_INT.violetNeon, 1);
+    g.strokeCircle(7, 7, 3.6);
+    g.fillStyle(PALETTE_INT.violetNeon, 1);
+    g.fillRect(6, 6, 2, 2);
+    g.fillRect(6, 3, 2, 1);
+    g.fillRect(6, 10, 2, 1);
+    g.fillRect(3, 6, 1, 2);
+    g.fillRect(10, 6, 1, 2);
+  });
+}
+
 /** Pixel size of the baked island texture for layout math. */
 export function islandTextureSize(d: DistrictId, islandW: number): { w: number; h: number } {
   void d;
