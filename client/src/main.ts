@@ -62,6 +62,8 @@ const pixelScale =
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
+  // F2: right-click opens the slot context menu — the browser menu yields.
+  disableContextMenu: true,
   backgroundColor: MATERIAL_COLORS.voidBlack,
   scale: pixelScale,
   // SHARPNESS (render-overhaul addendum a): the whole scene renders

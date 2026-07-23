@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InspectInfoEvent, ManifestFoundEvent, RestedSync } from '@shared/protocol';
+import type { InspectInfoEvent, ManifestFoundEvent, PricesSync, RestedSync } from '@shared/protocol';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
@@ -9,6 +9,7 @@ import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
+import { ContextMenu } from '../ui/ContextMenu';
 import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
@@ -46,6 +47,7 @@ interface DragState {
  */
 export class UIScene extends Phaser.Scene {
   private inventoryPanel!: SlotStrip;
+  private slotMenu!: ContextMenu;
   private hotbar!: SlotStrip;
   private drag: DragState | null = null;
   private lootChip!: Chip;
@@ -442,9 +444,14 @@ export class UIScene extends Phaser.Scene {
     // Below every UI widget (chips at 890+), above the world render.
     addWarmAmbience(this);
 
-    const onStripPointerDown = (strip: SlotStrip, pointer: Phaser.Input.Pointer) =>
-      this.beginDrag(strip, pointer);
+    const onStripPointerDown = (strip: SlotStrip, pointer: Phaser.Input.Pointer) => {
+      // F2: right-click = the slot context menu (Use / Split, where
+      // relevant); left press starts the drag as before.
+      if (pointer.rightButtonDown()) this.openSlotMenu(strip, pointer);
+      else this.beginDrag(strip, pointer);
+    };
 
+    this.slotMenu = new ContextMenu(this);
     this.hotbar = new SlotStrip(
       this,
       'hotbar',
@@ -454,10 +461,27 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel = new SlotStrip(
       this,
       'inventory',
-      { cols: 6, rows: CONFIG.inventory.slots / 6, title: 'Pack', panel: true },
+      {
+        cols: 6,
+        rows: CONFIG.inventory.slots / 6,
+        title: 'Pack',
+        panel: true,
+        // F2: server-authoritative sort — merge stacks, order by category.
+        headerAction: {
+          label: '⇅ sort',
+          onClick: () => {
+            if (session.room !== null) send.sortPack(session.room);
+            sound.uiClick();
+          },
+        },
+      },
       onStripPointerDown,
     );
     this.inventoryPanel.setVisible(false);
+    // F2: cache the merchant's posted prices for the item tooltips.
+    session.events.on(SessionEvents.prices, (p: PricesSync) => {
+      gameState.prices = p.buy;
+    });
     this.hotbar.setActiveSlot(gameState.activeHotbarSlot);
 
     // PP1: HUD counters are proper kit chips (pill plate + glyph + value).
@@ -1005,6 +1029,50 @@ export class UIScene extends Phaser.Scene {
         if (session.room !== null) send.selectSlot(session.room, { slot: i });
       });
     });
+  }
+
+  /**
+   * F2 — the slot context menu: only actions the server actually honours.
+   * Use = warmcup/cellwax (pack consumables the room implements); Split =
+   * stackables with qty > 1 and a free slot in the same container. All
+   * intents — the server validates and echoes.
+   */
+  private openSlotMenu(strip: SlotStrip, pointer: Phaser.Input.Pointer): void {
+    const idx = strip.slotIndexAt(pointer.x, pointer.y);
+    if (idx === null) return;
+    const inv = strip.source === 'inventory' ? gameState.inventory : gameState.hotbar;
+    const stack = inv.slots[idx];
+    if (stack === null || stack === undefined) return;
+    const actions: { label: string; onPick(): void }[] = [];
+    if (strip.source === 'inventory' && (stack.itemId === 'warmcup' || stack.itemId === 'cellwax')) {
+      actions.push({
+        label: 'Use',
+        onPick: () => {
+          if (session.room !== null) send.useItem(session.room, { slot: idx });
+        },
+      });
+    }
+    const emptyIdx = inv.slots.findIndex((s) => s === null);
+    if (stack.qty > 1 && stack.durability === undefined && emptyIdx >= 0) {
+      const half = Math.floor(stack.qty / 2);
+      actions.push({
+        label: `Split ×${half}`,
+        onPick: () => {
+          if (session.room !== null) {
+            send.moveStack(session.room, {
+              from: strip.source === 'inventory' ? 'pack' : 'hotbar',
+              fromIdx: idx,
+              to: strip.source === 'inventory' ? 'pack' : 'hotbar',
+              toIdx: emptyIdx,
+              qty: half,
+            });
+          }
+        },
+      });
+    }
+    if (actions.length === 0) return;
+    sound.uiClick();
+    this.slotMenu.show(pointer.x + 4, pointer.y + 4, actions);
   }
 
   private beginDrag(strip: SlotStrip, pointer: Phaser.Input.Pointer): void {

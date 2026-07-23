@@ -23,6 +23,9 @@ class GameStateStore {
   hotbar: Inventory = makeInventory(CONFIG.inventory.hotbarSlots);
   skills: SkillXp = makeSkillXp();
   activeHotbarSlot = 0;
+  /** F2: the merchant's posted unit prices (PricesSync.buy) — item tooltips
+   *  read them so the Pack can show what the Merchant pays. Display only. */
+  prices: Record<string, number> = {};
 
   applySkills(sync: SkillsSync): void {
     for (const skill of SKILLS) {

@@ -156,4 +156,6 @@ export const send = {
   /** The Fortune Coil: the spin takes NOTHING — free: true is the whole payload. */
   coilSpin: (room: FilamentRoom) => room.send(MSG.coilSpin, { free: true }),
   bank: (room: FilamentRoom, msg: BankIntent) => room.send(MSG.bank, msg),
+  /** F2: server-authoritative Pack sort. */
+  sortPack: (room: FilamentRoom) => room.send(MSG.sortPack, { target: 'pack' }),
 };

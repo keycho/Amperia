@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
-import { ITEMS, type ItemDef } from '@shared/items';
+import { ITEMS, rarityLabel, type ItemDef } from '@shared/items';
 import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
-import { fullDurability, type Inventory } from '@shared/inventory';
+import { fullDurability, stackFor, type Inventory } from '@shared/inventory';
 import { itemThumbKey } from '../render/itemThumbs';
 import { gameState } from '../state/GameState';
 import { tooltip } from './Tooltip';
@@ -17,6 +17,8 @@ export interface SlotStripOptions {
   title?: string;
   /** Draw a panel behind the slots. */
   panel?: boolean;
+  /** F2: a small header action (the Pack's sort button). */
+  headerAction?: { label: string; onClick(): void };
 }
 
 /** Rarity edge-glow color for a filled slot (I4): Manifest rares amber,
@@ -114,19 +116,28 @@ export class SlotStrip {
       const def = ITEMS[stack.itemId];
       const mx = pointer.event instanceof MouseEvent ? pointer.event.clientX : pointer.x;
       const my = pointer.event instanceof MouseEvent ? pointer.event.clientY : pointer.y;
+      // F2 item card: category · rarity (+ wear for gear), flavor, then the
+      // meta line — stack state and the merchant's posted unit price when
+      // one exists. In-game Bolts prices are city facts, not price talk.
       const full = fullDurability(stack.itemId);
-      const sub =
-        def.toolKind !== undefined
-          ? `tool · ${def.toolKind}${stack.durability !== undefined && full !== undefined ? ` · ${stack.durability}/${full}` : ''}`
-          : def.rare === true
-            ? 'rare — the Manifest remembers'
-            : stack.qty > 1
-              ? `×${stack.qty}`
-              : undefined;
+      const wear =
+        stack.durability !== undefined && full !== undefined
+          ? ` · ${stack.durability}/${full}`
+          : '';
+      const sub = `${def.category} · ${rarityLabel(def)}${wear}`;
+      const meta: string[] = [];
+      if (def.tool !== true) {
+        meta.push(`stack ×${stack.qty} of ${stackFor(stack.itemId)}`);
+      }
+      const unit = gameState.prices[stack.itemId];
+      if (unit !== undefined && unit > 0) {
+        meta.push(`the Merchant pays ${unit} Bolts each`);
+      }
+      if (def.rare === true) meta.push('the Manifest remembers this');
       tooltip.show(mx, my, {
         title: def.name,
-        ...(sub !== undefined ? { sub } : {}),
-        lines: [def.flavor],
+        sub,
+        lines: [def.flavor, ...(meta.length > 0 ? [meta.join(' · ')] : [])],
         thumb: { scene: this.sceneRef, key: itemThumbKey(def) },
       });
     });
@@ -151,6 +162,25 @@ export class SlotStrip {
         bold: true,
       });
       this.container.add(title);
+    }
+    // F2: the header action (the Pack's ⇅ sort) rides the title row.
+    if (opts.headerAction !== undefined) {
+      const act = opts.headerAction;
+      const label = kitText(scene, w - 12, -22, act.label, 'caption', {
+        color: PALETTE.neonAmber,
+        bold: true,
+      }).setOrigin(1, 0);
+      label.setInteractive({ useHandCursor: true });
+      label.on('pointerover', () => label.setColor(PALETTE.warmGlow));
+      label.on('pointerout', () => label.setColor(PALETTE.neonAmber));
+      label.on(
+        'pointerdown',
+        (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+          ev.stopPropagation();
+          act.onClick();
+        },
+      );
+      this.container.add(label);
     }
 
     // Hotbar slots show their key binding (1-6).
