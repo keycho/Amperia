@@ -142,10 +142,18 @@ import { loftpods, type PodView } from '../services/loftpods.js';
 import { coilSpunToday, spinCoil } from '../services/coil.js';
 import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
-import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
+import {
+  clearResting,
+  loadCharacter,
+  loadResters,
+  persistCharacter,
+  saveIdentity,
+  setResting,
+} from '../services/persistence.js';
 import {
   CacheState,
   FilamentState,
+  ResterState,
   LampState,
   MobState,
   NodeState,
@@ -392,6 +400,9 @@ export class FilamentRoom extends Room<FilamentState> {
       this.broadcast(MSG.cityPresence, { counts: presence.counts() });
     });
 
+    // L4: seed the district's resting Sparks (scenery, never counted live).
+    void this.loadRestingSparks();
+
     // W7 spectate: value-action handlers run through `guarded`, which refuses a
     // read-only visitor with ONE prompt before any value logic — impossible to
     // forget a handler. move / inspect / chargeInfo stay open (looking is free).
@@ -519,6 +530,9 @@ export class FilamentRoom extends Room<FilamentState> {
       }
     }
     const character = await loadCharacter(auth.characterId);
+    // L4: the player is back — the resting body stands down everywhere.
+    if (this.state.resters.has(auth.characterId)) this.state.resters.delete(auth.characterId);
+    void clearResting(auth.characterId).catch(() => undefined);
     // Joining a district you're not persisted in IS a tram ride: the toll
     // is charged here too, so no client can dodge the sink by joining the
     // room directly. The honest path (handleTravel) persists the new
@@ -669,6 +683,27 @@ export class FilamentRoom extends Room<FilamentState> {
     client.send(MSG.cityPresence, { counts: presence.counts() });
   }
 
+  /** L4: seed resting Sparks from the DB (room create — survives room
+   *  recycling and server restarts; the cap bounds the query). */
+  private async loadRestingSparks(): Promise<void> {
+    try {
+      const rows = await loadResters(this.districtId, CONFIG.bar.resting.capPerDistrict);
+      for (const r of rows) {
+        const rest = new ResterState();
+        rest.sparkName = r.sparkName;
+        rest.tileX = r.tileX;
+        rest.tileY = r.tileY;
+        rest.appearance = r.appearance;
+        rest.equipped = r.equipped;
+        rest.pose = r.restingPose;
+        rest.untilMs = r.restingUntil.getTime();
+        this.state.resters.set(r.characterId, rest);
+      }
+    } catch {
+      /* a failed load just means an emptier street — never fatal */
+    }
+  }
+
   /** Seated (non-spectator) Sparks in this room → the presence registry. */
   private reportPresence(): void {
     let seated = 0;
@@ -767,6 +802,27 @@ export class FilamentRoom extends Room<FilamentState> {
     // before this or not at all (settleTrade commits synchronously).
     this.cancelTradeFor(client.sessionId, 'disconnected', 'The other Spark left mid-trade.');
     const rt = this.runtimes.get(client.sessionId);
+    // L4: logging out mid-idle-loop leaves the Spark resting in place —
+    // scenery in a SEPARATE collection, so no live count anywhere moves.
+    if (
+      rt !== undefined &&
+      !rt.spectator &&
+      rt.idlePose !== null &&
+      rt.hp > 0 &&
+      this.state.resters.size < CONFIG.bar.resting.capPerDistrict
+    ) {
+      const until = new Date(Date.now() + CONFIG.bar.resting.hours * 3_600_000);
+      const rest = new ResterState();
+      rest.sparkName = rt.sparkName;
+      rest.tileX = rt.move.tile.x;
+      rest.tileY = rt.move.tile.y;
+      rest.appearance = rt.appearance;
+      rest.equipped = encodeEquipped(rt.equipped);
+      rest.pose = rt.idlePose;
+      rest.untilMs = until.getTime();
+      this.state.resters.set(rt.characterId, rest);
+      void setResting(rt.characterId, rt.idlePose, until).catch(() => undefined);
+    }
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.reportPresence();
@@ -1723,6 +1779,16 @@ export class FilamentRoom extends Room<FilamentState> {
           rt.drinkUntilMs = null;
           const ps = this.state.players.get(sid);
           if (ps !== undefined) ps.drink = '';
+        }
+      }
+    }
+    // L4: expired rests fade out (the sweep also clears the DB row).
+    {
+      const now = Date.now();
+      for (const [cid, rest] of this.state.resters.entries()) {
+        if (now >= rest.untilMs) {
+          this.state.resters.delete(cid);
+          void clearResting(cid).catch(() => undefined);
         }
       }
     }

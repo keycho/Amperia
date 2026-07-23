@@ -49,6 +49,7 @@ import type {
   QuestsSync,
   NodeStateShape,
   PlayerStateShape,
+  ResterStateShape,
   ShopSyncEvent,
   StallStateShape,
   LoftpodStateShape,
@@ -177,6 +178,9 @@ export class WorldScene extends Phaser.Scene {
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  /** L4: resting Sparks (scenery) — SEPARATE from sparks so every live
+   *  count (presence chip, nameplate threshold, blips) stays honest. */
+  private resters = new Map<string, Spark>();
   /** R1: the universal interaction language (pictograms / labels / hover). */
   private markers!: InteractionMarkers;
   /** C1/C2: central interactable registry — one hit resolver + the E path. */
@@ -263,6 +267,7 @@ export class WorldScene extends Phaser.Scene {
     // don't re-run, so the entity maps still point at destroyed objects.
     this.nodes = new Map();
     this.sparks = new Map();
+    this.resters = new Map();
     this.mobs = new Map();
     this.npcBubbles = new Map();
     this.lampViews = new Map();
@@ -759,6 +764,10 @@ export class WorldScene extends Phaser.Scene {
         onAdd(cb: (p: PlayerStateShape, id: string) => void): void;
         onRemove(cb: (p: PlayerStateShape, id: string) => void): void;
       };
+      resters: {
+        onAdd(cb: (r: ResterStateShape, id: string) => void): void;
+        onRemove(cb: (r: ResterStateShape, id: string) => void): void;
+      };
       nodes: {
         onAdd(cb: (n: NodeStateShape, key: string) => void): void;
       };
@@ -849,6 +858,28 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(sessionId)?.destroy();
       this.sparks.delete(sessionId);
       session.events.emit(SessionEvents.presence, this.sparks.size);
+    });
+
+    // L4: resting Sparks — rendered like citizens, counted like furniture.
+    // Inspect-only by design: a hover card tells you they're resting.
+    $state.resters.onAdd((r: ResterStateShape, cid: string) => {
+      const spark = new Spark(this, { x: r.tileX, y: r.tileY });
+      spark.setAppearance(r.appearance);
+      spark.setEquipped(r.equipped);
+      spark.setPose(r.pose === '' ? null : r.pose);
+      spark.setRestingTag(r.sparkName);
+      spark.image.setAlpha(0.92);
+      hoverTip(spark.image, () => ({
+        title: r.sparkName,
+        sub: 'resting',
+        lines: ['Left the city for a while — the stool keeps their shape.'],
+      }));
+      spark.image.setInteractive();
+      this.resters.set(cid, spark);
+    });
+    $state.resters.onRemove((_r: ResterStateShape, cid: string) => {
+      this.resters.get(cid)?.destroy();
+      this.resters.delete(cid);
     });
 
     $state.nodes.onAdd((n: NodeStateShape, key: string) => {

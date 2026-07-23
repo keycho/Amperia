@@ -694,6 +694,18 @@ export interface PlayerStateShape {
   trim: string;
 }
 
+/** L4: a resting Spark — logged out mid-idle-loop, left as scenery.
+ *  Its own collection so no live-count consumer can miscount it. */
+export interface ResterStateShape {
+  sparkName: string;
+  tileX: number;
+  tileY: number;
+  appearance: string;
+  equipped: string;
+  pose: string;
+  untilMs: number;
+}
+
 export interface NodeStateShape {
   depleted: boolean;
 }

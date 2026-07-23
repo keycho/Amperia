@@ -230,6 +230,12 @@ export class Spark {
     });
   }
 
+  /** L4: scenery mode — the dimmed nameplate with the resting tag. */
+  setRestingTag(name: string): void {
+    this.setNameLabel(`${name} · resting`);
+    this.label?.setAlpha(0.45);
+  }
+
   /** The Bulb hat carries its own warm emissive glow (render/glow.ts). */
   private syncBulbGlow(): void {
     const wearing = decodeEquipped(this.equipped).head === 'bulbHat';

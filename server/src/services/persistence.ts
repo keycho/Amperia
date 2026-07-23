@@ -205,3 +205,62 @@ export async function saveIdentity(
     return { ok: false, error: 'Could not save — try again in a moment.' };
   }
 }
+
+// ── City-life L4: Sparks who stay ──────────────────────────────────────────
+
+export interface RestingRow {
+  characterId: string;
+  sparkName: string;
+  tileX: number;
+  tileY: number;
+  appearance: string;
+  equipped: string;
+  restingPose: string;
+  restingUntil: Date;
+}
+
+/** The district's resting Sparks whose naps haven't expired (capped). */
+export async function loadResters(district: string, cap: number): Promise<RestingRow[]> {
+  const rows = await prisma.character.findMany({
+    where: { district, restingPose: { not: '' }, restingUntil: { gt: new Date() } },
+    take: cap,
+    select: {
+      id: true,
+      sparkName: true,
+      tileX: true,
+      tileY: true,
+      appearance: true,
+      equipped: true,
+      restingPose: true,
+      restingUntil: true,
+    },
+  });
+  return rows
+    .filter((r) => r.restingUntil !== null)
+    .map((r) => ({
+      characterId: r.id,
+      sparkName: r.sparkName,
+      tileX: r.tileX,
+      tileY: r.tileY,
+      appearance: r.appearance,
+      equipped: r.equipped === 'none' ? '' : r.equipped,
+      restingPose: r.restingPose,
+      restingUntil: r.restingUntil as Date,
+    }));
+}
+
+/** Mark a character resting in place (called at logout capture). */
+export async function setResting(characterId: string, pose: string, until: Date): Promise<void> {
+  await prisma.character.update({
+    where: { id: characterId },
+    data: { restingPose: pose, restingUntil: until },
+  });
+}
+
+/** Clear the rest (the player came back, or the sweep expired it). */
+export async function clearResting(characterId: string): Promise<void> {
+  await prisma.character.update({
+    where: { id: characterId },
+    data: { restingPose: '', restingUntil: null },
+  });
+}
