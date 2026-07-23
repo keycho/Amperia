@@ -42,6 +42,7 @@ import type {
   RestedSync,
   ManifestSync,
   InventorySync,
+  CityPresenceEvent,
   LootEvent,
   MoveAcceptedEvent,
   PricesSync,
@@ -1087,6 +1088,9 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
+    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) =>
+      session.events.emit(SessionEvents.cityPresence, ev),
+    );
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
     );

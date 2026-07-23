@@ -460,6 +460,9 @@ export const CONFIG = {
      * without a Bolts gate; distance keeps its price everywhere else.
      */
     freeStops: ['stacks'] as string[],
+    /** Server-checked "at the gate" boarding reach (chebyshev tiles) —
+     *  handleTravel and the world map's ride-from-map shortcut share it. */
+    gateRadiusTiles: 4,
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },
     /** Stacks gate + arrival tile (districts block D1). */

@@ -8,8 +8,10 @@ import {
   type WorldMap,
 } from '@shared/map';
 import { intToHex, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
-import type { IdentityEvent } from '@shared/protocol';
+import type { CityPresenceEvent, IdentityEvent } from '@shared/protocol';
 import { tramToll } from '@shared/travel';
+import { send } from '../net/NetClient';
+import { sound } from '../audio/sound';
 import { session, SessionEvents } from '../net/session';
 import {
   bakeDistrictIsland,
@@ -34,6 +36,14 @@ const ISLAND_AT: Record<DistrictId, { x: number; y: number }> = {
   tangle: { x: 644, y: 292 },
 };
 
+/** Each district's one-line character (M3) — the city's voice, comms-clean. */
+const DISTRICT_LINE: Record<DistrictId, string> = {
+  filament: 'the warm heart — market row and the Dynamo',
+  stacks: 'the city goes up — towers, parcels, rooftop signal',
+  terrarium: 'the city breathes — gardens on warm wood tiers',
+  tangle: 'plays for keeps — deep salvage in the snarl',
+};
+
 
 /**
  * The world map (D4a), opened with TAB: the four districts as lit islands
@@ -51,6 +61,14 @@ export class WorldMapPanel {
   private sparkColor = PALETTE_INT.neonRose;
   /** The hovered tram leg's fare label (M2), rebuilt per hover. */
   private fareLabel: Phaser.GameObjects.GameObject[] = [];
+  /** The hovered island's info plate (M3), rebuilt per hover. */
+  private islandInfo: Phaser.GameObjects.GameObject[] = [];
+  /** The "board at a Tramgate" hint + gate pulse (M3). */
+  private hintItems: Phaser.GameObjects.GameObject[] = [];
+  /** Live seated-Spark counts per district (server cityPresence). */
+  private counts: Partial<Record<DistrictId, number>> = {};
+  /** The current district's tramgate pin — pulsed by the board hint. */
+  private herePin: Phaser.GameObjects.Image | null = null;
   visible = false;
 
   constructor(scene: Phaser.Scene) {
@@ -69,6 +87,17 @@ export class WorldMapPanel {
         a === null ? PALETTE_INT.neonRose : (HAIR_COLORS[a.hairColor] ?? PALETTE_INT.neonRose);
       if (this.visible) this.refresh();
     });
+    // M3: live "Sparks there now" counts, citywide.
+    session.events.on(SessionEvents.cityPresence, (e: CityPresenceEvent) => {
+      this.counts = e.counts;
+      if (this.visible) this.refresh();
+    });
+  }
+
+  /** Screen-space centre of a district's island (checkpoint/tour driver). */
+  islandScreenPoint(d: DistrictId): { x: number; y: number } {
+    const at = ISLAND_AT[d];
+    return { x: this.container.x + at.x, y: this.container.y + at.y };
   }
 
   toggle(): void {
@@ -79,6 +108,9 @@ export class WorldMapPanel {
     this.visible = v;
     if (!v) {
       this.clearFare();
+      this.clearIslandInfo();
+      for (const o of this.hintItems) o.destroy();
+      this.hintItems.length = 0;
       if (this.pulse !== null) {
         this.pulse.stop();
         this.pulse = null;
@@ -131,6 +163,9 @@ export class WorldMapPanel {
 
   private refresh(): void {
     this.clearFare();
+    this.clearIslandInfo();
+    for (const o of this.hintItems) o.destroy();
+    this.hintItems.length = 0;
     for (const o of this.dynamic) o.destroy();
     this.dynamic.length = 0;
     if (this.pulse !== null) {
@@ -180,16 +215,45 @@ export class WorldMapPanel {
     }
 
     // The islands: real miniature renders baked from the world data (M1) —
-    // the same maps, the same zone classifier, the same materials.
+    // the same maps, the same zone classifier, the same materials. Each
+    // island answers the pointer (M3): hover = highlight + info plate,
+    // click = ride the tram from the map when you stand at a gate.
+    this.herePin = null;
     for (const d of line) {
       const at = ISLAND_AT[d];
       const key = bakeDistrictIsland(this.scene, d, ISLAND_W);
       const tex = islandTextureSize(d, ISLAND_W);
+      // Hover glow sits UNDER the island render, lit only on hover.
+      const glow = this.scene.add.image(at.x, at.y, 'fx-glow');
+      glow.setTint(PALETTE_INT.warmGlow);
+      glow.setBlendMode(Phaser.BlendModes.ADD);
+      glow.setScale((ISLAND_W * 1.35) / 256);
+      glow.setAlpha(0);
+      this.container.add(glow);
+      this.dynamic.push(glow);
       const island = this.scene.add.image(at.x, at.y, key);
       // Anchor so the bake's projection centre lands exactly on ISLAND_AT —
       // gate markers and the you-dot then sit true on the render.
       island.setOrigin(0.5, (30 + ISLAND_W / 4) / tex.h);
       island.setAlpha(d === here ? 1 : 0.85);
+      island.setInteractive({ useHandCursor: d !== here });
+      island.on('pointerover', () => {
+        glow.setAlpha(0.3);
+        island.setAlpha(1);
+        this.showIslandInfo(d, here);
+      });
+      island.on('pointerout', () => {
+        glow.setAlpha(0);
+        island.setAlpha(d === here ? 1 : 0.85);
+        this.clearIslandInfo();
+      });
+      island.on(
+        'pointerdown',
+        (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+          ev.stopPropagation();
+          this.clickIsland(d, here);
+        },
+      );
       this.container.add(island);
       this.dynamic.push(island);
 
@@ -205,6 +269,7 @@ export class WorldMapPanel {
         const pin = this.scene.add.image(pp.x, pp.y - 4, landmarkMarkerKey(kind as MapLandmark));
         this.container.add(pin);
         this.dynamic.push(pin);
+        if (kind === 'tramgate' && d === here) this.herePin = pin;
       }
       const name = this.text(
         at.x,
@@ -249,34 +314,135 @@ export class WorldMapPanel {
     }
   }
 
-  /** The hovered tram leg's fare, on a small ink pill above the leg. */
+  /** The hovered tram leg's fare, on a small ink pill above the leg. Fares
+   *  are direction-aware (a free stop rides free INBOUND only), so unequal
+   *  directions show both. */
   private showFare(a: DistrictId, b: DistrictId, x: number, y: number): void {
     this.clearFare();
-    const toll = tramToll(a, b);
-    const fare = toll === 0 ? 'free' : `${toll} Bolts`;
-    const label = kitText(
-      this.scene,
-      x,
-      y,
-      `${DISTRICT_NAMES[a]} ↔ ${DISTRICT_NAMES[b]} — ${fare}`,
-      'caption',
-      { color: PALETTE.warmGlow },
-    );
-    label.setOrigin(0.5, 1);
-    const pillW = Math.ceil(label.width) + 14;
-    const pillH = Math.ceil(label.height) + 8;
-    const pill = this.scene.add.graphics();
-    pill.fillStyle(PALETTE_INT.ink, 0.94);
-    pill.fillRoundedRect(x - pillW / 2, y - pillH + 2, pillW, pillH, 6);
-    pill.lineStyle(1, PALETTE_INT.neonAmber, 0.5);
-    pill.strokeRoundedRect(x - pillW / 2, y - pillH + 2, pillW, pillH, 6);
-    this.container.add(pill);
-    this.container.add(label); // above its pill
-    this.fareLabel.push(pill, label);
+    const fmt = (t: number): string => (t === 0 ? 'free' : `${t} Bolts`);
+    const ab = tramToll(a, b);
+    const ba = tramToll(b, a);
+    const body =
+      ab === ba
+        ? `${DISTRICT_NAMES[a]} ↔ ${DISTRICT_NAMES[b]} — ${fmt(ab)}`
+        : `→ ${DISTRICT_NAMES[b]} ${fmt(ab)} · → ${DISTRICT_NAMES[a]} ${fmt(ba)}`;
+    this.fareLabel.push(...this.pill(x, y, [body]));
   }
 
   private clearFare(): void {
     for (const o of this.fareLabel) o.destroy();
     this.fareLabel.length = 0;
+  }
+
+  /** M3: the hovered island's info plate — name, character, fare, Sparks.
+   *  Docked bottom-left in the panel's one always-empty corner, so it never
+   *  covers the island it describes (and never collides with a label). */
+  private showIslandInfo(d: DistrictId, here: DistrictId): void {
+    this.clearIslandInfo();
+    const toll = tramToll(here, d);
+    const fareLine =
+      d === here
+        ? 'you are here'
+        : `tram fare from ${DISTRICT_NAMES[here]} — ${toll === 0 ? 'free' : `${toll} Bolts`}`;
+    const sparks = this.counts[d] ?? 0;
+    const lines = [
+      DISTRICT_NAMES[d],
+      DISTRICT_LINE[d],
+      fareLine,
+      `Sparks there now: ${sparks}`,
+    ];
+    this.islandInfo.push(...this.pill(186, H - 104, lines, true));
+  }
+
+  private clearIslandInfo(): void {
+    for (const o of this.islandInfo) o.destroy();
+    this.islandInfo.length = 0;
+  }
+
+  /** M3: click an island — ride from a gate, or learn where to board. */
+  private clickIsland(d: DistrictId, here: DistrictId): void {
+    const room = session.room;
+    if (room === null || d === here) return;
+    const me = room.state.players.get(room.sessionId);
+    if (me === undefined) return;
+    const gate = this.mapFor(here).props.find((p) => p.kind === 'tramgate');
+    const nearGate =
+      gate !== undefined &&
+      Math.max(
+        Math.max(gate.x - me.tileX, 0, me.tileX - (gate.x + gate.w - 1)),
+        Math.max(gate.y - me.tileY, 0, me.tileY - (gate.y + gate.h - 1)),
+      ) <= CONFIG.travel.gateRadiusTiles;
+    if (nearGate) {
+      // The same travel intent the gate board sends — a UI shortcut, not a
+      // new codepath; the server validates reach and toll as always.
+      sound.uiClick();
+      send.travel(room, { to: d });
+      this.setVisible(false);
+      return;
+    }
+    this.showBoardHint();
+  }
+
+  /** Not at a gate: say so, and pulse the gate pin on the current island. */
+  private showBoardHint(): void {
+    for (const o of this.hintItems) o.destroy();
+    this.hintItems.length = 0;
+    this.hintItems.push(...this.pill(W / 2, H - 40, ['board at a Tramgate — the gate is marked ◆']));
+    if (this.herePin !== null) {
+      const pin = this.herePin;
+      this.scene.tweens.add({
+        targets: pin,
+        scale: { from: 1, to: 1.9 },
+        duration: 260,
+        yoyo: true,
+        repeat: 3,
+        ease: 'sine.inout',
+        onComplete: () => pin.setScale(1),
+      });
+    }
+    const items = this.hintItems;
+    this.scene.time.delayedCall(2400, () => {
+      if (items === this.hintItems) {
+        for (const o of this.hintItems) o.destroy();
+        this.hintItems.length = 0;
+      }
+    });
+  }
+
+  /** A small ink pill with centred lines; returns [pill, ...texts]. */
+  private pill(
+    x: number,
+    y: number,
+    lines: string[],
+    title = false,
+  ): Phaser.GameObjects.GameObject[] {
+    const texts: Phaser.GameObjects.Text[] = [];
+    let ly = y;
+    let maxW = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const t = kitText(this.scene, x, ly, lines[i] as string, i === 0 && title ? 'body' : 'caption', {
+        color: i === 0 && title ? PALETTE.neonAmber : i === 0 ? PALETTE.warmGlow : UI_TEXT_WARM,
+        bold: i === 0 && title,
+      });
+      t.setOrigin(0.5, 0);
+      texts.push(t);
+      maxW = Math.max(maxW, t.width);
+      ly += Math.ceil(t.height) + 3;
+    }
+    const pillW = Math.ceil(maxW) + 18;
+    const pillH = ly - y + 12;
+    // Clamp inside the panel so edge islands' plates never clip.
+    const cx = Math.min(Math.max(x, pillW / 2 + 8), W - pillW / 2 - 8);
+    const g = this.scene.add.graphics();
+    g.fillStyle(PALETTE_INT.ink, 0.95);
+    g.fillRoundedRect(cx - pillW / 2, y - 7, pillW, pillH, 7);
+    g.lineStyle(1, PALETTE_INT.neonAmber, 0.5);
+    g.strokeRoundedRect(cx - pillW / 2, y - 7, pillW, pillH, 7);
+    this.container.add(g);
+    for (const t of texts) {
+      t.setX(cx);
+      this.container.add(t); // above the pill
+    }
+    return [g, ...texts];
   }
 }

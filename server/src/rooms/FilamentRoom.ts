@@ -130,6 +130,7 @@ import {
 } from '@shared/trade';
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
+import { presence } from '../services/presence.js';
 import { merchant } from '../services/merchant.js';
 import { moderation } from '../services/moderation.js';
 import { shops, type StallView } from '../services/shops.js';
@@ -348,6 +349,8 @@ export class FilamentRoom extends Room<FilamentState> {
   >();
   private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  /** World map M3: unsubscribe from the cross-district presence bus. */
+  private presenceUnsub: (() => void) | null = null;
   private persistTicker = 0;
   private restedNotifyAcc = 0;
   private stallTicker = 0;
@@ -376,6 +379,12 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     this.spawnMobs();
     this.scheduleDraymule();
+
+    // World map M3: whenever ANY district's seated count changes, tell our
+    // clients — "Sparks there now" on the map stays live citywide.
+    this.presenceUnsub = presence.onChange(() => {
+      this.broadcast(MSG.cityPresence, { counts: presence.counts() });
+    });
 
     // W7 spectate: value-action handlers run through `guarded`, which refuses a
     // read-only visitor with ONE prompt before any value logic — impossible to
@@ -645,6 +654,16 @@ export class FilamentRoom extends Room<FilamentState> {
       { text: `${character.sparkName} stepped off the tram.` },
       { except: client },
     );
+    // World map M3: report the new seated count + seed this client's tally.
+    this.reportPresence();
+    client.send(MSG.cityPresence, { counts: presence.counts() });
+  }
+
+  /** Seated (non-spectator) Sparks in this room → the presence registry. */
+  private reportPresence(): void {
+    let seated = 0;
+    for (const rt of this.runtimes.values()) if (!rt.spectator) seated += 1;
+    presence.report(this.districtId, seated);
   }
 
   /**
@@ -738,6 +757,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const rt = this.runtimes.get(client.sessionId);
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
+    this.reportPresence();
     if (rt !== undefined) {
       // A spectator leaves no trace: no session to settle, no DB write, no
       // "rode the tram out" (it never rode in).
@@ -750,6 +770,9 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   async onDispose(): Promise<void> {
+    this.presenceUnsub?.();
+    this.presenceUnsub = null;
+    presence.report(this.districtId, 0);
     for (const t of this.respawnTimers.values()) clearTimeout(t);
     await Promise.all([...this.runtimes.values()].map((rt) => this.persist(rt)));
   }
@@ -3399,7 +3422,7 @@ export class FilamentRoom extends Room<FilamentState> {
     // Hop count doubles as validation: 0 = same stop or not on the line.
     const hops = tramHops(this.districtId, msg.to);
     if (hops === 0) return;
-    if (!this.nearProp(rt, 'tramgate', 4)) {
+    if (!this.nearProp(rt, 'tramgate', CONFIG.travel.gateRadiusTiles)) {
       client.send(MSG.notice, { text: 'The tram leaves from the gate.' });
       return;
     }

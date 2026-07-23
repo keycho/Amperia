@@ -89,4 +89,6 @@ export const SessionEvents = {
   /** F5: loot landed — fly a thumb chip from the node's screen point to the
    *  hotbar. Payload { itemId, sx, sy } (screen coords from WorldScene). */
   lootChipFly: 'lootChipFly',
+  /** Map M3: live seated-Spark counts per district. Payload CityPresenceEvent. */
+  cityPresence: 'cityPresence',
 } as const;
