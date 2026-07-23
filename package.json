@@ -2,7 +2,7 @@
   "name": "amperia",
   "private": true,
   "version": "0.0.0",
-  "description": "AMPERIA \u2014 isometric cozy salvage-punk MMO. Keep the city lit.",
+  "description": "AMPERIA — isometric cozy salvage-punk MMO. Keep the city lit.",
   "workspaces": [
     "client",
     "server",
