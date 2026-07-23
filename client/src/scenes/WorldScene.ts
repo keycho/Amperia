@@ -119,6 +119,7 @@ import {
   addLampCone,
 } from '../render/atmosphere';
 import { CameraController } from '../systems/CameraController';
+import { nearestStepIdx, worldTextScale } from '../systems/cameraMath';
 import { GatherView } from '../systems/GatherView';
 import { OcclusionFade, type OcclusionTarget } from '../systems/OcclusionFade';
 import { gameState, GameEvents } from '../state/GameState';
@@ -342,8 +343,8 @@ export class WorldScene extends Phaser.Scene {
     addFilmGrain(this);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
-    this.setupCamera();
     this.cameraCtl = new CameraController(this);
+    this.setupCamera();
     // PP3: the restrained post pipeline (vignette + emissive bloom + grade),
     // on the world camera only, gated by the setting.
     applyWorldPostFX(this, settings().postfx);
@@ -4552,12 +4553,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private setupCamera(): void {
-    const cam = this.cameras.main;
-    const b = mapWorldBounds(this.map.size);
-    const m = CONFIG.camera.boundsMarginPx;
-    cam.setBounds(b.x - m, b.y - m, b.w + m * 2, b.h + m * 2);
+    // F1: the CONTROLLER owns the clamp (screen-constant void margin,
+    // centre-not-pin when the viewport out-sizes the deck) — Phaser's own
+    // setBounds corner-pins in that case, which was live bug B5.
+    this.cameraCtl.setWorldBounds(mapWorldBounds(this.map.size));
     const center = tileToWorld(this.map.plaza.cx, this.map.plaza.cy);
-    cam.centerOn(center.x, center.y);
+    this.cameras.main.centerOn(center.x, center.y);
+    // F1: world-anchored text counter-scales at min zoom so it stays legible;
+    // re-applied on every zoom step (and read at label creation).
+    this.events.off('camera-zoom');
+    this.events.on('camera-zoom', (z: number) => {
+      const k = worldTextScale(z);
+      for (const s of this.sparks.values()) s.setTextZoomScale(k);
+      this.markers?.setZoomScale(k);
+      this.ePrompt?.setScale(k);
+    });
   }
 
   /**
@@ -4687,6 +4697,13 @@ export class WorldScene extends Phaser.Scene {
   exitPhotoMode(): void {
     this.photoMode = null;
     this.scene.setVisible(true, 'ui');
+    // Photo frames may use any zoom — coming back to gameplay, land on the
+    // nearest ladder step so the wheel + text scaling stay coherent (F1).
+    const cam = this.cameras.main;
+    const steps = CONFIG.camera.zoomSteps as readonly number[];
+    const snapped = steps[nearestStepIdx(steps, cam.zoom)] as number;
+    if (snapped !== cam.zoom) cam.setZoom(snapped);
+    this.events.emit('camera-zoom', snapped);
     this.setupCamera();
     this.cameraCtl.setLocked(false);
     for (const m of this.berthMarkers) m.setVisible(true);

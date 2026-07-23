@@ -14,10 +14,17 @@ export const session: {
    * wheel (UIScene). WorldScene refreshes this every frame.
    */
   eInteractActive: boolean;
+  /**
+   * F1: true while any UI panel (merchant, bank, manifest, map, …) is open.
+   * UIScene refreshes this every frame; the camera wheel-zoom stands down so
+   * a wheel over a panel never zooms the world behind it.
+   */
+  panelOpen: boolean;
 } = {
   room: null,
   events: new Phaser.Events.EventEmitter(),
   eInteractActive: false,
+  panelOpen: false,
 };
 
 export const SessionEvents = {

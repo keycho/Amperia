@@ -981,6 +981,10 @@ export class UIScene extends Phaser.Scene {
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
       else if (this.worldMapPanel.visible) this.worldMapPanel.setVisible(false);
       else if (this.howToPlayPanel.visible) this.howToPlayPanel.setVisible(false);
+      // F1: these two were missing — an open Manifest/Goal board shrugged off
+      // Esc, and (with the new wheel-zoom panel gate) silently blocked zoom.
+      else if (this.manifestPanel.visible) this.manifestPanel.setVisible(false);
+      else if (this.goalPanel.visible) this.goalPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;
@@ -1051,5 +1055,29 @@ export class UIScene extends Phaser.Scene {
       // Dropped nowhere: no change.
       this.refreshAll();
     });
+  }
+
+  /**
+   * F1: publish "a panel is open" every frame so the world camera's wheel
+   * zoom stands down while one is up — a wheel over the Manifest was zooming
+   * the market behind it. Polling the same visibility flags the Escape chain
+   * uses means no open/close path can ever forget to update the flag.
+   */
+  update(): void {
+    session.panelOpen =
+      this.merchantPanel.visible ||
+      this.benchPanel.visible ||
+      this.questPanel.visible ||
+      this.tradePanel.visible ||
+      this.shopPanel.visible ||
+      this.chargePanel.visible ||
+      this.manifestPanel.visible ||
+      this.goalPanel.visible ||
+      this.bankPanel.visible ||
+      this.worldMapPanel.visible ||
+      this.howToPlayPanel.visible ||
+      this.skillsPanel.visible ||
+      this.foundryPanel.visible ||
+      this.inventoryPanel.visible;
   }
 }

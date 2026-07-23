@@ -29,21 +29,19 @@ export const CONFIG = {
   },
 
   camera: {
-    zoomMin: 0.5,
-    zoomMax: 2,
-    /** Texel-crisp zoom steps (textures bake 2×, draw 0.5 — these ratios
-     *  decimate uniformly under NEAREST filtering; no shimmer). */
+    /** The ONLY zooms the wheel lands on (F1). Texel-crisp set: textures
+     *  bake 2× and draw at 0.5, so these ratios decimate uniformly under
+     *  NEAREST — any other ratio (0.75, 1.5) shimmers the pixel grid. */
     zoomSteps: [0.5, 1, 2] as const,
-    /** Multiplicative zoom step per wheel notch (legacy; steps rule now). */
-    zoomStepFactor: 1.12,
     /** Pixels from viewport edge that trigger edge-pan. */
     edgePanMarginPx: 24,
     /** Edge-pan speed in world px/s (at zoom 1). */
     edgePanSpeed: 520,
     /** Lerp factor for camera follow (0–1, higher = snappier). */
     followLerp: 0.08,
-    /** Extra world-px margin around the map the camera may show. */
-    boundsMarginPx: 220,
+    /** Max void visible past a deck edge, in SCREEN px — constant at every
+     *  zoom (the old fixed world-px margin showed 2× the void at zoom 2). */
+    edgeVoidScreenPx: 140,
   },
 
   player: {

@@ -10,6 +10,7 @@ import { addLayeredGlow, type LayeredGlow } from '../render/glow';
 import { worldSpriteTint } from '../render/styleConfig';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
+import { worldTextScale } from '../systems/cameraMath';
 
 /**
  * The player entity: a sprite that walks tile-to-tile along A* paths with
@@ -198,6 +199,12 @@ export class Spark {
     this.label.setVisible(alpha > 0.02);
   }
 
+  /** F1: counter-scale nameplate + bubble so text stays legible at min zoom. */
+  setTextZoomScale(k: number): void {
+    this.label?.setScale(k);
+    this.bubble?.setScale(k);
+  }
+
   setNameLabel(name: string): void {
     this.label?.destroy();
     this.label = this.scene.add.text(this.image.x, this.image.y, name, {
@@ -208,6 +215,7 @@ export class Spark {
       strokeThickness: 4,
     });
     this.label.setOrigin(0.5, 1);
+    this.label.setScale(worldTextScale(this.scene.cameras.main.zoom));
     // Ease in: fade up from a step below so arrivals feel like arrivals.
     this.label.setAlpha(0);
     this.labelRise = { value: 10 };
@@ -273,6 +281,7 @@ export class Spark {
     g.fillStyle(PALETTE_INT.ink, 0.82);
     g.fillTriangle(-4, h / 2 - 1, 4, h / 2 - 1, 0, h / 2 + 6);
     const bubble = this.scene.add.container(0, 0, [g, txt]);
+    bubble.setScale(worldTextScale(this.scene.cameras.main.zoom));
     bubble.setAlpha(0);
     this.bubble = bubble;
     this.bubbleHeight = h;
@@ -299,7 +308,9 @@ export class Spark {
     if (this.bubble === null) return;
     this.bubble.setPosition(
       this.image.x,
-      this.image.y - this.image.displayHeight - 16 - this.bubbleHeight / 2,
+      // bubbleHeight is pre-scale; the F1 zoom counter-scale grows the
+      // rendered box, so anchor with the live scale to keep it clear of the head.
+      this.image.y - this.image.displayHeight - 16 - (this.bubbleHeight * this.bubble.scaleY) / 2,
     );
     this.bubble.setDepth(this.image.depth + 2);
   }
