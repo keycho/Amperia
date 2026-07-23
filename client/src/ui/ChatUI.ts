@@ -40,6 +40,14 @@ export class ChatUI {
       // U4c: click a name to whisper back — prefills /w <name>.
       const idx = i;
       t.setInteractive({ useHandCursor: true });
+      // F5 hover: a whisperable line warms under the pointer (color, not
+      // alpha — the idle fade owns alpha and must keep it).
+      t.on('pointerover', () => {
+        const m = this.recent[idx];
+        if (m !== undefined && m.sessionId !== '' && m.sessionId !== session.room?.sessionId)
+          t.setColor(PALETTE.warmGlow);
+      });
+      t.on('pointerout', () => t.setColor(UI_TEXT_WARM));
       t.on('pointerdown', () => {
         const m = this.recent[idx];
         if (m === undefined || m.sessionId === '' || m.sessionId === session.room?.sessionId)

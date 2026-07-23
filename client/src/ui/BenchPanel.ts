@@ -132,10 +132,15 @@ export class BenchPanel {
         1,
       );
       name.setFontStyle(on ? 'bold' : 'normal');
-      // The whole row selects.
+      // The whole row selects; hover lifts the name (F5) on unselected rows.
+      const restColor = on ? PALETTE.warmGlow : check.ok ? UI_TEXT_WARM : PALETTE.groundAccent;
       const zone = this.scene.add.zone(LIST_X - 6, rowY - 3, LIST_W + 8, LIST_ROW - 2);
       zone.setOrigin(0, 0);
       zone.setInteractive({ useHandCursor: true });
+      if (!on) {
+        zone.on('pointerover', () => name.setColor(PALETTE.warmGlow));
+        zone.on('pointerout', () => name.setColor(restColor));
+      }
       zone.on(
         'pointerdown',
         (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
@@ -222,11 +227,13 @@ export class BenchPanel {
         showY += Math.max(24, Math.ceil(line.height) + 8);
       }
       showY += 6;
+      // F5 dead-button rule: a craft you can't afford reads disabled, not live.
       this.container.add(
         kitButton(this.scene, SHOW_X + 6, showY, check.ok ? 'craft it' : 'short on parts', {
           width: SHOW_W - 12,
           height: 30,
           primary: check.ok,
+          disabled: !check.ok,
           onClick: () => {
             if (check.ok && session.room !== null) {
               send.craft(session.room, { recipeId: selected.id });

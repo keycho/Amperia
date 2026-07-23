@@ -296,9 +296,18 @@ export class FoundryPanel {
         true,
       );
 
-      // Whole row selects → features the item.
+      // Whole row selects → features the item; hover warms the plate (F5).
       const hit = this.scene.add.zone(x0 - 6, y - 6, W - x0 - 14, 58).setOrigin(0, 0);
       hit.setInteractive({ useHandCursor: !vaulted });
+      if (!on) {
+        const paint = (hover: boolean): void => {
+          row.clear();
+          row.fillStyle(hover ? PALETTE_INT.warmGlow : PALETTE_INT.ink, hover ? 0.14 : 0.3);
+          row.fillRoundedRect(x0 - 6, y - 6, W - x0 - 14, 58, 8);
+        };
+        hit.on('pointerover', () => paint(true));
+        hit.on('pointerout', () => paint(false));
+      }
       hit.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
         ev.stopPropagation();
         this.selected = i;

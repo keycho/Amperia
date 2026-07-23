@@ -6,7 +6,7 @@ import { fullDurability, stackFor, type Inventory } from '@shared/inventory';
 import { itemThumbKey } from '../render/itemThumbs';
 import { gameState } from '../state/GameState';
 import { tooltip } from './Tooltip';
-import { kitPlate, kitText } from './kit';
+import { kitPanelPop, kitPlate, kitText } from './kit';
 
 export const SLOT_SIZE = 52;
 export const SLOT_GAP = 7;
@@ -48,6 +48,10 @@ export class SlotStrip {
   private readonly counts: Phaser.GameObjects.Text[] = [];
   private activeSlot = -1;
   private slotCount: number;
+  /** F5 hover state: the slot under the pointer lifts a shade. */
+  private hoverSlot = -1;
+  private lastInv: Inventory | null = null;
+  private lastHidden: number | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -107,6 +111,7 @@ export class SlotStrip {
     // U3c: hovering a stocked slot shows the item card.
     this.hitZone.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       const idx = this.slotIndexAt(pointer.x, pointer.y);
+      this.setHover(idx ?? -1);
       const inv = this.source === 'inventory' ? gameState.inventory : gameState.hotbar;
       const stack = idx === null ? null : (inv.slots[idx] ?? null);
       if (stack === null) {
@@ -141,7 +146,10 @@ export class SlotStrip {
         thumb: { scene: this.sceneRef, key: itemThumbKey(def) },
       });
     });
-    this.hitZone.on('pointerout', () => tooltip.hide());
+    this.hitZone.on('pointerout', () => {
+      this.setHover(-1);
+      tooltip.hide();
+    });
     this.container.add(this.hitZone);
 
     for (let i = 0; i < this.slotCount; i++) {
@@ -208,9 +216,48 @@ export class SlotStrip {
   }
 
   setVisible(visible: boolean): void {
-    this.container.setVisible(visible);
+    if (this.opts.panel !== true) {
+      // The hotbar has no plate and never pops — it's always-on chrome.
+      this.container.setVisible(visible);
+    } else {
+      // F5: the Pack opens/closes through the one 120ms kit pop. The plate
+      // rides 36px above the container origin; the ~0.7px centre error from
+      // folding that headroom into the size is invisible at 4% scale.
+      const { w, h } = this.pixelSize();
+      if (visible) this.container.setVisible(true);
+      kitPanelPop(this.sceneRef, this.container, { w, h }, visible);
+    }
     if (visible) this.hitZone.setInteractive();
-    else this.hitZone.disableInteractive();
+    else {
+      this.hitZone.disableInteractive();
+      this.setHover(-1);
+    }
+  }
+
+  /** F5 hover: retint just the slots that changed — no full redraw. */
+  private setHover(idx: number): void {
+    if (idx === this.hoverSlot) return;
+    const prev = this.hoverSlot;
+    this.hoverSlot = idx;
+    this.tintInset(prev);
+    this.tintInset(idx);
+  }
+
+  /** One slot's inset tint/alpha from active > hover > filled state. */
+  private tintInset(i: number): void {
+    const inset = this.insets[i];
+    if (inset === undefined) return;
+    const stack = this.lastInv?.slots[i];
+    const filled = stack !== null && stack !== undefined && i !== this.lastHidden;
+    const hovered = i === this.hoverSlot;
+    inset.setTint(
+      i === this.activeSlot
+        ? mixPalette('neonAmber', 'structureMid', 0.45)
+        : hovered && filled
+          ? mixPalette('warmGlow', 'structureMid', 0.72)
+          : mixPalette('ink', 'structureMid', hovered ? 0.4 : 0.55),
+    );
+    inset.setAlpha(filled ? 1 : hovered ? 0.7 : 0.5);
   }
 
   get visible(): boolean {
@@ -248,6 +295,8 @@ export class SlotStrip {
 
   /** Redraw slot states and populate thumbnails/counts from inventory. */
   refresh(inv: Inventory, hiddenSlot: number | null = null): void {
+    this.lastInv = inv;
+    this.lastHidden = hiddenSlot;
     const g = this.bg;
     g.clear();
     const cell = SLOT_SIZE + SLOT_GAP;
@@ -257,15 +306,8 @@ export class SlotStrip {
       const stack = inv.slots[i];
       const filled = stack !== null && stack !== undefined && i !== hiddenSlot;
       // Slot states (I4): EMPTY = dim inset · FILLED = lit card + glow.
-      const inset = this.insets[i];
-      if (inset !== undefined) {
-        inset.setTint(
-          i === this.activeSlot
-            ? mixPalette('neonAmber', 'structureMid', 0.45)
-            : mixPalette('ink', 'structureMid', 0.55),
-        );
-        inset.setAlpha(filled ? 1 : 0.5);
-      }
+      // Tint/alpha live in tintInset so the F5 hover lift shares the logic.
+      this.tintInset(i);
       if (i === this.activeSlot) {
         g.lineStyle(2.5, PALETTE_INT.neonAmber, 1);
         g.strokeRoundedRect(cx - 1, cy - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, 9);

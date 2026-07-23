@@ -142,11 +142,15 @@ export class MerchantPanel {
       const y = buyHdr + 22 + i * ROW_H;
       label(SPACE.md, y + 5, ITEMS[ware.itemId as ItemId].name, 'body', UI_TEXT_WARM);
       label(230, y + 5, `${ware.price} Bolts`, 'body', PALETTE.warmGlow);
+      // F5 dead-button rule: can't afford it → the button reads disabled
+      // (the panel re-renders on every Bolts change, so this stays live).
+      const short = gameState.bolts < ware.price;
       this.container.add(
         kitButton(this.scene, 372, y, 'buy', {
           width: 56,
           height: 22,
-          primary: true,
+          primary: !short,
+          disabled: short,
           onClick: () => {
             if (session.room !== null) {
               send.trade(session.room, { action: 'buyItem', itemId: ware.itemId });

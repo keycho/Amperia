@@ -114,6 +114,15 @@ export class BankPanel {
     }
     if (onClick !== null) {
       img.setInteractive({ useHandCursor: true });
+      // F5 hover: the inset warms and the thumb swells a touch.
+      img.on('pointerover', () => {
+        inset.setTint(mixPalette('warmGlow', 'structureMid', 0.72));
+        img.setDisplaySize(CELL - 2, CELL - 2);
+      });
+      img.on('pointerout', () => {
+        inset.setTint(mixPalette('ink', 'structureMid', 0.55));
+        img.setDisplaySize(CELL - 6, CELL - 6);
+      });
       img.on(
         'pointerdown',
         (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {

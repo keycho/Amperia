@@ -62,6 +62,10 @@ export class EmoteWheel {
       const icon = scene.add.image(x, y, `emote-${id}`);
       icon.setScale(2); // 16px glyph → 32px, integer for crisp texels
       icon.setInteractive({ useHandCursor: true });
+      // F5 hover: the picked emote leans forward (still integer at 3× when
+      // it lands — the hover swell is transient so a half-step reads fine).
+      icon.on('pointerover', () => icon.setScale(2.5));
+      icon.on('pointerout', () => icon.setScale(2));
       icon.on('pointerdown', () => {
         this.onPick(id);
         this.close();
