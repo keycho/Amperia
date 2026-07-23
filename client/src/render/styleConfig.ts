@@ -27,7 +27,51 @@ export interface StyleConfig {
   vignetteScale: number;
   /** Internal render height for pixel mode (null = native). */
   pixelHeight: number | null;
+  /** G1 contact shadows — every strength routes through here. */
+  shadows: {
+    /** Placed voxel-shadow image alpha (props, mobs, nodes, structures). */
+    alpha: number;
+    /** Extra alpha lerped in by sprite width (big props ground harder). */
+    wideBonus: number;
+    wideAtPx: number;
+    /** In-bake pass alphas: soft fringe / core / contact-AO ring. */
+    fringe: number;
+    core: number;
+    contact: number;
+    /** The walking-entity ellipse passes (fx-contact-shadow, out→in). */
+    entity: [number, number, number];
+  };
 }
+
+/**
+ * G4 — the darkness gradient: away from real light sources the ground and
+ * props drop noticeably darker (never pure black), through QUANTIZED bands
+ * with a checker-dither transition instead of a smooth ramp — the pixel
+ * grammar's idea of falloff. One set for all modes, like shadows.
+ */
+export const DARKNESS = {
+  /** Ink alpha over the floor at full distance (floor minimum guard). */
+  maxAlpha: 0.32,
+  /** Inside this tile radius of a light: untouched — the pool. */
+  poolRadius: 2.5,
+  /** Beyond this: full darkness band. */
+  farRadius: 7.5,
+  /** Number of quantized bands between pool and far. */
+  bands: 3,
+  /** How far props dim at full distance (0..1 mix toward dusk-dark). */
+  propDim: 0.28,
+} as const;
+
+/** G1: shadows are grounding, not a style toggle — one set for all modes. */
+const SHADOWS: StyleConfig['shadows'] = {
+  alpha: 0.8,
+  wideBonus: 0.12,
+  wideAtPx: 220,
+  fringe: 0.22,
+  core: 0.52,
+  contact: 0.66,
+  entity: [0.28, 0.46, 0.56],
+};
 
 function parseMode(): { mode: StyleMode; pixelHeight: number | null } {
   const raw = new URLSearchParams(window.location.search).get('style')?.toLowerCase() ?? 'a';
@@ -49,6 +93,7 @@ export const STYLE: StyleConfig =
         washScale: 1,
         vignetteScale: 1,
         pixelHeight: null,
+        shadows: SHADOWS,
       }
     : {
         mode: parsed.mode,
@@ -58,6 +103,7 @@ export const STYLE: StyleConfig =
         washScale: 0.28,
         vignetteScale: 1.35,
         pixelHeight: parsed.pixelHeight,
+        shadows: SHADOWS,
       };
 
 /** Grade a floor/graphics fill color through the style. */

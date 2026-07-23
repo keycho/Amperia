@@ -11,7 +11,8 @@ import { SPARK_NAME_RE } from '@shared/appearance';
 import { authRateOk, initOps } from './services/ops.js';
 import { allowedOrigin } from './services/origins.js';
 import { redis, redisHealthy } from './services/redis.js';
-import { guestJoin, linkWallet, loginEmail, registerEmail, verifyToken } from './services/auth.js';
+import { authenticateWallet } from './services/auth.js';
+import { issueNonce } from './services/siwe.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
 import { computePublicStatsResponse } from './services/publicStats.js';
 import { renderLedgerPage } from './services/ledgerPage.js';
@@ -257,23 +258,15 @@ app.get('/auth/name-check', (req, res) => {
   })().catch(() => res.status(500).json({ available: false }));
 });
 
-post('/auth/register', (b) =>
-  registerEmail(String(b.email ?? ''), String(b.password ?? ''), String(b.sparkName ?? '')),
-);
-post('/auth/login', (b) => loginEmail(String(b.email ?? ''), String(b.password ?? '')));
-post('/auth/guest', (b) =>
-  guestJoin(typeof b.sparkName === 'string' && b.sparkName !== '' ? b.sparkName : undefined),
-);
-post('/auth/link-wallet', async (b) => {
-  const auth = verifyToken(String(b.token ?? ''));
-  await linkWallet(
-    auth.accountId,
-    String(b.walletAddress ?? ''),
-    String(b.message ?? ''),
-    String(b.signature ?? ''),
-  );
-  return { linked: true };
+// SIWE (W2) is the ONLY login — no email/password/guest routes exist. The
+// client fetches a single-use nonce, folds it into an EIP-4361 message, has the
+// wallet sign it, and posts the message + signature back. authenticateWallet
+// verifies the signature server-side (no token/RPC needed) and finds-or-creates
+// the account keyed by the wallet.
+app.get('/auth/nonce', (_req, res) => {
+  res.json({ nonce: issueNonce() });
 });
+post('/auth/wallet', (b) => authenticateWallet(String(b.message ?? ''), String(b.signature ?? '')));
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

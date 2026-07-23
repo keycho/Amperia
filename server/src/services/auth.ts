@@ -1,20 +1,24 @@
-import bcrypt from 'bcryptjs';
-import bs58 from 'bs58';
 import jwt from 'jsonwebtoken';
-import nacl from 'tweetnacl';
 import { makeStarterHotbar } from '@shared/inventory';
+import { rollSparkName } from '@shared/sparkNames';
 import { prisma } from './db.js';
+import { verifySignIn } from './siwe.js';
+import { runHoldGate } from './tokenGate.js';
 
 /**
- * Accounts are email-first (the full free game needs no wallet — CLAUDE.md).
- * Guests are real accounts without an email so they can upgrade later.
- * SIWS wallet linking is optional and late; the endpoint exists but nothing
- * in the game requires it.
+ * WALLET-ONLY AUTH (W2–W4). Sign-In-With-Ethereum (EIP-4361) is the ONLY front
+ * door — there is no email, no password, no playable guest. The wallet address
+ * IS the account identity (unique, lowercased). {@link authenticateWallet}
+ * verifies a real signature (siwe.ts, no token / no RPC needed) and
+ * finds-or-creates the account; a brand-new wallet gets a placeholder Spark
+ * with an unchosen appearance so the creator (W6) opens on first entry.
+ *
+ * The no-wallet option is spectate (W7) — read-only, no account, no session
+ * token — handled at the room, not here.
  */
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'amperia-dev-secret-change-me';
 const TOKEN_TTL = '7d';
-const BCRYPT_ROUNDS = 10;
 
 export interface JoinedAuth {
   accountId: string;
@@ -24,12 +28,12 @@ export interface JoinedAuth {
 export interface AuthResult {
   token: string;
   sparkName: string;
-  email: string | null;
+  /** The signed-in wallet (lowercased) — the account identity. */
+  walletAddress: string;
   /** Last persisted district — the client rejoins the Spark where they left. */
   district: string;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_RE = /^[A-Za-z0-9 _-]{3,20}$/;
 
 function signToken(auth: JoinedAuth): string {
@@ -50,120 +54,91 @@ export function verifyToken(token: string): JoinedAuth {
   return { accountId: p.accountId, characterId: p.characterId };
 }
 
-async function createAccountWithCharacter(
-  email: string | null,
-  passwordHash: string | null,
-  sparkName: string,
-): Promise<AuthResult> {
-  const account = await prisma.account.create({
-    data: {
-      email,
-      passwordHash,
-      character: {
-        create: { sparkName, hotbarJson: makeStarterHotbar().slots as object[] },
-      },
-    },
-    include: { character: true },
-  });
-  const character = account.character;
-  if (character === null) throw new Error('Character creation failed');
-  return {
-    token: signToken({ accountId: account.id, characterId: character.id }),
-    sparkName: character.sparkName,
-    email: account.email,
-    district: character.district,
-  };
-}
-
 export function validSparkName(name: string): boolean {
   return NAME_RE.test(name.trim());
 }
 
-export async function registerEmail(
-  email: string,
-  password: string,
-  sparkName: string,
-): Promise<AuthResult> {
-  const cleanEmail = email.trim().toLowerCase();
-  const cleanName = sparkName.trim();
-  if (!EMAIL_RE.test(cleanEmail)) throw new Error('That email does not look right.');
-  if (password.length < 8) throw new Error('Password needs at least 8 characters.');
-  if (!validSparkName(cleanName)) {
-    throw new Error('Spark names are 3-20 letters, numbers, spaces, - or _.');
-  }
-  const existingEmail = await prisma.account.findUnique({ where: { email: cleanEmail } });
-  if (existingEmail !== null) throw new Error('That email is already registered.');
-  const existingName = await prisma.character.findUnique({ where: { sparkName: cleanName } });
-  if (existingName !== null) throw new Error('That Spark name is taken.');
-  const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  return createAccountWithCharacter(cleanEmail, hash, cleanName);
-}
-
-export async function loginEmail(email: string, password: string): Promise<AuthResult> {
-  const cleanEmail = email.trim().toLowerCase();
-  const account = await prisma.account.findUnique({
-    where: { email: cleanEmail },
-    include: { character: true },
-  });
-  if (account === null || account.passwordHash === null || account.character === null) {
-    throw new Error('Unknown email or wrong password.');
-  }
-  const ok = await bcrypt.compare(password, account.passwordHash);
-  if (!ok) throw new Error('Unknown email or wrong password.');
-  return {
-    token: signToken({ accountId: account.id, characterId: account.character.id }),
-    sparkName: account.character.sparkName,
-    email: account.email,
-    district: account.character.district,
-  };
-}
-
-export async function guestJoin(requestedName: string | undefined): Promise<AuthResult> {
-  let name = (requestedName ?? '').trim();
-  if (name !== '' && !validSparkName(name)) {
-    throw new Error('Spark names are 3-20 letters, numbers, spaces, - or _.');
-  }
-  if (name === '') {
-    name = `Spark-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-  }
-  const taken = await prisma.character.findUnique({ where: { sparkName: name } });
-  if (taken !== null) {
-    if (requestedName !== undefined && requestedName !== '') {
-      throw new Error('That Spark name is taken.');
-    }
-    name = `${name}${Math.floor(Math.random() * 90 + 10)}`;
-  }
-  return createAccountWithCharacter(null, null, name);
+/**
+ * F5: a fresh wallet's Spark is seated under a COZY rolled name (shared
+ * city-voice list), never a machine name — other Sparks see the nameplate
+ * the moment the newcomer spawns, before the creator confirms. After a few
+ * collision retries, a numbered fallback still stays in-voice.
+ */
+function seatName(attempt: number): string {
+  if (attempt < 4) return rollSparkName();
+  return `Spark ${100 + Math.floor(Math.random() * 900)}`;
 }
 
 /**
- * SIWS (Sign-In-With-Solana) wallet linking — optional and late by design.
- * The signed message must embed the account id (prevents replaying another
- * account's signature). Hardening (nonce store, expiry) comes with M4.
+ * Create the account + its one Spark for a fresh wallet. The seated name is
+ * a keeper the creator (W6) pre-fills and may overwrite on first entry;
+ * appearance is left unset so the identity snapshot pops the creator.
+ * Retries on name collision; on a concurrent same-wallet race the caller
+ * re-fetches.
  */
-export async function linkWallet(
-  accountId: string,
+async function seatWalletSpark(walletAddress: string): Promise<AuthResult> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const account = await prisma.account.create({
+        data: {
+          walletAddress,
+          character: {
+            create: { sparkName: seatName(attempt), hotbarJson: makeStarterHotbar().slots as object[] },
+          },
+        },
+        include: { character: true },
+      });
+      if (account.character === null) throw new Error('Character creation failed');
+      return resultFor(account.walletAddress, account.id, account.character);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const target = (err as { meta?: { target?: string[] } }).meta?.target ?? [];
+      if (code === 'P2002' && target.includes('sparkName')) continue; // name clash → retry
+      if (code === 'P2002' && target.includes('walletAddress')) break; // raced → re-fetch
+      throw err;
+    }
+  }
+  const raced = await prisma.account.findUnique({
+    where: { walletAddress },
+    include: { character: true },
+  });
+  if (raced?.character != null) return resultFor(raced.walletAddress, raced.id, raced.character);
+  throw new Error('Could not seat a new Spark — reconnect and try again.');
+}
+
+function resultFor(
   walletAddress: string,
-  message: string,
-  signatureBase58: string,
-): Promise<void> {
-  if (!message.includes(accountId)) {
-    throw new Error('Signed message must reference this account.');
+  accountId: string,
+  character: { id: string; sparkName: string; district: string },
+): AuthResult {
+  return {
+    token: signToken({ accountId, characterId: character.id }),
+    sparkName: character.sparkName,
+    walletAddress,
+    district: character.district,
+  };
+}
+
+/**
+ * THE login (W2): verify a Sign-In-With-Ethereum signature, then find-or-create
+ * the account keyed by the lowercased wallet address and hand back a session
+ * token. Needs no token address and no RPC — it works before $AMP exists. Hold
+ * mode adds a balance gate around this in W3; connect mode plays on any valid
+ * sign-in.
+ */
+export async function authenticateWallet(message: string, signature: string): Promise<AuthResult> {
+  const { address } = await verifySignIn(message, signature); // real SIWE; lowercased
+  // W3: in hold mode, a valid sign-in is not enough — the wallet must also hold
+  // >= 1,000 $AMP (with 24h grace). A no-op in connect mode and while hold mode
+  // is inert (no token deployed). Runs BEFORE any account is seated, so a
+  // gated-out wallet never creates a Spark.
+  await runHoldGate(address);
+  const existing = await prisma.account.findUnique({
+    where: { walletAddress: address },
+    include: { character: true },
+  });
+  if (existing?.character != null) {
+    return resultFor(existing.walletAddress, existing.id, existing.character);
   }
-  let pubkey: Uint8Array;
-  let signature: Uint8Array;
-  try {
-    pubkey = bs58.decode(walletAddress);
-    signature = bs58.decode(signatureBase58);
-  } catch {
-    throw new Error('Malformed wallet address or signature.');
-  }
-  if (pubkey.length !== 32) throw new Error('Malformed wallet address.');
-  const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, pubkey);
-  if (!ok) throw new Error('Signature does not verify.');
-  const existing = await prisma.account.findUnique({ where: { walletAddress } });
-  if (existing !== null && existing.id !== accountId) {
-    throw new Error('That wallet is linked to another Spark.');
-  }
-  await prisma.account.update({ where: { id: accountId }, data: { walletAddress } });
+  return seatWalletSpark(address);
 }

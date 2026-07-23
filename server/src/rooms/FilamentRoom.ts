@@ -6,6 +6,7 @@ import {
   makeInventory,
   makeStarterHotbar,
   removeItem,
+  sortInventory,
   transfer,
   type Inventory,
   countItem,
@@ -32,6 +33,7 @@ import {
   type KoiRoll,
 } from '@shared/minigames';
 import {
+  makeSkillXp,
   effectiveSeconds,
   levelForXp,
   SKILL_BY_NODE,
@@ -96,6 +98,8 @@ import {
   type PlayerTradeIntent,
   type SelectSlotIntent,
   type CraftIntent,
+  type CraftedEvent,
+  type SortPackIntent,
   type DonateIntent,
   type QuestIntent,
   type ReclaimIntent,
@@ -126,6 +130,7 @@ import {
 } from '@shared/trade';
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
+import { presence } from '../services/presence.js';
 import { merchant } from '../services/merchant.js';
 import { moderation } from '../services/moderation.js';
 import { shops, type StallView } from '../services/shops.js';
@@ -264,6 +269,9 @@ interface PlayerRuntime {
   tendDayDate: string;
   /** Cue reaction deltas (ms) — behavioral-entropy logging habit (C7). */
   glintReactionsMs: number[];
+  /** W7 spectate: a no-wallet visitor. Read-only, non-persistent — every value
+   *  codepath refuses it server-side; nothing is ever written to the DB. */
+  spectator: boolean;
 }
 
 /**
@@ -341,6 +349,8 @@ export class FilamentRoom extends Room<FilamentState> {
   >();
   private cacheSeq = 0;
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  /** World map M3: unsubscribe from the cross-district presence bus. */
+  private presenceUnsub: (() => void) | null = null;
   private persistTicker = 0;
   private restedNotifyAcc = 0;
   private stallTicker = 0;
@@ -370,47 +380,66 @@ export class FilamentRoom extends Room<FilamentState> {
     this.spawnMobs();
     this.scheduleDraymule();
 
+    // World map M3: whenever ANY district's seated count changes, tell our
+    // clients — "Sparks there now" on the map stays live citywide.
+    this.presenceUnsub = presence.onChange(() => {
+      this.broadcast(MSG.cityPresence, { counts: presence.counts() });
+    });
+
+    // W7 spectate: value-action handlers run through `guarded`, which refuses a
+    // read-only visitor with ONE prompt before any value logic — impossible to
+    // forget a handler. move / inspect / chargeInfo stay open (looking is free).
+    const guarded = <T>(type: string, handler: (client: Client, msg: T) => void): void => {
+      this.onMessage<T>(type, (client, msg) => {
+        const rt = this.runtimes.get(client.sessionId);
+        if (rt?.spectator === true) {
+          this.promptConnect(client);
+          return;
+        }
+        handler(client, msg);
+      });
+    };
+
     this.onMessage<MoveIntent>(MSG.move, (client, msg) => this.handleMove(client, msg));
-    this.onMessage<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
-    this.onMessage<GlintClickIntent>(MSG.glintClick, (client, msg) =>
-      this.handleGlintClick(client, msg),
-    );
-    this.onMessage<NodeActionIntent>(MSG.nodeAction, (client, msg) =>
-      this.handleNodeAction(client, msg),
-    );
-    this.onMessage<SelectSlotIntent>(MSG.selectSlot, (client, msg) => {
+    guarded<GatherIntent>(MSG.gather, (client, msg) => this.handleGather(client, msg));
+    guarded<GlintClickIntent>(MSG.glintClick, (client, msg) => this.handleGlintClick(client, msg));
+    guarded<NodeActionIntent>(MSG.nodeAction, (client, msg) => this.handleNodeAction(client, msg));
+    guarded<SelectSlotIntent>(MSG.selectSlot, (client, msg) => {
       const rt = this.runtimes.get(client.sessionId);
       if (rt === undefined || !Number.isInteger(msg.slot)) return;
       if (msg.slot < 0 || msg.slot >= CONFIG.inventory.hotbarSlots) return;
       rt.activeSlot = msg.slot;
     });
-    this.onMessage<MoveStackIntent>(MSG.moveStack, (client, msg) =>
-      this.handleMoveStack(client, msg),
-    );
-    this.onMessage<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
-    this.onMessage<AppearanceIntent>(MSG.appearance, (client, msg) => {
+    guarded<MoveStackIntent>(MSG.moveStack, (client, msg) => this.handleMoveStack(client, msg));
+    guarded<ChatIntent>(MSG.chat, (client, msg) => this.handleChat(client, msg));
+    guarded<AppearanceIntent>(MSG.appearance, (client, msg) => {
       void this.handleAppearance(client, msg);
     });
-    this.onMessage<WardrobeIntent>(MSG.wardrobe, (client, msg) =>
-      this.handleWardrobe(client, msg),
-    );
-    this.onMessage<InspectIntent>(MSG.inspect, (client, msg) =>
-      this.handleInspect(client, msg),
-    );
-    this.onMessage<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
+    guarded<WardrobeIntent>(MSG.wardrobe, (client, msg) => this.handleWardrobe(client, msg));
+    this.onMessage<InspectIntent>(MSG.inspect, (client, msg) => this.handleInspect(client, msg));
+    guarded<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
       void this.handleGoalClaim(client, msg);
     });
-    this.onMessage<BankIntent>(MSG.bank, (client, msg) => {
+    guarded<SortPackIntent>(MSG.sortPack, (client, _msg) => {
+      // F2: server-authoritative Pack sort — merge stacks (per-item caps),
+      // order by category/name; nothing is created or destroyed.
+      const rt = this.runtimes.get(client.sessionId);
+      if (rt === undefined) return;
+      rt.pack = sortInventory(rt.pack);
+      client.send(MSG.inventory, this.inventorySync(rt));
+      void this.persist(rt);
+    });
+    guarded<BankIntent>(MSG.bank, (client, msg) => {
       void this.handleBank(client, msg).catch((err) =>
         console.error('[bank] action failed', err),
       );
     });
-    this.onMessage<LoftpodIntent>(MSG.loftpod, (client, msg) => {
+    guarded<LoftpodIntent>(MSG.loftpod, (client, msg) => {
       void this.handleLoftpod(client, msg).catch((err) =>
         console.error('[loftpod] action failed', err),
       );
     });
-    this.onMessage<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
+    guarded<CoilSpinIntent>(MSG.coilSpin, (client, msg) => {
       void this.handleCoilSpin(client, msg).catch((err) => {
         // The no-currency assert tripping is an anomaly worth remembering.
         const rt = this.runtimes.get(client.sessionId);
@@ -423,13 +452,11 @@ export class FilamentRoom extends Room<FilamentState> {
         }
       });
     });
-    this.onMessage<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
-    this.onMessage(MSG.placeHeatlamp, (client) => this.handlePlaceHeatlamp(client));
-    this.onMessage<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
-    this.onMessage<PlayerTradeIntent>(MSG.ptrade, (client, msg) =>
-      this.handlePlayerTrade(client, msg),
-    );
-    this.onMessage<ShopIntent>(MSG.shop, (client, msg) => {
+    guarded<AttackIntent>(MSG.attack, (client, msg) => this.handleAttack(client, msg));
+    guarded(MSG.placeHeatlamp, (client: Client) => this.handlePlaceHeatlamp(client));
+    guarded<TradeIntent>(MSG.trade, (client, msg) => this.handleTrade(client, msg));
+    guarded<PlayerTradeIntent>(MSG.ptrade, (client, msg) => this.handlePlayerTrade(client, msg));
+    guarded<ShopIntent>(MSG.shop, (client, msg) => {
       void this.handleShop(client, msg);
     });
     this.onMessage(MSG.chargeInfo, (client) => {
@@ -443,17 +470,15 @@ export class FilamentRoom extends Room<FilamentState> {
         .catch((err) => console.error('[loftpod] boot load failed', err));
     }
     void this.refreshCharge(true);
-    this.onMessage<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
-    this.onMessage<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
-    this.onMessage<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
-    this.onMessage<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
-    this.onMessage<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
-    this.onMessage<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
-    this.onMessage<DeliveryIntent>(MSG.delivery, (client, msg) =>
-      this.handleDelivery(client, msg),
-    );
-    this.onMessage<TendIntent>(MSG.tend, (client, msg) => this.handleTend(client, msg));
-    this.onMessage<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
+    guarded<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
+    guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
+    guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
+    guarded<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
+    guarded<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
+    guarded<DeliveryIntent>(MSG.delivery, (client, msg) => this.handleDelivery(client, msg));
+    guarded<TendIntent>(MSG.tend, (client, msg) => this.handleTend(client, msg));
+    guarded<ReclaimIntent>(MSG.reclaim, (client, msg) => this.handleReclaim(client, msg));
     void merchant.load();
 
     this.setSimulationInterval((dt) => {
@@ -465,10 +490,19 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   async onJoin(client: Client, options: unknown): Promise<void> {
-    const token =
+    const opts =
       typeof options === 'object' && options !== null
-        ? String((options as Record<string, unknown>).token ?? '')
-        : '';
+        ? (options as Record<string, unknown>)
+        : {};
+    const token = String(opts.token ?? '');
+    // W7 spectate: no token + spectate:true → a read-only visitor. A real
+    // player MUST present a valid JWT, so a client can never claim non-spectator
+    // without one; the spectator flag is set here, server-side, and every value
+    // handler refuses it.
+    if (token === '' && opts.spectate === true) {
+      this.joinSpectator(client);
+      return;
+    }
     const auth = verifyToken(token); // throws → join rejected
     // One live session per account.
     for (const rt of this.runtimes.values()) {
@@ -487,7 +521,7 @@ export class FilamentRoom extends Room<FilamentState> {
       const toll = tramToll(character.district as DistrictId, this.districtId);
       if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
       bolts -= toll;
-      // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+      // PP6 (amended): a free leg (Filament ↔ Stacks) charges nothing → no sink log.
       if (toll > 0) {
         ledger.log({
           type: 'spend',
@@ -554,6 +588,7 @@ export class FilamentRoom extends Room<FilamentState> {
       tendDayCount: character.tendDayCount,
       tendDayDate: character.tendDayDate,
       glintReactionsMs: [],
+      spectator: false,
     };
     this.runtimes.set(client.sessionId, runtime);
 
@@ -619,6 +654,100 @@ export class FilamentRoom extends Room<FilamentState> {
       { text: `${character.sparkName} stepped off the tram.` },
       { except: client },
     );
+    // World map M3: report the new seated count + seed this client's tally.
+    this.reportPresence();
+    client.send(MSG.cityPresence, { counts: presence.counts() });
+  }
+
+  /** Seated (non-spectator) Sparks in this room → the presence registry. */
+  private reportPresence(): void {
+    let seated = 0;
+    for (const rt of this.runtimes.values()) if (!rt.spectator) seated += 1;
+    presence.report(this.districtId, seated);
+  }
+
+  /**
+   * W7 — seat a read-only spectator: a no-wallet visitor with a temporary,
+   * NON-PERSISTENT Spark. It can move and see the world + live players, but
+   * every value handler refuses it (server-authoritative) and {@link persist}
+   * never touches the DB for it. No account is created, nothing is written.
+   */
+  private joinSpectator(client: Client): void {
+    const spawn: TilePoint = this.gateSpawn(CONFIG.player.spawn);
+    const runtime: PlayerRuntime = {
+      // Synthetic ids so the one-session-per-account check never collides; they
+      // are NEVER used as a DB key (persist() bails for spectators).
+      accountId: `spectator:${client.sessionId}`,
+      characterId: `spectator:${client.sessionId}`,
+      sparkName: 'Visitor',
+      move: makeMoveState(spawn),
+      pack: makeInventory(CONFIG.inventory.slots),
+      hotbar: makeStarterHotbar(),
+      activeSlot: 0,
+      skills: makeSkillXp(),
+      bolts: 0,
+      dailySaleBolts: 0,
+      dailySaleDate: '',
+      tradeDayDate: '',
+      tradeDayValueBolts: 0,
+      tradeDayCount: 0,
+      accountCreatedAtMs: 0,
+      quests: {} as QuestLog,
+      cosmetics: [],
+      appearance: '',
+      equipped: {},
+      titles: [],
+      goalTokens: 0,
+      restedMsUsed: 0,
+      restedDate: '',
+      bank: null,
+      hp: CONFIG.combat.player.maxHp,
+      pendingDistrict: null,
+      healAcc: 0,
+      lastAttackAtMs: 0,
+      gatherTargetNode: null,
+      session: null,
+      lastChatAtMs: 0,
+      chatWindow: [],
+      chatCooldownNoticed: false,
+      mutes: new Set(),
+      delivery: null,
+      deliveryDayBolts: 0,
+      deliveryDayDate: '',
+      tend: null,
+      tendDayCount: 0,
+      tendDayDate: '',
+      glintReactionsMs: [],
+      spectator: true,
+    };
+    this.runtimes.set(client.sessionId, runtime);
+
+    const ps = new PlayerState();
+    ps.sparkName = 'Visitor';
+    ps.tileX = spawn.x;
+    ps.tileY = spawn.y;
+    ps.hp = runtime.hp;
+    ps.maxHp = CONFIG.combat.player.maxHp;
+    ps.equipped = '';
+    ps.trim = '';
+    ps.appearance = DEFAULT_APPEARANCE_CODE;
+    this.state.players.set(client.sessionId, ps);
+
+    // chosen:true so the client never pops the creator for a visitor.
+    client.send(MSG.identity, {
+      appearance: DEFAULT_APPEARANCE_CODE,
+      sparkName: 'Visitor',
+      chosen: true,
+      owned: [],
+      equipped: '',
+    });
+    client.send(MSG.inventory, this.inventorySync(runtime));
+    client.send(MSG.notice, { text: 'Spectating — connect your wallet to play.' });
+  }
+
+  /** The single spectator refusal (W7) — one prompt for any value action. */
+  private promptConnect(client: Client): void {
+    client.send(MSG.notice, { text: 'Connect your wallet to play.' });
   }
 
   async onLeave(client: Client): Promise<void> {
@@ -628,7 +757,11 @@ export class FilamentRoom extends Room<FilamentState> {
     const rt = this.runtimes.get(client.sessionId);
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
+    this.reportPresence();
     if (rt !== undefined) {
+      // A spectator leaves no trace: no session to settle, no DB write, no
+      // "rode the tram out" (it never rode in).
+      if (rt.spectator) return;
       // Partial veins/strikes pay out what was worked.
       this.settleSession(client, rt, false);
       this.broadcast(MSG.notice, { text: `${rt.sparkName} rode the tram out.` });
@@ -637,6 +770,9 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   async onDispose(): Promise<void> {
+    this.presenceUnsub?.();
+    this.presenceUnsub = null;
+    presence.report(this.districtId, 0);
     for (const t of this.respawnTimers.values()) clearTimeout(t);
     await Promise.all([...this.runtimes.values()].map((rt) => this.persist(rt)));
   }
@@ -833,13 +969,13 @@ export class FilamentRoom extends Room<FilamentState> {
     if (!Number.isInteger(msg.fromIdx) || !Number.isInteger(msg.toIdx)) return;
     if (msg.fromIdx < 0 || msg.fromIdx >= src.slots.length) return;
     if (msg.toIdx < 0 || msg.toIdx >= dst.slots.length) return;
-    const r = transfer(
-      src,
-      msg.fromIdx,
-      msg.from === msg.to ? src : dst,
-      msg.toIdx,
-      CONFIG.inventory.stackMax,
-    );
+    // F2 split: an optional qty moves part of the stack (validated in the
+    // pure transfer — partial onto a mismatched stack is refused there).
+    const qty =
+      typeof msg.qty === 'number' && Number.isInteger(msg.qty) && msg.qty > 0
+        ? msg.qty
+        : undefined;
+    const r = transfer(src, msg.fromIdx, msg.from === msg.to ? src : dst, msg.toIdx, qty);
     if (msg.from === 'pack') rt.pack = r.src;
     else rt.hotbar = r.src;
     if (msg.to === 'pack') rt.pack = r.dst;
@@ -1078,7 +1214,7 @@ export class FilamentRoom extends Room<FilamentState> {
   /**
    * The Fortune Coil (S4): ONE free spin daily, at the wheel. HARD RULE
    * asserted right here — the intent carries no currency field, this
-   * handler never reads or debits Bolts/$AMP/SOL, and no other spin
+   * handler never reads or debits Bolts/$AMP/ETH, and no other spin
    * entry point exists. Prizes are all untradeable. (CLAUDE.md rule 6:
    * $AMP never touches the wheel on either side.)
    */
@@ -1113,7 +1249,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (prize.kind === 'bolts') {
       rt.bolts += prize.amount;
     } else if (prize.kind === 'item') {
-      const add = addItem(rt.pack, prize.itemId as ItemId, prize.amount, CONFIG.inventory.stackMax);
+      const add = addItem(rt.pack, prize.itemId as ItemId, prize.amount);
       rt.pack = add.inv;
       if (prize.itemId === 'gildedScrap' && add.added > 0) {
         this.recordManifest(client, rt, 'gildedScrap');
@@ -1183,7 +1319,7 @@ export class FilamentRoom extends Room<FilamentState> {
       const stack = from.slots[slot];
       if (stack === null || stack === undefined) return;
       const moving = Math.min(qty, stack.qty);
-      const add = addItem(to, stack.itemId as ItemId, moving, CONFIG.inventory.stackMax);
+      const add = addItem(to, stack.itemId as ItemId, moving);
       if (add.added <= 0) {
         client.send(MSG.notice, {
           text: msg.action === 'deposit' ? 'The vault shelf is full.' : 'Your Pack is full.',
@@ -1722,7 +1858,7 @@ export class FilamentRoom extends Room<FilamentState> {
     };
     const trophy = TROPHY[m.kind];
     const grantTrophy = (c: Client, r: PlayerRuntime): void => {
-      const rr = addItem(r.pack, trophy, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(r.pack, trophy, 1);
       if (rr.added <= 0) return;
       r.pack = rr.inv;
       ledger.log({
@@ -1745,8 +1881,8 @@ export class FilamentRoom extends Room<FilamentState> {
         const salvage =
           dm.salvageMin + Math.floor(this.rng() * (dm.salvageMax - dm.salvageMin + 1));
         const brass = dm.brassMin + Math.floor(this.rng() * (dm.brassMax - dm.brassMin + 1));
-        r.pack = addItem(r.pack, 'salvage', salvage, CONFIG.inventory.stackMax).inv;
-        r.pack = addItem(r.pack, 'brass', brass, CONFIG.inventory.stackMax).inv;
+        r.pack = addItem(r.pack, 'salvage', salvage).inv;
+        r.pack = addItem(r.pack, 'brass', brass).inv;
         ledger.log({
           type: 'gather',
           account: r.accountId,
@@ -2002,7 +2138,7 @@ export class FilamentRoom extends Room<FilamentState> {
         client.send(MSG.notice, { text: `That costs ${ware.price} Bolts.` });
         return;
       }
-      const add = addItem(rt.pack, ware.itemId as ItemId, 1, CONFIG.inventory.stackMax);
+      const add = addItem(rt.pack, ware.itemId as ItemId, 1);
       if (add.added < 1) {
         client.send(MSG.notice, { text: 'Your Pack is full.' });
         return;
@@ -2286,7 +2422,6 @@ export class FilamentRoom extends Room<FilamentState> {
       rtB.pack,
       rtB.bolts,
       offerB,
-      CONFIG.inventory.stackMax,
     );
     if (!r.ok) {
       // Nothing moved. Stale offers (pack changed since staging) come back
@@ -2557,9 +2692,9 @@ export class FilamentRoom extends Room<FilamentState> {
           if (isGear) {
             const back = rt.pack.slots[msg.slot];
             if (back === null) rt.pack.slots[msg.slot] = { itemId: line.itemId, qty: 1, durability: line.durability };
-            else rt.pack = addItem(rt.pack, line.itemId, 1, CONFIG.inventory.stackMax).inv;
+            else rt.pack = addItem(rt.pack, line.itemId, 1).inv;
           } else {
-            rt.pack = addItem(rt.pack, line.itemId, qty, CONFIG.inventory.stackMax).inv;
+            rt.pack = addItem(rt.pack, line.itemId, qty).inv;
           }
           notice(err);
           client.send(MSG.inventory, this.inventorySync(rt));
@@ -2584,7 +2719,7 @@ export class FilamentRoom extends Room<FilamentState> {
           return;
         }
         if (this.runtimes.get(client.sessionId) !== rt) return;
-        const add = addItem(rt.pack, r.taken.itemId, r.taken.qty, CONFIG.inventory.stackMax);
+        const add = addItem(rt.pack, r.taken.itemId, r.taken.qty);
         rt.pack = add.inv;
         if (add.overflow > 0) {
           // Pack filled mid-flight: park the rest in the mailbox, no loss.
@@ -2652,7 +2787,7 @@ export class FilamentRoom extends Room<FilamentState> {
           }
           return;
         }
-        const add = addItem(rt.pack, r.bought.itemId, r.bought.qty, CONFIG.inventory.stackMax);
+        const add = addItem(rt.pack, r.bought.itemId, r.bought.qty);
         rt.pack = add.inv;
         if (r.bought.durability !== undefined) {
           // Gear travels with its wear: stamp it onto the slot just added.
@@ -2716,7 +2851,7 @@ export class FilamentRoom extends Room<FilamentState> {
         rt.bolts += parcel.bolts;
         const leftover: typeof parcel.stock = [];
         for (const item of parcel.stock) {
-          const add = addItem(rt.pack, item.itemId, item.qty, CONFIG.inventory.stackMax);
+          const add = addItem(rt.pack, item.itemId, item.qty);
           rt.pack = add.inv;
           if (item.durability !== undefined && add.added > 0) {
             for (let i = rt.pack.slots.length - 1; i >= 0; i--) {
@@ -2880,11 +3015,11 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       return;
     }
-    const add = addItem(rt.pack, recipe.output as ItemId, 1, CONFIG.inventory.stackMax);
+    const add = addItem(rt.pack, recipe.output as ItemId, 1);
     if (add.added < 1) {
       // Refund materials if the pack is full — crafts never eat inputs.
       for (const [mid, qty] of Object.entries(recipe.materials)) {
-        rt.pack = addItem(rt.pack, mid as ItemId, qty, CONFIG.inventory.stackMax).inv;
+        rt.pack = addItem(rt.pack, mid as ItemId, qty).inv;
       }
       client.send(MSG.notice, { text: 'Your Pack is full.' });
       return;
@@ -2903,6 +3038,8 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.inventory, this.inventorySync(rt));
     client.send(MSG.notice, { text: `Crafted: ${ITEMS[recipe.output as ItemId].name}.` });
+    // F3: the result-card moment on the client rides this dedicated event.
+    client.send(MSG.crafted, { itemId: recipe.output } satisfies CraftedEvent);
     this.questProgress(client, rt, { type: 'craft' });
   }
 
@@ -3163,7 +3300,7 @@ export class FilamentRoom extends Room<FilamentState> {
     // The occasional tip: a Manifest keepsake, never currency.
     let tipped = false;
     if (this.rng() < cfg.rareTipChance) {
-      const rr = addItem(rt.pack, 'waxChit', 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, 'waxChit', 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         tipped = true;
@@ -3207,7 +3344,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (this.rng() < chance) {
       const pool = CONFIG.terrarium.rares;
       rare = pool[Math.floor(this.rng() * pool.length)] as ItemId;
-      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, rare, 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         this.recordManifest(client, rt, rare);
@@ -3285,7 +3422,7 @@ export class FilamentRoom extends Room<FilamentState> {
     // Hop count doubles as validation: 0 = same stop or not on the line.
     const hops = tramHops(this.districtId, msg.to);
     if (hops === 0) return;
-    if (!this.nearProp(rt, 'tramgate', 4)) {
+    if (!this.nearProp(rt, 'tramgate', CONFIG.travel.gateRadiusTiles)) {
       client.send(MSG.notice, { text: 'The tram leaves from the gate.' });
       return;
     }
@@ -3296,7 +3433,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     rt.bolts -= toll;
     rt.pendingDistrict = msg.to;
-    // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+    // PP6 (amended): a free leg (Filament ↔ Stacks) charges nothing → no sink log.
     if (toll > 0) {
       ledger.log({
         type: 'spend',
@@ -3374,7 +3511,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const fee = Math.min(CONFIG.tangle.scrapcache.reclaimFeeBolts, cache.bolts);
     rt.bolts += cache.bolts - fee;
     for (const stack of cache.stacks) {
-      rt.pack = addItem(rt.pack, stack.itemId, stack.qty, CONFIG.inventory.stackMax).inv;
+      rt.pack = addItem(rt.pack, stack.itemId, stack.qty).inv;
     }
     this.caches.delete(msg.cacheId);
     this.state.caches.delete(msg.cacheId);
@@ -4317,13 +4454,13 @@ export class FilamentRoom extends Room<FilamentState> {
   ): void {
     let added = 0;
     if (qty > 0) {
-      const r = addItem(rt.pack, itemId, qty, CONFIG.inventory.stackMax);
+      const r = addItem(rt.pack, itemId, qty);
       rt.pack = r.inv;
       added = r.added;
     }
     let rareGranted: ItemId | null = null;
     if (rare !== null) {
-      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, rare, 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         rareGranted = rare;
@@ -4396,6 +4533,9 @@ export class FilamentRoom extends Room<FilamentState> {
   }
 
   private async persist(rt: PlayerRuntime): Promise<void> {
+    // W7: a spectator is non-persistent — never write it to the DB (this one
+    // guard covers onLeave, onDispose, the 30s tick, and every inline call).
+    if (rt.spectator) return;
     const district = rt.pendingDistrict ?? this.districtId;
     // A tram rider's saved tile belongs to the ORIGIN district's geometry —
     // persist the destination gate instead so arrivals step off the tram.

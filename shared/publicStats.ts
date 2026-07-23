@@ -100,13 +100,17 @@ export function cityStatTiles(s: PublicStats): StatTile[] {
  * The TOKEN LEDGER tiles. Values await the first published City Ledger (the
  * token layer is M4-gated — no $AMP state exists yet), so they render greyed
  * with {@link TOKEN_LEDGER_PLACEHOLDER}. Copy is backward-looking; the only
- * outflows named are burns and prize-reserve refills (golden rule 8).
+ * treasury outflows named are burns and the champions' purse (golden rule 8).
+ * v3 economy: purchases are $AMP-only and split 30% burn / 70% treasury; the
+ * monthly buyback is funded by Robinhood Chain ETH creator fees (on by default,
+ * CREATOR_REWARDS_ENABLED) and splits half burn / half champions' purse. All
+ * values are backward-looking reporting.
  */
 export const TOKEN_LEDGER_TILES: readonly TokenTile[] = [
-  { label: '$AMP burned', hint: 'cumulative, from premium purchases' },
-  { label: 'Treasury balance', hint: 'burns and prize-reserve refills only' },
-  { label: 'Buyback total', hint: 'automated monthly buyback' },
-  { label: "Champions' purse", hint: 'the capped prize reserve' },
+  { label: '$AMP burned', hint: '30% of every spend, on-chain' },
+  { label: 'Treasury balance', hint: 'the 70% share; only ever burns + the purse' },
+  { label: 'Buyback total', hint: 'automated monthly, from creator-fee revenue' },
+  { label: "Champions' purse", hint: 'the capped prize purse' },
 ];
 
 export const TOKEN_LEDGER_PLACEHOLDER = '— awaiting first ledger —';

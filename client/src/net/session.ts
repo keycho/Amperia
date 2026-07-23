@@ -14,10 +14,17 @@ export const session: {
    * wheel (UIScene). WorldScene refreshes this every frame.
    */
   eInteractActive: boolean;
+  /**
+   * F1: true while any UI panel (merchant, bank, manifest, map, …) is open.
+   * UIScene refreshes this every frame; the camera wheel-zoom stands down so
+   * a wheel over a panel never zooms the world behind it.
+   */
+  panelOpen: boolean;
 } = {
   room: null,
   events: new Phaser.Events.EventEmitter(),
   eInteractActive: false,
+  panelOpen: false,
 };
 
 export const SessionEvents = {
@@ -38,6 +45,8 @@ export const SessionEvents = {
   openQuests: 'openQuests',
   /** Personal quest log sync: payload QuestsSync. */
   quests: 'quests',
+  /** F3: a craft landed — payload CraftedEvent (drives the result card). */
+  crafted: 'crafted',
   /** HUD tracker line for the first active quest (string). */
   questTracker: 'questTracker',
   /** Direct trade flow (world → UI scene): payloads from @shared/protocol. */
@@ -77,4 +86,9 @@ export const SessionEvents = {
   banner: 'banner',
   /** U3d: you went down — payload the youDown combat event. */
   deathRecap: 'deathRecap',
+  /** F5: loot landed — fly a thumb chip from the node's screen point to the
+   *  hotbar. Payload { itemId, sx, sy } (screen coords from WorldScene). */
+  lootChipFly: 'lootChipFly',
+  /** Map M3: live seated-Spark counts per district. Payload CityPresenceEvent. */
+  cityPresence: 'cityPresence',
 } as const;

@@ -3,7 +3,7 @@ import type { Rng } from './rng';
 /**
  * The Fortune Coil (S4) — ONE free spin daily. HARD RULE, asserted here
  * and in the server handler: the wheel takes NO currency input of any
- * kind. No $AMP, no SOL, no Bolts — there is no paid-spin codepath, and
+ * kind. No $AMP, no ETH, no Bolts — there is no paid-spin codepath, and
  * even Bolts spins wait for a separate legal review (CLAUDE.md rule 6:
  * no randomness downstream of a premium payment; the free spin sits
  * upstream of every payment). All prizes are untradeable.
@@ -31,14 +31,14 @@ export interface CoilSpinIntent {
   /** The spin takes nothing. This brand field documents exactly that. */
   free?: true;
 }
-type ForbiddenCurrencyKeys = 'bolts' | 'amp' | 'sol' | 'payment' | 'price' | 'cost';
+type ForbiddenCurrencyKeys = 'bolts' | 'amp' | 'eth' | 'payment' | 'price' | 'cost';
 type AssertNoCurrency<T> = keyof T & ForbiddenCurrencyKeys extends never ? true : never;
 export const COIL_TAKES_NO_CURRENCY: AssertNoCurrency<CoilSpinIntent> = true;
 
 /** Runtime guard for the handler: reject any payload smuggling currency. */
 export function assertFreeSpin(msg: unknown): void {
   if (typeof msg !== 'object' || msg === null) return;
-  for (const key of ['bolts', 'amp', 'sol', 'payment', 'price', 'cost']) {
+  for (const key of ['bolts', 'amp', 'eth', 'payment', 'price', 'cost']) {
     if (key in (msg as Record<string, unknown>)) {
       throw new Error(`Fortune Coil: currency input path does not exist (got '${key}')`);
     }

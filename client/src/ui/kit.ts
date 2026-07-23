@@ -66,6 +66,10 @@ export function kitText(
  */
 export function kitPlate(scene: Phaser.Scene, w: number, h: number, r = RADIUS): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics();
+  // F4 overlap detector: plates declare their opaque rect so the audit can
+  // (a) require child texts to stay inside and (b) treat covered text as
+  // hidden, not colliding. Local-space offset + size.
+  g.setData('kitClipRect', { ox: 0, oy: 0, w, h });
   g.fillStyle(UIK.shadow, 0.34);
   g.fillRoundedRect(3, 5, w, h, r);
   g.fillStyle(UIK.plate, 0.92);
@@ -123,6 +127,10 @@ export function kitHeader(
     color: PALETTE.neonAmber,
     bold: true,
   }).setOrigin(0, 0.5);
+  // F4: a long title must never cross the ✕ or the plate edge — one line,
+  // ellipsis-clamped to the space between the glyph and the close button.
+  t.setWordWrapWidth(Math.max(60, w - (SPACE.md + 13) - SPACE.md - 26));
+  kitClampLines(t, 1);
   container.add(t);
 
   if (onClose !== undefined) container.add(kitCloseButton(scene, w - SPACE.md, HEADER_H / 2, onClose));
@@ -154,6 +162,9 @@ export interface ButtonOpts {
   primary?: boolean;
   /** Rose gradient — DESTRUCTIVE / irreversible (drop, abandon, leave). */
   danger?: boolean;
+  /** F5: visibly inert — dimmed, no hover, no hand cursor, no click. A
+   *  button that LOOKS clickable but does nothing is a dead button. */
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -225,6 +236,11 @@ export function kitButton(
   paint('idle');
 
   c.setSize(w, h);
+  if (opts.disabled === true) {
+    // Inert read: dimmed, non-interactive — never a dead-looking live button.
+    c.setAlpha(0.45);
+    return c;
+  }
   c.setInteractive({
     hitArea: new Phaser.Geom.Rectangle(0, 0, w, h),
     hitAreaCallback: Phaser.Geom.Rectangle.Contains,
@@ -239,6 +255,232 @@ export function kitButton(
   });
   c.on('pointerup', () => paint('hover'));
   return c;
+}
+
+/**
+ * F5 — THE panel pop: every panel opens and closes through this one tween
+ * (~120ms scale+fade, centre-anchored), so the whole UI breathes the same
+ * way. Call AFTER the panel has positioned/refreshed itself. The caller
+ * flips its own `visible` flag immediately (Escape chain + the wheel gate
+ * read it); this only animates the container.
+ */
+export function kitPanelPop(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  size: { w: number; h: number },
+  show: boolean,
+  onHidden?: () => void,
+): void {
+  scene.tweens.killTweensOf(container);
+  // A re-toggle mid-tween would capture a scale-offset position as the new
+  // base and creep the panel — restore the stored base first in that case.
+  const stored = container.getData('popBase') as { x: number; y: number } | undefined;
+  if (container.getData('popActive') === true && stored !== undefined) {
+    container.setPosition(stored.x, stored.y);
+  }
+  const bx = container.x;
+  const by = container.y;
+  container.setData('popBase', { x: bx, y: by });
+  container.setData('popActive', true);
+  const state = { t: show ? 0 : 1 };
+  const apply = (): void => {
+    const s = 0.96 + 0.04 * state.t;
+    container.setScale(s);
+    container.setPosition(bx + ((1 - s) * size.w) / 2, by + ((1 - s) * size.h) / 2);
+    container.setAlpha(state.t);
+  };
+  if (show) container.setVisible(true);
+  apply();
+  scene.tweens.add({
+    targets: state,
+    t: show ? 1 : 0,
+    duration: 120,
+    ease: show ? 'quad.out' : 'quad.in',
+    onUpdate: apply,
+    onComplete: () => {
+      container.setScale(1);
+      container.setPosition(bx, by);
+      container.setAlpha(1);
+      container.setData('popActive', false);
+      if (!show) {
+        container.setVisible(false);
+        onHidden?.();
+      }
+    },
+  });
+}
+
+/**
+ * F4 — truncate a wrapped text with an ellipsis until it fits `maxLines`.
+ * The blunt instrument that keeps captions inside their flow slot.
+ */
+export function kitClampLines(t: Phaser.GameObjects.Text, maxLines: number): void {
+  if (t.getWrappedText().length <= maxLines) return;
+  let s = t.text;
+  while (s.length > 1 && t.getWrappedText().length > maxLines) {
+    s = s.slice(0, -2).trimEnd();
+    t.setText(`${s}…`);
+  }
+}
+
+export interface TabRowItem {
+  id: string;
+  label: string;
+  /** Accent the label (e.g. a completed Manifest page reads amber). */
+  accent?: boolean;
+}
+
+export interface TabRowResult {
+  /** Total height consumed — flow the content below from here. */
+  height: number;
+  /** Everything created, for dynamic-panel cleanup. */
+  objects: Phaser.GameObjects.GameObject[];
+}
+
+const TAB_GAP = 14;
+const TAB_ROW_H = 24;
+
+/**
+ * F4 — THE tab/chip row. The overflow rule for every tab row in the game,
+ * in order: (1) shrink type one step (body → caption); (2) wrap onto a
+ * second row; (3) page horizontally with ‹ › chevrons. A tab row never
+ * clips and never escapes `maxW`. Returns the consumed height so callers
+ * FLOW content beneath it instead of hard-coding a Y.
+ */
+export function kitTabRow(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  opts: {
+    x: number;
+    y: number;
+    maxW: number;
+    items: readonly TabRowItem[];
+    activeId: string;
+    onPick(id: string): void;
+    /** Paging window start (scroll fallback keeps it across refreshes). */
+    pageStart?: number;
+    onPageStart?(start: number): void;
+  },
+): TabRowResult {
+  const objects: Phaser.GameObjects.GameObject[] = [];
+  const measure = (level: TypeLevel): number[] => {
+    return opts.items.map((it) => {
+      const probe = kitText(scene, 0, 0, it.label, level, { bold: true });
+      const w = Math.ceil(probe.width);
+      probe.destroy();
+      return w;
+    });
+  };
+  const totalW = (widths: number[]): number =>
+    widths.reduce((a, w) => a + w, 0) + TAB_GAP * Math.max(0, widths.length - 1);
+
+  // (1) shrink: body first, caption when the row would clip.
+  let level: TypeLevel = 'body';
+  let widths = measure(level);
+  if (totalW(widths) > opts.maxW) {
+    level = 'caption';
+    widths = measure(level);
+  }
+
+  // (2) wrap: greedy fill up to two rows.
+  const rows: number[][] = [[]];
+  {
+    let x = 0;
+    widths.forEach((w, i) => {
+      const row = rows[rows.length - 1] as number[];
+      const need = (row.length > 0 ? TAB_GAP : 0) + w;
+      if (x + need > opts.maxW && row.length > 0 && rows.length < 2) {
+        rows.push([i]);
+        x = w;
+      } else {
+        row.push(i);
+        x += need;
+      }
+    });
+  }
+
+  // (3) scroll: two wrapped rows still clip → one paged row with chevrons.
+  const overflowing = rows.some(
+    (r) => totalW(r.map((i) => widths[i] as number)) > opts.maxW,
+  );
+
+  const drawTab = (i: number, tx: number, ty: number): number => {
+    const it = opts.items[i] as TabRowItem;
+    const on = it.id === opts.activeId;
+    const w = widths[i] as number;
+    if (on) {
+      const bg = scene.add.graphics();
+      bg.fillStyle(UIK.amber, 1);
+      bg.fillRoundedRect(tx - 6, ty - 3, w + 12, TAB_ROW_H - 4, 6);
+      container.add(bg);
+      objects.push(bg);
+    }
+    const restColor = on ? PALETTE.ink : it.accent === true ? PALETTE.neonAmber : UI_TEXT_WARM;
+    const t = kitText(scene, tx, ty, it.label, level, {
+      color: restColor,
+      bold: on,
+    });
+    t.setInteractive({ useHandCursor: true });
+    // F5: hover state on every clickable tab (the active one stays put).
+    if (!on) {
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(restColor));
+    }
+    t.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+      ev.stopPropagation();
+      opts.onPick(it.id);
+    });
+    container.add(t);
+    objects.push(t);
+    return w;
+  };
+
+  if (!overflowing) {
+    rows.forEach((row, r) => {
+      let tx = opts.x;
+      const ty = opts.y + r * TAB_ROW_H;
+      for (const i of row) tx += drawTab(i, tx, ty) + TAB_GAP;
+    });
+    return { height: rows.length * TAB_ROW_H, objects };
+  }
+
+  // Paged single row: ‹ [window of tabs] › — the active tab is kept in view
+  // by the caller via pageStart; chevrons step the window.
+  const chevW = 18;
+  const innerW = opts.maxW - chevW * 2 - TAB_GAP;
+  const start = Math.min(opts.pageStart ?? 0, Math.max(0, opts.items.length - 1));
+  // Window: greedy from `start` until innerW is spent.
+  let end = start;
+  {
+    let x = 0;
+    while (end < opts.items.length) {
+      const need = (end > start ? TAB_GAP : 0) + (widths[end] as number);
+      if (x + need > innerW && end > start) break;
+      x += need;
+      end++;
+    }
+  }
+  const chev = (cx: number, glyph: string, enabled: boolean, step: number): void => {
+    const t = kitText(scene, cx, opts.y, glyph, level, {
+      color: enabled ? PALETTE.neonAmber : UI_TEXT_WARM,
+      bold: true,
+    });
+    t.setAlpha(enabled ? 1 : 0.35);
+    if (enabled) {
+      t.setInteractive({ useHandCursor: true });
+      t.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev.stopPropagation();
+        opts.onPageStart?.(Math.max(0, start + step));
+      });
+    }
+    container.add(t);
+    objects.push(t);
+  };
+  chev(opts.x, '‹', start > 0, -1);
+  let tx = opts.x + chevW + TAB_GAP / 2;
+  for (let i = start; i < end; i++) tx += drawTab(i, tx, opts.y) + TAB_GAP;
+  chev(opts.x + opts.maxW - chevW + 4, '›', end < opts.items.length, +1);
+  return { height: TAB_ROW_H, objects };
 }
 
 /**
@@ -283,6 +525,7 @@ export function kitChip(
     g.lineStyle(1, UIK.border, 0.9);
     g.strokeRoundedRect(0.5, 0.5, w - 1, h - 1, h / 2);
     c.setSize(w, h);
+    c.setData('kitClipRect', { ox: 0, oy: 0, w, h }); // F4 audit: opaque pill
   };
   layout();
   c.setValue = (str: string): void => {

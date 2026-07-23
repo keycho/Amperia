@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE_INT } from '@shared/palette';
+import { STYLE } from './styleConfig';
 
 /**
  * Procedural palette placeholders, generated once at boot. Everything is
@@ -12,14 +13,16 @@ function g2(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
 }
 
 
-/** Contact shadow for walking entities (tight core, soft fringe). */
+/** Contact shadow for walking entities (tight core, soft fringe).
+ *  Pass strengths come from the style config (G1 grounding). */
 export function makeShadowTextures(scene: Phaser.Scene): void {
+  const [outer, mid, core] = STYLE.shadows.entity;
   const g = g2(scene);
-  g.fillStyle(PALETTE_INT.ink, 0.22);
+  g.fillStyle(PALETTE_INT.ink, outer);
   g.fillEllipse(30, 15, 58, 28);
-  g.fillStyle(PALETTE_INT.ink, 0.38);
+  g.fillStyle(PALETTE_INT.ink, mid);
   g.fillEllipse(28, 14, 40, 19);
-  g.fillStyle(PALETTE_INT.ink, 0.45);
+  g.fillStyle(PALETTE_INT.ink, core);
   g.fillEllipse(26, 13, 26, 12);
   g.generateTexture('fx-contact-shadow', 60, 30);
   g.destroy();

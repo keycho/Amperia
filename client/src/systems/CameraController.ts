@@ -1,10 +1,25 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
+import { session } from '../net/session';
+import { anchorScroll, clampCenter, snapScreenGrid, stepZoom, viewCenter } from './cameraMath';
 
 /**
- * Camera feel: pointer-anchored wheel zoom (clamped), middle-mouse drag pan,
- * edge pan, and lerped follow of a target once one exists. Manual panning
- * pauses follow; movement code re-engages it via followTarget().
+ * Camera feel (F1): step-ladder wheel zoom, middle-mouse drag pan, edge pan,
+ * and lerped follow of the Spark. The controller OWNS the clamp — Phaser's
+ * cam.setBounds is not used, because its corner-pin behaviour when the
+ * viewport out-sizes the bounds was bug B5. Every scroll mutation funnels
+ * through {@link applyClamp}, which clamps to the deck (screen-constant void
+ * margin) and rounds onto the screen-pixel grid so nothing shimmers.
+ *
+ * Zoom rules (all live-repro'd before fixing):
+ *  - steps only (CONFIG.camera.zoomSteps — the texel-crisp set at NEAREST);
+ *    off-ladder zooms (photo mode) snap home on the next wheel, never invert;
+ *  - anchored on the pointer when free, on the FOLLOW TARGET while following
+ *    (pointer-anchoring mid-walk threw the Spark ~850px off screen and let
+ *    the follow lerp rubber-band it back — the worst of the reported bugs);
+ *  - ignored while a UI panel is open (session.panelOpen) or camera locked;
+ *  - a zoom change emits 'camera-zoom' on scene.events so world-anchored
+ *    text (nameplates, marker labels, E-prompt, bubbles) can counter-scale.
  */
 export class CameraController {
   private readonly scene: Phaser.Scene;
@@ -14,6 +29,12 @@ export class CameraController {
   private dragging = false;
   private locked = false;
   private lastDrag = new Phaser.Math.Vector2();
+  /** True once the mouse has actually moved — a pristine pointer parks at
+   *  (0,0), inside the edge-pan margin, and used to pan the camera into the
+   *  corner (and silently kill follow) before the player ever touched it. */
+  private pointerSeen = false;
+  /** World-space deck rect; clamp is a no-op until the scene provides it. */
+  private bounds: { x: number; y: number; w: number; h: number } | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -27,23 +48,39 @@ export class CameraController {
         _dx: number,
         deltaY: number,
       ) => {
-        // SHARPNESS (addendum a): zoom walks texel-crisp steps only —
-        // textures bake at 2× and draw at 0.5, so these ratios decimate
-        // uniformly (no shimmer, no half-texel smear).
+        if (this.locked || session.panelOpen) return;
         const steps = CONFIG.camera.zoomSteps as readonly number[];
-        const idx = steps.findIndex((s) => Math.abs(s - this.cam.zoom) < 0.01);
-        const at = idx >= 0 ? idx : 1;
-        const nextIdx = Phaser.Math.Clamp(at + (deltaY > 0 ? -1 : 1), 0, steps.length - 1);
-        const next = steps[nextIdx] as number;
+        const next = stepZoom(steps, this.cam.zoom, deltaY > 0 ? -1 : 1);
         if (next === this.cam.zoom) return;
-        // Keep the world point under the cursor fixed while zooming.
-        const before = this.cam.getWorldPoint(pointer.x, pointer.y);
+
+        // Anchor: the follow target's screen point while following (the Spark
+        // must not move on screen), the pointer's world point when free.
+        // Screen positions come from LIVE scroll (viewCenter), never
+        // cam.midPoint — midPoint only refreshes at preRender, and a stale
+        // read across our own mid-frame scroll writes was the 239px jump.
+        let wx: number;
+        let wy: number;
+        let sx: number;
+        let sy: number;
+        const cX = viewCenter(this.cam.scrollX, this.cam.width);
+        const cY = viewCenter(this.cam.scrollY, this.cam.height);
+        if (this.following && this.target !== null) {
+          wx = this.target.x;
+          wy = this.target.y;
+          sx = (wx - cX) * this.cam.zoom + this.cam.width / 2;
+          sy = (wy - cY) * this.cam.zoom + this.cam.height / 2;
+        } else {
+          wx = cX + (pointer.x - this.cam.width / 2) / this.cam.zoom;
+          wy = cY + (pointer.y - this.cam.height / 2) / this.cam.zoom;
+          sx = pointer.x;
+          sy = pointer.y;
+        }
         this.cam.setZoom(next);
-        // Force matrix update before re-projecting.
-        this.cam.preRender();
-        const after = this.cam.getWorldPoint(pointer.x, pointer.y);
-        this.cam.scrollX += before.x - after.x;
-        this.cam.scrollY += before.y - after.y;
+        const s = anchorScroll(next, this.cam.width, this.cam.height, wx, wy, sx, sy);
+        this.cam.scrollX = s.scrollX;
+        this.cam.scrollY = s.scrollY;
+        this.applyClamp();
+        this.scene.events.emit('camera-zoom', next);
       },
     );
 
@@ -58,11 +95,19 @@ export class CameraController {
       if (!pointer.middleButtonDown()) this.dragging = false;
     });
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      this.pointerSeen = true;
       if (!this.dragging) return;
       this.cam.scrollX -= (pointer.x - this.lastDrag.x) / this.cam.zoom;
       this.cam.scrollY -= (pointer.y - this.lastDrag.y) / this.cam.zoom;
       this.lastDrag.set(pointer.x, pointer.y);
+      this.applyClamp();
     });
+  }
+
+  /** The deck rect the camera may show (plus a screen-constant void margin). */
+  setWorldBounds(b: { x: number; y: number; w: number; h: number }): void {
+    this.bounds = b;
+    this.applyClamp();
   }
 
   /** Follow a target (the Spark). Re-engages after manual panning. */
@@ -73,20 +118,52 @@ export class CameraController {
 
   /**
    * Photo mode (marketing shots): a locked camera holds a composed frame
-   * — edge pan, drag, and the follow lerp all stand down. Unlocking
-   * re-engages follow if a target exists.
+   * — wheel, edge pan, drag, clamp, and the follow lerp all stand down.
+   * Unlocking re-engages follow if a target exists.
    */
   setLocked(locked: boolean): void {
     this.locked = locked;
     if (!locked && this.target !== null) this.following = true;
   }
 
+  /**
+   * Clamp scroll to the deck + a screen-constant margin (so the visible void
+   * beyond an edge never exceeds ~CONFIG.camera.edgeVoidScreenPx on screen at
+   * any zoom), centring instead of pinning when the viewport out-sizes the
+   * deck, then round onto the screen-pixel grid.
+   */
+  private applyClamp(): void {
+    if (this.bounds === null) return;
+    const z = this.cam.zoom;
+    const margin = CONFIG.camera.edgeVoidScreenPx / z;
+    // Clamp in CENTRE space (centre = scroll + view/2, zoom-independent —
+    // the verified Phaser model), then convert back and round to the grid.
+    const cx = clampCenter(
+      viewCenter(this.cam.scrollX, this.cam.width),
+      this.cam.displayWidth,
+      this.bounds.x,
+      this.bounds.w,
+      margin,
+    );
+    const cy = clampCenter(
+      viewCenter(this.cam.scrollY, this.cam.height),
+      this.cam.displayHeight,
+      this.bounds.y,
+      this.bounds.h,
+      margin,
+    );
+    this.cam.scrollX = snapScreenGrid(cx - this.cam.width / 2, z);
+    this.cam.scrollY = snapScreenGrid(cy - this.cam.height / 2, z);
+  }
+
   update(deltaMs: number): void {
     if (this.locked) return;
     const pointer = this.scene.input.activePointer;
 
-    // Edge pan (disabled while dragging; pauses follow when used).
-    if (!this.dragging && pointer.isDown === false) {
+    // Edge pan (disabled while dragging; pauses follow when used). Only a
+    // pointer that has really moved AND is over the canvas counts — else the
+    // camera creeps to a corner on its own (F1: the follow-loss bug).
+    if (!this.dragging && pointer.isDown === false && this.pointerSeen && this.scene.input.isOver) {
       const { edgePanMarginPx, edgePanSpeed } = CONFIG.camera;
       const w = this.scene.scale.width;
       const h = this.scene.scale.height;
@@ -107,15 +184,20 @@ export class CameraController {
       }
     }
 
-    // Lerped follow.
+    // Lerped follow — from the LIVE centre (scroll-derived), never the
+    // preRender-cached midPoint: a stale read across a same-frame zoom
+    // anchor was the mid-walk 239px camera jump.
     if (this.following && this.target) {
       const lerp = CONFIG.camera.followLerp;
-      const cx = this.cam.midPoint.x;
-      const cy = this.cam.midPoint.y;
+      const cx = viewCenter(this.cam.scrollX, this.cam.width);
+      const cy = viewCenter(this.cam.scrollY, this.cam.height);
       this.cam.centerOn(
         Phaser.Math.Linear(cx, this.target.x, lerp),
         Phaser.Math.Linear(cy, this.target.y, lerp),
       );
     }
+
+    // One clamp+round per frame catches every mutation path above.
+    this.applyClamp();
   }
 }

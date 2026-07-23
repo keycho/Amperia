@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import { sound } from '../audio/sound';
-import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 560;
 const H = 400;
@@ -109,17 +109,23 @@ export class HowToPlayPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      localStorage.setItem(SEEN_KEY, '1');
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(
         Math.round((cam.width - W) / 2),
         Math.round((cam.height - H) / 2),
       );
       this.refresh();
-    } else {
-      localStorage.setItem(SEEN_KEY, '1');
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private text(x: number, y: number, body: string, color: string, level: TypeLevel = 'body', bold = false) {

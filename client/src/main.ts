@@ -7,6 +7,7 @@ import { LoginScene } from './scenes/LoginScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { voxelSprite } from './render/voxel';
+import { auditTexts } from './debug/textAudit';
 import { bakeSparkAppearance, equipKey } from './render/sparkModel';
 import { decodeEquipped } from '@shared/cosmetics';
 import { session } from './net/session';
@@ -34,6 +35,9 @@ declare global {
       /** Bake a Spark appearance and return its baked texture key for a dir
        *  (verification harness: the lineup + silhouette checkpoints). */
       bakeSpark?: (code: string, dir?: string, equipped?: string) => string;
+      /** F4: the overlap detector's data feed — every visible text's screen
+       *  box + owning plate. Consumed by client/tests/overlapTour.mjs. */
+      textAudit?: () => import('./debug/textAudit').AuditReport;
     };
   }
 }
@@ -58,6 +62,8 @@ const pixelScale =
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
+  // F2: right-click opens the slot context menu — the browser menu yields.
+  disableContextMenu: true,
   backgroundColor: MATERIAL_COLORS.voidBlack,
   scale: pixelScale,
   // SHARPNESS (render-overhaul addendum a): the whole scene renders
@@ -90,6 +96,7 @@ window.__amperia = {
     bakeSparkAppearance(scene, code, { previewOnly: true, equipped });
     return voxelSprite(`spark@${code}#${equipKey(decodeEquipped(equipped))}-${dir}`).key;
   },
+  textAudit: () => auditTexts(game),
 };
 
 // Sound stays silent until the first real gesture (autoplay policy), then

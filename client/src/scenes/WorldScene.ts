@@ -18,6 +18,7 @@ import type {
   ChargeStateShape,
   ChargeSyncEvent,
   ChatBroadcast,
+  CraftedEvent,
   CombatEvent,
   EmoteBroadcast,
   LampStateShape,
@@ -41,6 +42,7 @@ import type {
   RestedSync,
   ManifestSync,
   InventorySync,
+  CityPresenceEvent,
   LootEvent,
   MoveAcceptedEvent,
   PricesSync,
@@ -74,6 +76,7 @@ import {
 import { Spark } from '../entities/Spark';
 import { InteractionMarkers, INTERACTABLE_STYLES } from '../systems/InteractionMarkers';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
+import { markVisited } from '../systems/visited';
 import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
@@ -84,28 +87,33 @@ import {
   TILE_H,
   TILE_W,
   tileToWorld,
+  worldToTile,
   worldToTileFloor,
 } from '../iso/project';
 import {
   DISTRICT_KEY,
   getStateCallbacks,
   joinDistrict,
+  joinDistrictSpectate,
   MSG,
   send,
   TOKEN_KEY,
+  type AuthResponse,
   type FilamentRoom,
 } from '../net/NetClient';
+import { connectWallet, WalletRejectedError } from '../net/wallet';
 import { session, SessionEvents } from '../net/session';
 import { showCreatorOverlay, type CreatorHandle } from '../ui/creatorOverlay';
 import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
-import { floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
+import { baseFloorKind, floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
 import { placeAmbientNpcs } from '../render/ambientNpcs';
-import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { placeGroundDecals } from '../render/groundDecals';
+import { bloom, DARKNESS, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
 import { itemThumbKey } from '../render/itemThumbs';
 import {
@@ -116,6 +124,7 @@ import {
   addLampCone,
 } from '../render/atmosphere';
 import { CameraController } from '../systems/CameraController';
+import { nearestStepIdx, worldTextScale } from '../systems/cameraMath';
 import { GatherView } from '../systems/GatherView';
 import { OcclusionFade, type OcclusionTarget } from '../systems/OcclusionFade';
 import { gameState, GameEvents } from '../state/GameState';
@@ -186,12 +195,18 @@ export class WorldScene extends Phaser.Scene {
     nextOkMs: number;
   }> = [];
   private mobs = new Map<string, Mob>();
+  /** G4: every standing light source (tile coords) — the darkness gradient
+   *  and prop dimming both key off distance to the nearest of these. */
+  private lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
   private ambientBots: AmbientScuttlebot[] = [];
   private room: FilamentRoom | null = null;
   private token = '';
   private district: DistrictId = 'filament';
+  /** W7: joined with no wallet — read-only, with a persistent Connect button. */
+  private spectate = false;
+  private spectateBanner: HTMLElement | null = null;
   private dynamoWorld = { x: 0, y: 0 };
   private stallsWorld = { x: 0, y: 0 };
   /** Shop-stall presence layers (shingle + counter goods), by stall id. */
@@ -238,14 +253,18 @@ export class WorldScene extends Phaser.Scene {
     super('world');
   }
 
-  init(data: { token?: string; district?: DistrictId }): void {
+  init(data: { token?: string; district?: DistrictId; spectate?: boolean }): void {
     this.token = data.token ?? this.token;
     this.district = data.district ?? 'filament';
+    // A promotion (spectate → wallet) restarts with a token and no spectate
+    // flag, so this correctly clears spectate mode on the way in.
+    this.spectate = data.spectate === true;
     // Scene restarts (tram travel) reuse this instance: field initializers
     // don't re-run, so the entity maps still point at destroyed objects.
     this.nodes = new Map();
     this.sparks = new Map();
     this.mobs = new Map();
+    this.npcBubbles = new Map();
     this.lampViews = new Map();
     this.cacheViews = new Map();
     this.ambientBots = [];
@@ -277,6 +296,9 @@ export class WorldScene extends Phaser.Scene {
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
     this.drawFloor();
+    // G2: the authored grime layer — cracks, weeds, stains, scraps — laid
+    // deterministically per tile so every client walks the same streets.
+    placeGroundDecals(this, this.map);
     this.placeWorldRim();
     this.placeProps();
     this.placeLoftBerths();
@@ -333,8 +355,8 @@ export class WorldScene extends Phaser.Scene {
     addFilmGrain(this);
     // Warm ambience overlays live in the UI scene: its camera never zooms,
     // so the grade can't shrink/scale with world zoom (or pixel modes).
-    this.setupCamera();
     this.cameraCtl = new CameraController(this);
+    this.setupCamera();
     // PP3: the restrained post pipeline (vignette + emissive bloom + grade),
     // on the world camera only, gated by the setting.
     applyWorldPostFX(this, settings().postfx);
@@ -612,11 +634,24 @@ export class WorldScene extends Phaser.Scene {
 
   private async connect(): Promise<void> {
     try {
-      const room = await joinDistrict(this.token, this.district);
+      const room = this.spectate
+        ? await joinDistrictSpectate(this.district)
+        : await joinDistrict(this.token, this.district);
       this.bindRoom(room);
+      // Map M4: an arrival marks the district visited — the world map's
+      // first-visit light-up keys off this (spectators leave no memory).
+      if (!this.spectate) markVisited(this.district);
       this.connectingText?.destroy();
       this.connectingText = null;
+      if (this.spectate) this.showSpectateBanner();
     } catch (err) {
+      // A spectate join has no token to salvage — just return to the title.
+      if (this.spectate) {
+        console.error('[net] spectate join failed', err);
+        this.scene.stop('ui');
+        this.scene.start('login');
+        return;
+      }
       // A remembered district can go stale (or its toll be short) — fall
       // back to the Filament once before treating the token as bad.
       if (this.district !== 'filament') {
@@ -631,6 +666,82 @@ export class WorldScene extends Phaser.Scene {
       this.scene.stop('ui');
       this.scene.start('login');
     }
+  }
+
+  /**
+   * W7: the persistent "Spectating — connect your wallet to play" bar, shown
+   * the whole time a visitor is in the world. Connecting promotes them from a
+   * read-only Visitor to a real signed-in Spark (rejoin with the new token).
+   */
+  private showSpectateBanner(): void {
+    if (this.spectateBanner !== null) return;
+    const bar = document.createElement('div');
+    bar.style.cssText = [
+      'position:fixed',
+      'left:50%',
+      'bottom:18px',
+      'transform:translateX(-50%)',
+      'z-index:20',
+      'display:flex',
+      'align-items:center',
+      'gap:12px',
+      'padding:9px 14px',
+      'background:rgba(10,8,20,0.86)',
+      'border:1px solid #6d5a86',
+      'border-radius:12px',
+      'font-family:monospace',
+      'color:#e9dcc7',
+      'font-size:13px',
+      'box-shadow:0 6px 22px rgba(0,0,0,0.5)',
+    ].join(';');
+    const label = document.createElement('span');
+    label.textContent = 'Spectating — connect your wallet to play';
+    const btn = document.createElement('button');
+    btn.textContent = 'Connect Wallet';
+    btn.style.cssText = [
+      'padding:7px 16px',
+      'background:#ffb266',
+      'color:#0a0814',
+      'border:none',
+      'border-radius:8px',
+      'font-family:monospace',
+      'font-size:13px',
+      'font-weight:bold',
+      'letter-spacing:1px',
+      'cursor:pointer',
+    ].join(';');
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      connectWallet().then(
+        (auth) => this.promoteFromSpectate(auth),
+        (err: unknown) => {
+          btn.disabled = false;
+          btn.textContent = 'Connect Wallet';
+          if (!(err instanceof WalletRejectedError)) {
+            label.textContent =
+              err instanceof Error ? err.message : 'Something sputtered — try again.';
+          }
+        },
+      );
+    };
+    bar.append(label, btn);
+    document.body.append(bar);
+    this.spectateBanner = bar;
+    // Never leak the DOM node across a scene restart / shutdown.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.spectateBanner?.remove();
+      this.spectateBanner = null;
+    });
+  }
+
+  /** Promote a spectator to a real Spark: store the session + rejoin with it. */
+  private promoteFromSpectate(auth: AuthResponse): void {
+    this.spectateBanner?.remove();
+    this.spectateBanner = null;
+    localStorage.setItem(TOKEN_KEY, auth.token);
+    localStorage.setItem(DISTRICT_KEY, auth.district);
+    this.scene.restart({ token: auth.token, district: auth.district });
   }
 
   private bindRoom(room: FilamentRoom): void {
@@ -942,9 +1053,20 @@ export class WorldScene extends Phaser.Scene {
       const node = this.nodes.get(e.nodeId);
       const nx = node?.image.x ?? 0;
       const ny = (node?.image.y ?? 0) - 70;
+      // F5 pickup chip: hand the node's SCREEN point to the UI scene so the
+      // loot thumb can arc into the hotbar (centre = scroll + width/2).
+      const flyChip = (itemId: string): void => {
+        const cam = this.cameras.main;
+        session.events.emit(SessionEvents.lootChipFly, {
+          itemId,
+          sx: (nx - (cam.scrollX + cam.width / 2)) * cam.zoom + cam.width / 2,
+          sy: (ny + 40 - (cam.scrollY + cam.height / 2)) * cam.zoom + cam.height / 2,
+        });
+      };
       if (e.qty > 0) {
         floatText(this, nx, ny, `+${e.qty} ${ITEMS[e.itemId].name}`);
         sound.gatherChirp();
+        flyChip(e.itemId);
         // U5c: a quick spark burst off the node as the haul lands.
         if (node !== undefined) {
           for (let i = 0; i < 4; i++) {
@@ -970,6 +1092,7 @@ export class WorldScene extends Phaser.Scene {
       if (e.rare !== null) {
         floatText(this, nx, ny - 20, `+1 ${ITEMS[e.rare].name} ✦`, PALETTE.neonAmber);
         sound.rareChime();
+        flyChip(e.rare);
       }
       // U4d: a landed cycle queues the next; a zero take = full pack, stop.
       if (e.qty > 0 || e.rare !== null) this.autoGatherNext(e.nodeId);
@@ -977,8 +1100,14 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
+    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) =>
+      session.events.emit(SessionEvents.cityPresence, ev),
+    );
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
+    );
+    room.onMessage(MSG.crafted, (e: CraftedEvent) =>
+      session.events.emit(SessionEvents.crafted, e),
     );
     room.onMessage(MSG.quests, (sync: QuestsSync) =>
       session.events.emit(SessionEvents.quests, sync),
@@ -1385,6 +1514,8 @@ export class WorldScene extends Phaser.Scene {
     const box = this.add.container(0, 0, [bg, txt]);
     box.setDepth(1e6);
     box.setVisible(false);
+    // F4 audit: the prompt's opaque pill, in local space.
+    box.setData('kitClipRect', { ox: -46, oy: -13, w: 92, h: 26 });
     this.ePrompt = box;
   }
 
@@ -1421,6 +1552,15 @@ export class WorldScene extends Phaser.Scene {
           target = it;
         }
       }
+    }
+    // F4 stack rule: the E-prompt owns the lowest slot — the target's marker
+    // label yields while the prompt sits on it (released on target change).
+    const prev = this.eTarget;
+    if (prev !== null && prev !== target) {
+      this.markers?.setSuppressed(prev.tile.x, prev.tile.y, 'prompt', false);
+    }
+    if (target !== null && prev !== target) {
+      this.markers?.setSuppressed(target.tile.x, target.tile.y, 'prompt', true);
     }
     this.eTarget = target;
     session.eInteractActive = target !== null;
@@ -1511,10 +1651,38 @@ export class WorldScene extends Phaser.Scene {
     this.speakNpc(s.kind, s.x, s.y, def.lines[idx]!);
   }
 
+  /** F4: one live bubble per NPC anchor — a new line REPLACES the old one
+   *  (the detector caught interact-greets stacking on ambient lines). */
+  private npcBubbles = new Map<string, Phaser.GameObjects.Container>();
+
   /** PP2: float a speech bubble over an NPC (ambient line or interaction greet). */
   private speakNpc(kind: string, footX: number, footY: number, line: string): void {
     const lift = NPC_CHATTER[kind]?.lift ?? 90;
-    showSpeechBubble(this, footX, footY - lift, line, depthForWorldY(footY) + 30);
+    // F4 stack rules within this entity's anchor space:
+    //  · one bubble per speaker — a fresh line replaces the live one;
+    //  · the bubble suppresses the marker label for its whole lifetime;
+    //  · the E-prompt keeps the lowest slot — if it currently sits on this
+    //    entity, the bubble's tail tip rises to clear the prompt plate.
+    let tipY = footY - lift;
+    const t = worldToTileFloor(footX, footY);
+    const anchorKey = `${t.tx},${t.ty}`;
+    this.npcBubbles.get(anchorKey)?.destroy(); // its DESTROY releases suppression
+    const promptHere =
+      this.eTarget !== null &&
+      t.tx >= this.eTarget.tile.x - 1 &&
+      t.tx <= this.eTarget.tile.x + 2 &&
+      t.ty >= this.eTarget.tile.y - 1 &&
+      t.ty <= this.eTarget.tile.y + 2 &&
+      this.ePrompt?.visible === true;
+    if (promptHere && this.ePrompt !== null) {
+      tipY = Math.min(tipY, this.ePrompt.y - 13 * this.ePrompt.scaleY - 6);
+    }
+    this.markers?.setSuppressed(t.tx, t.ty, 'bubble', true);
+    const bubble = showSpeechBubble(this, footX, tipY, line, depthForWorldY(footY) + 30, () => {
+      this.markers?.setSuppressed(t.tx, t.ty, 'bubble', false);
+      if (this.npcBubbles.get(anchorKey) === bubble) this.npcBubbles.delete(anchorKey);
+    });
+    this.npcBubbles.set(anchorKey, bubble);
   }
 
   /** PP2: the NPC's greeting bubble when a Spark interacts with it. */
@@ -1913,7 +2081,7 @@ export class WorldScene extends Phaser.Scene {
       // Stop on full pack: simulate one unit landing (the inventory sync
       // arrives with the loot, so the mirror is current by now).
       const yieldId = WorldScene.NODE_YIELD[run.kind];
-      if (addItem(gameState.inventory, yieldId, 1, CONFIG.inventory.stackMax).added === 0) {
+      if (addItem(gameState.inventory, yieldId, 1).added === 0) {
         this.cancelAutoGather();
         return; // the loot toast already said the pack is full
       }
@@ -1951,6 +2119,9 @@ export class WorldScene extends Phaser.Scene {
     if (identity === null || this.room === null) return;
     const room = this.room;
     this.creatorMode = mode;
+    // F5a: a first wallet sign-in seats the Spark under a rolled cozy name
+    // (never a machine id), so pre-filling it keeps the creator consistent
+    // with what other Sparks already saw in-world.
     this.creator = showCreatorOverlay({
       scene: this,
       mode,
@@ -2141,7 +2312,10 @@ export class WorldScene extends Phaser.Scene {
 
     // Where lamplight lands (tile coords) — the wet glaze catches it there.
     // §B9 light discipline: every sheen spot maps to a REAL glow source.
+    // G4: the same list drives the darkness gradient (field, reused by
+    // the overlay pass and prop dimming).
     const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
+    this.lightSpots = lightSpots;
     for (const p of this.map.props) {
       if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
@@ -2206,29 +2380,22 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Floor-fix §1: per-tile baked diamonds — the zone material changes
-        // read the district layout; no drawn gridlines anywhere. The Tangle
-        // keeps only the industrial zones: plating fringe, asphalt maze.
-        const isFilament = this.map.district === 'filament';
-        // W3: the decked streets come straight from the shared road network.
+        // read the district layout; no drawn gridlines anywhere. The zoning
+        // rules live in baseFloorKind (shared with the world-map bake); the
+        // rug override is stall furniture and stays here. The zone flags
+        // remain locals — the lip/stain/puddle passes below key off them.
         const onRoad = this.map.roads[ty]?.[tx] === true;
         const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
         const onStepRing = plaza.radius > 0 && plazaDist === plaza.radius;
-        const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
         const rugVariant = rugTiles.get(ty * size + tx);
         let kind: FloorKind;
         let seed = (tx * 31 + ty * 17) | 0;
         if (rugVariant !== undefined) {
           kind = 'rug';
           seed = rugVariant;
-        } else if (this.map.district === 'terrarium') {
-          // D2: the garden tier is WARM WOOD underfoot (§12B) — decked
-          // terraces, plated entry apron, never asphalt, never lawn.
-          kind = (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'deck' : 'plating';
-        } else if (onRoad) kind = 'deck';
-        else if (onStepRing) kind = 'paverLight';
-        else if (inPlaza) kind = 'paver';
-        else if (distToEdgeT <= 6 || (isFilament && tx >= 44 && ty >= 44)) kind = 'plating';
-        else kind = 'asphalt';
+        } else {
+          kind = baseFloorKind(this.map, tx, ty);
+        }
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(floorTileScale());
         tile.setDepth(DEPTH_FLOOR);
@@ -2411,6 +2578,57 @@ export class WorldScene extends Phaser.Scene {
         voidG.fillPath();
       }
     }
+
+    // ── G4: the darkness gradient ───────────────────────────────────────
+    // Away from standing lights the ground drops through QUANTIZED ink
+    // bands with a checker-dither transition — light pools become pools
+    // again. Ink over the floor colors, capped well above pure black.
+    {
+      const dark = this.add.graphics();
+      dark.setDepth(DEPTH_FLOOR + 2); // over decals/sheen, under shadows
+      for (let ty = 0; ty < size; ty++) {
+        for (let tx = 0; tx < size; tx++) {
+          const ground =
+            this.map.walkable[ty]?.[tx] === true || this.map.canal[ty]?.[tx] === true;
+          if (!ground) continue;
+          const band = this.darknessBand(tx, ty);
+          if (band === 0) continue;
+          const a = (band / DARKNESS.bands) * DARKNESS.maxAlpha;
+          const { x, y } = tileToWorld(tx, ty);
+          dark.fillStyle(PALETTE_INT.ink, a);
+          this.traceDiamond(dark, x, y);
+          dark.fillPath();
+        }
+      }
+    }
+  }
+
+  /** G4: chebyshev tiles to the nearest standing light source. */
+  private lightDist(tx: number, ty: number): number {
+    let best = Infinity;
+    for (const sp of this.lightSpots) {
+      const d = Math.max(Math.abs(sp.x - tx), Math.abs(sp.y - ty));
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /** G4: quantized darkness band 0..bands for a tile, with the middle half
+   *  of every transition dithered on the tile checker — pixel-grammar
+   *  falloff, not a smooth ramp. */
+  private darknessBand(tx: number, ty: number): number {
+    const d = this.lightDist(tx, ty);
+    const t = Math.max(
+      0,
+      Math.min(1, (d - DARKNESS.poolRadius) / (DARKNESS.farRadius - DARKNESS.poolRadius)),
+    );
+    const f = t * DARKNESS.bands;
+    const base = Math.floor(f);
+    const frac = f - base;
+    if (frac > 0.25 && frac < 0.75) {
+      return Math.min(DARKNESS.bands, base + ((tx + ty) % 2));
+    }
+    return Math.min(DARKNESS.bands, Math.round(f));
   }
 
   /**
@@ -4453,12 +4671,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private setupCamera(): void {
-    const cam = this.cameras.main;
-    const b = mapWorldBounds(this.map.size);
-    const m = CONFIG.camera.boundsMarginPx;
-    cam.setBounds(b.x - m, b.y - m, b.w + m * 2, b.h + m * 2);
+    // F1: the CONTROLLER owns the clamp (screen-constant void margin,
+    // centre-not-pin when the viewport out-sizes the deck) — Phaser's own
+    // setBounds corner-pins in that case, which was live bug B5.
+    this.cameraCtl.setWorldBounds(mapWorldBounds(this.map.size));
     const center = tileToWorld(this.map.plaza.cx, this.map.plaza.cy);
-    cam.centerOn(center.x, center.y);
+    this.cameras.main.centerOn(center.x, center.y);
+    // F1: world-anchored text counter-scales at min zoom so it stays legible;
+    // re-applied on every zoom step (and read at label creation).
+    this.events.off('camera-zoom');
+    this.events.on('camera-zoom', (z: number) => {
+      const k = worldTextScale(z);
+      for (const s of this.sparks.values()) s.setTextZoomScale(k);
+      this.markers?.setZoomScale(k);
+      this.ePrompt?.setScale(k);
+    });
   }
 
   /**
@@ -4468,7 +4695,20 @@ export class WorldScene extends Phaser.Scene {
   private propSprite(name: string, x: number, y: number): Phaser.GameObjects.Image {
     const img = addVoxelSprite(this, name, x, y);
     const wt = worldSpriteTint();
-    if (wt !== null) img.setTint(wt);
+    // G4: props in the dark sink with the ground — a quantized dim toward
+    // dusk, banded like the floor so a lamp visibly claims its circle.
+    const t = worldToTile(x, y);
+    const band = this.darknessBand(t.tx, t.ty);
+    const base = wt ?? 0xffffff;
+    if (band > 0) {
+      const dim = 1 - (band / DARKNESS.bands) * DARKNESS.propDim;
+      const r = Math.round(((base >> 16) & 0xff) * dim);
+      const gc = Math.round(((base >> 8) & 0xff) * dim);
+      const b = Math.round((base & 0xff) * dim);
+      img.setTint((r << 16) | (gc << 8) | b);
+    } else if (wt !== null) {
+      img.setTint(wt);
+    }
     img.setDepth(depthForWorldY(y));
     this.occlusion.register(img);
     return img;
@@ -4588,6 +4828,13 @@ export class WorldScene extends Phaser.Scene {
   exitPhotoMode(): void {
     this.photoMode = null;
     this.scene.setVisible(true, 'ui');
+    // Photo frames may use any zoom — coming back to gameplay, land on the
+    // nearest ladder step so the wheel + text scaling stay coherent (F1).
+    const cam = this.cameras.main;
+    const steps = CONFIG.camera.zoomSteps as readonly number[];
+    const snapped = steps[nearestStepIdx(steps, cam.zoom)] as number;
+    if (snapped !== cam.zoom) cam.setZoom(snapped);
+    this.events.emit('camera-zoom', snapped);
     this.setupCamera();
     this.cameraCtl.setLocked(false);
     for (const m of this.berthMarkers) m.setVisible(true);

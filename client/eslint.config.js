@@ -3,7 +3,9 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/'] },
+  // tests/ = node-side Playwright harnesses (overlap tour, contact sheet) —
+  // node globals, not app code; they lint as scripts, not browser TS.
+  { ignores: ['dist/', 'node_modules/', 'tests/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,

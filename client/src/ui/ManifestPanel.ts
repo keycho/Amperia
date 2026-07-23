@@ -13,10 +13,11 @@ import type { ManifestFoundEvent, ManifestSync } from '@shared/protocol';
 import { session, SessionEvents } from '../net/session';
 import { cosmeticThumbKey, itemThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
-import { kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
+import { kitClampLines, kitHeader, kitPlate, kitTabRow, kitText, UIK, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 560;
-const H = 430;
+/** Minimum plate height — the flow layout grows it when a page needs more. */
+const H_MIN = 430;
 const CELL = 64;
 
 /** Nearest kit type level for a legacy pixel size (locked scale 28/18/13/11). */
@@ -45,6 +46,11 @@ export class ManifestPanel {
   private page: ManifestPageId = 'scavving';
   private entries = new Map<string, EntryState>();
   private titles: string[] = [];
+  /** Scroll-fallback window start for the tab row (kitTabRow rule 3). */
+  private tabStart = 0;
+  /** The flow-computed plate height for the current page. */
+  private plateH = H_MIN;
+  private plate: Phaser.GameObjects.Graphics;
   visible = false;
 
   constructor(scene: Phaser.Scene) {
@@ -53,7 +59,8 @@ export class ManifestPanel {
     this.container.setDepth(1150);
     this.container.setVisible(false);
 
-    this.container.add(kitPlate(scene, W, H));
+    this.plate = kitPlate(scene, W, H_MIN);
+    this.container.add(this.plate);
     kitHeader(scene, this.container, W, 'THE MANIFEST', () => this.setVisible(false));
 
     session.events.on(SessionEvents.manifest, (sync: ManifestSync) => {
@@ -80,15 +87,20 @@ export class ManifestPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
     if (v) {
-      const cam = this.scene.cameras.main;
-      this.container.setPosition(
-        Math.round((cam.width - W) / 2),
-        Math.round((cam.height - H) / 2),
-      );
+      this.container.setVisible(true);
       this.refresh();
     }
+    // F5: open/close through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, { w: W, h: this.plateH }, v); // refresh() recentres with the flowed height
+  }
+
+  private recentre(): void {
+    const cam = this.scene.cameras.main;
+    this.container.setPosition(
+      Math.round((cam.width - W) / 2),
+      Math.round((cam.height - this.plateH) / 2),
+    );
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
@@ -98,6 +110,13 @@ export class ManifestPanel {
     return t;
   }
 
+  /**
+   * F4 flow layout: every band measures the one above it — tabs (kitTabRow:
+   * shrink → wrap → scroll, never clipping), blurb, the entry grid with
+   * per-row measured pitch, then a hairline divider and the completion +
+   * titles block. The plate grows to the flowed height; nothing is ever
+   * positioned off a hard-coded Y again.
+   */
   private refresh(): void {
     for (const o of this.dynamic) o.destroy();
     this.dynamic.length = 0;
@@ -106,55 +125,61 @@ export class ManifestPanel {
     const discovered = [...this.entries.keys()].length;
     this.text(190, 12, `${discovered} remembered`, PALETTE.groundAccent, 11);
 
-    // Page tabs (pill first, label on top — order IS the z-order here).
-    let tx = 16;
-    for (const p of MANIFEST_PAGES) {
-      const pageDone = entriesForPage(p.id).every((e) => this.entries.has(e.id));
-      const on = p.id === this.page;
-      const labelText = pageDone ? `${p.label} ✦` : p.label;
-      if (on) {
-        const bg = this.scene.add.graphics();
-        bg.fillStyle(PALETTE_INT.neonAmber, 1);
-        const approx = labelText.length * 7.3;
-        bg.fillRoundedRect(tx - 6, 41, approx + 12, 20, 6);
-        this.container.add(bg);
-        this.dynamic.push(bg);
-      }
-      const tab = this.text(
-        tx,
-        44,
-        labelText,
-        on ? PALETTE.ink : pageDone ? PALETTE.neonAmber : UI_TEXT_WARM,
-        12,
-        on,
-      );
-      tab.setInteractive({ useHandCursor: true });
-      const pid = p.id;
-      tab.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
-        ev.stopPropagation();
-        this.page = pid;
+    // Page tabs — the general tab-row rule (F4): shrink, wrap, then page.
+    const tabs = kitTabRow(this.scene, this.container, {
+      x: 16,
+      y: 44,
+      maxW: W - 32,
+      items: MANIFEST_PAGES.map((p) => {
+        const pageDone = entriesForPage(p.id).every((e) => this.entries.has(e.id));
+        return { id: p.id, label: pageDone ? `${p.label} ✦` : p.label, accent: pageDone };
+      }),
+      activeId: this.page,
+      onPick: (id) => {
+        this.page = id as ManifestPageId;
         this.refresh();
-      });
-      tx += tab.width + 20;
-    }
+      },
+      pageStart: this.tabStart,
+      onPageStart: (s) => {
+        this.tabStart = s;
+        this.refresh();
+      },
+    });
+    this.dynamic.push(...tabs.objects);
+    let y = 44 + tabs.height + 8;
 
     const pageDef = MANIFEST_PAGES.find((p) => p.id === this.page);
-    this.text(16, 70, pageDef?.blurb ?? '', PALETTE.groundAccent, 11);
+    const blurb = this.text(16, y, pageDef?.blurb ?? '', PALETTE.groundAccent, 11);
+    blurb.setWordWrapWidth(W - 32);
+    y += Math.ceil(blurb.height) + 10;
 
-    // Entries grid.
+    // Entries grid — row pitch is MEASURED from the tallest cell in the row.
     const list = entriesForPage(this.page);
-    list.forEach((e, i) => {
-      const cx = 16 + (i % 6) * (CELL + 24);
-      const cy = 96 + Math.floor(i / 6) * (CELL + 58);
-      this.drawEntry(e, cx, cy);
-    });
+    for (let r = 0; r * 6 < list.length; r++) {
+      let rowBottom = y + CELL;
+      for (let ci = 0; ci < 6; ci++) {
+        const e = list[r * 6 + ci];
+        if (e === undefined) break;
+        rowBottom = Math.max(rowBottom, this.drawEntry(e, 16 + ci * (CELL + 24), y));
+      }
+      y = rowBottom + 12;
+    }
 
-    // Completion line.
+    // Divider, then the completion + titles block, flowed.
+    const div = this.scene.add.graphics();
+    div.lineStyle(1, UIK.border, 0.85);
+    div.beginPath();
+    div.moveTo(16, y + 0.5);
+    div.lineTo(W - 16, y + 0.5);
+    div.strokePath();
+    this.container.add(div);
+    this.dynamic.push(div);
+    y += 9;
+
     const award = PAGE_AWARDS.find((a) => a.page === this.page);
     const done = list.every((e) => this.entries.has(e.id));
-    const y = H - 54;
     if (award !== undefined) {
-      this.text(
+      const t = this.text(
         16,
         y,
         done
@@ -163,13 +188,28 @@ export class ManifestPanel {
         done ? PALETTE.neonAmber : PALETTE.groundAccent,
         11,
       );
+      t.setWordWrapWidth(W - 32);
+      kitClampLines(t, 2);
+      y += Math.ceil(t.height) + 4;
     }
     if (this.titles.length > 0) {
-      this.text(16, y + 18, `Titles: ${this.titles.join(' · ')}`, PALETTE.neonTeal, 11);
+      const t = this.text(16, y, `Titles: ${this.titles.join(' · ')}`, PALETTE.neonTeal, 11);
+      t.setWordWrapWidth(W - 32);
+      kitClampLines(t, 2);
+      y += Math.ceil(t.height);
     }
+
+    // Grow the plate to the flowed height and recentre.
+    this.plateH = Math.max(H_MIN, y + 14);
+    this.plate.destroy();
+    this.plate = kitPlate(this.scene, W, this.plateH);
+    this.container.addAt(this.plate, 0);
+    this.recentre();
   }
 
-  private drawEntry(e: ManifestEntryDef, x: number, y: number): void {
+  /** Draw one cell; returns its flowed BOTTOM edge (captions clamp to two
+   *  lines, so a long hint can never spill into the next row or the divider). */
+  private drawEntry(e: ManifestEntryDef, x: number, y: number): number {
     const state = this.entries.get(e.id);
     const inset = this.scene.add.nineslice(
       x,
@@ -211,15 +251,21 @@ export class ManifestPanel {
 
     const label = this.text(x - 8, y + CELL + 2, state !== undefined ? e.label : '———', state !== undefined ? UI_TEXT_WARM : PALETTE.groundAccent, 10);
     label.setWordWrapWidth(CELL + 18);
+    kitClampLines(label, 2);
+    const capY = y + CELL + 2 + Math.ceil(label.height) + 2;
     if (state !== undefined) {
       const when = new Date(state.firstAtMs);
       const stamp = `${when.getUTCFullYear()}-${String(when.getUTCMonth() + 1).padStart(2, '0')}-${String(when.getUTCDate()).padStart(2, '0')}`;
-      this.text(x - 8, y + CELL + 2 + label.height + 2, `×${state.count} · ${stamp}`, PALETTE.groundAccent, 9);
-    } else {
-      const hint = this.text(x - 8, y + CELL + 2 + label.height + 2, e.hint, PALETTE.groundAccent, 9);
-      hint.setWordWrapWidth(CELL + 20);
-      hint.setAlpha(0.8);
+      const meta = this.text(x - 8, capY, `×${state.count} · ${stamp}`, PALETTE.groundAccent, 9);
+      meta.setWordWrapWidth(CELL + 20);
+      kitClampLines(meta, 2);
+      return capY + Math.ceil(meta.height);
     }
+    const hint = this.text(x - 8, capY, e.hint, PALETTE.groundAccent, 9);
+    hint.setWordWrapWidth(CELL + 20);
+    kitClampLines(hint, 2);
+    hint.setAlpha(0.8);
+    return capY + Math.ceil(hint.height);
   }
 }
 

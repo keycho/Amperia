@@ -17,6 +17,8 @@ export function floatText(
     strokeThickness: 3,
   });
   t.setOrigin(0.5, 1);
+  // F1: hold screen size at min zoom so loot text never shrinks illegible.
+  t.setScale(Math.max(1, 1 / scene.cameras.main.zoom));
   t.setDepth(1e9);
   scene.tweens.add({
     targets: t,

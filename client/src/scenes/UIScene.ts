@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InspectInfoEvent, ManifestFoundEvent, RestedSync } from '@shared/protocol';
+import type { InspectInfoEvent, ManifestFoundEvent, PricesSync, RestedSync } from '@shared/protocol';
 import { CONFIG } from '@shared/config';
 import { ITEMS } from '@shared/items';
 import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/palette';
@@ -9,6 +9,7 @@ import { session, SessionEvents } from '../net/session';
 import { gameState, GameEvents } from '../state/GameState';
 import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
+import { ContextMenu } from '../ui/ContextMenu';
 import { BenchPanel } from '../ui/BenchPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
@@ -27,6 +28,7 @@ import { Minimap } from '../ui/Minimap';
 import { EmoteWheel } from '../ui/EmoteWheel';
 import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
+import { showResultCard } from '../ui/ResultCard';
 import { TradePanel } from '../ui/TradePanel';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 import { type Chip, kitChip, kitPlate, kitText, SPACE, UIK } from '../ui/kit';
@@ -46,6 +48,7 @@ interface DragState {
  */
 export class UIScene extends Phaser.Scene {
   private inventoryPanel!: SlotStrip;
+  private slotMenu!: ContextMenu;
   private hotbar!: SlotStrip;
   private drag: DragState | null = null;
   private lootChip!: Chip;
@@ -358,15 +361,20 @@ export class UIScene extends Phaser.Scene {
    */
   private renderTutorial(m: TutorialModel): void {
     if (this.tutorialPanel === null) {
-      // PP1: the checklist rides the kit plate.
-      const g = kitPlate(this, 272, 96);
       const title = kitText(this, SPACE.md, SPACE.sm, 'FIRST BOLTS', 'caption', {
         color: PALETTE.neonAmber,
         bold: true,
       });
-      this.tutorialLines = m.steps.map((_, i) =>
-        kitText(this, SPACE.md, 30 + i * 20, '', 'caption', { color: UI_TEXT_WARM }),
+      this.tutorialLines = m.steps.map((step, i) =>
+        // Seed the real copy immediately so the plate can be MEASURED — the
+        // fixed 272px plate clipped the longest step (F4 detector find).
+        kitText(this, SPACE.md, 30 + i * 20, `☐ ${step.label}`, 'caption', {
+          color: UI_TEXT_WARM,
+        }),
       );
+      const maxW = Math.max(240, ...this.tutorialLines.map((l) => Math.ceil(l.width)));
+      // PP1: the checklist rides the kit plate — sized to its content.
+      const g = kitPlate(this, maxW + SPACE.md * 2, 30 + m.steps.length * 20 + SPACE.sm);
       const panel = this.add.container(12, 90, [g, title, ...this.tutorialLines]);
       panel.setDepth(930);
       panel.setAlpha(0);
@@ -421,6 +429,9 @@ export class UIScene extends Phaser.Scene {
       t.setDepth(902);
       t.setAlpha(0);
       t.setInteractive({ useHandCursor: true });
+      // F5 hover: the HUD shortcut warms under the pointer.
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(PALETTE.neonTeal));
       t.on('pointerdown', onClick);
       this.tweens.add({ targets: t, alpha: 1, duration: 500 });
       this.discloseIcons.push(t);
@@ -437,9 +448,14 @@ export class UIScene extends Phaser.Scene {
     // Below every UI widget (chips at 890+), above the world render.
     addWarmAmbience(this);
 
-    const onStripPointerDown = (strip: SlotStrip, pointer: Phaser.Input.Pointer) =>
-      this.beginDrag(strip, pointer);
+    const onStripPointerDown = (strip: SlotStrip, pointer: Phaser.Input.Pointer) => {
+      // F2: right-click = the slot context menu (Use / Split, where
+      // relevant); left press starts the drag as before.
+      if (pointer.rightButtonDown()) this.openSlotMenu(strip, pointer);
+      else this.beginDrag(strip, pointer);
+    };
 
+    this.slotMenu = new ContextMenu(this);
     this.hotbar = new SlotStrip(
       this,
       'hotbar',
@@ -449,10 +465,46 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel = new SlotStrip(
       this,
       'inventory',
-      { cols: 6, rows: CONFIG.inventory.slots / 6, title: 'Pack', panel: true },
+      {
+        cols: 6,
+        rows: CONFIG.inventory.slots / 6,
+        title: 'Pack',
+        panel: true,
+        // F2: server-authoritative sort — merge stacks, order by category.
+        headerAction: {
+          label: '⇅ sort',
+          onClick: () => {
+            if (session.room !== null) send.sortPack(session.room);
+            sound.uiClick();
+          },
+        },
+      },
       onStripPointerDown,
     );
     this.inventoryPanel.setVisible(false);
+    // F2: cache the merchant's posted prices for the item tooltips.
+    session.events.on(SessionEvents.prices, (p: PricesSync) => {
+      gameState.prices = p.buy;
+    });
+    // F3: a craft landing gets the result-card moment — the item LARGE with
+    // a glow pulse + confetti (the Coil's celebration language, reused).
+    session.events.on(SessionEvents.crafted, (e: { itemId: string }) => {
+      const def = ITEMS[e.itemId as keyof typeof ITEMS];
+      if (def === undefined) return;
+      showResultCard(this, {
+        thumbKey: itemThumbKey(def),
+        kicker: 'FRESH FROM THE TINKERBENCH',
+        title: def.name,
+        flavor: def.flavor,
+        big: (def.tier ?? 1) >= 3,
+      });
+      if (this.benchPanel.visible) this.benchPanel.refresh();
+    });
+    // F5: the pickup chip — the loot thumb arcs from the node into the belt.
+    session.events.on(
+      SessionEvents.lootChipFly,
+      (e: { itemId: string; sx: number; sy: number }) => this.flyLootChip(e.itemId, e.sx, e.sy),
+    );
     this.hotbar.setActiveSlot(gameState.activeHotbarSlot);
 
     // PP1: HUD counters are proper kit chips (pill plate + glyph + value).
@@ -711,6 +763,9 @@ export class UIScene extends Phaser.Scene {
     gear.setAlpha(0.85);
     gear.setDepth(902);
     gear.setInteractive({ useHandCursor: true });
+    // F5 hover, matching the [?] button's treatment below.
+    gear.on('pointerover', () => gear.setAlpha(1));
+    gear.on('pointerout', () => gear.setAlpha(0.85));
     const placeGear = () => gear.setPosition(this.scale.width - 22, 44);
     placeGear();
     this.scale.on('resize', placeGear);
@@ -785,6 +840,8 @@ export class UIScene extends Phaser.Scene {
       const refresh = () => t.setText(`${get() ? '[on ]' : '[off]'} ${text}`);
       refresh();
       t.setInteractive({ useHandCursor: true });
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(UI_TEXT_WARM));
       t.on('pointerdown', () => {
         sound.uiClick();
         set(!get());
@@ -821,6 +878,8 @@ export class UIScene extends Phaser.Scene {
       gritLabel.setText(`[${gritName(settings().grit)}] texture (reload)`);
     refreshGrit();
     gritLabel.setInteractive({ useHandCursor: true });
+    gritLabel.on('pointerover', () => gritLabel.setColor(PALETTE.warmGlow));
+    gritLabel.on('pointerout', () => gritLabel.setColor(UI_TEXT_WARM));
     gritLabel.on('pointerdown', () => {
       sound.uiClick();
       const cur = GRIT_OPTS.indexOf(settings().grit);
@@ -876,6 +935,59 @@ export class UIScene extends Phaser.Scene {
     this.hpBar.fillRoundedRect(x + 2, y + 2, Math.max(4, (W - 4) * frac), 8, 4);
     this.hpText.setText(`⚡ ${this.hp.hp}/${this.hp.maxHp}`);
     this.hpText.setPosition(x + W + 8, y - 1);
+  }
+
+  /** F5: the pickup chip — the loot thumb arcs from the node's screen point
+   *  into the hotbar (the matching slot when the item rides the belt, the
+   *  strip's centre otherwise) and lands with a soft warm pulse. */
+  private flyLootChip(itemId: string, sx: number, sy: number): void {
+    const def = ITEMS[itemId as keyof typeof ITEMS];
+    if (def === undefined) return;
+    const slot = gameState.hotbar.slots.findIndex((s) => s?.itemId === itemId);
+    const hb = this.hotbar.pixelSize();
+    const to =
+      slot >= 0
+        ? this.hotbar.slotCenter(slot)
+        : {
+            x: this.hotbar.container.x + hb.w / 2,
+            y: this.hotbar.container.y + hb.h / 2,
+          };
+    const chip = this.add.image(sx, sy, itemThumbKey(def));
+    chip.setDisplaySize(34, 34);
+    chip.setDepth(1500);
+    const state = { t: 0 };
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 420,
+      ease: 'quad.in',
+      onUpdate: () => {
+        const t = state.t;
+        // A shallow arc: lerp the line, lift by a half-sine on the way.
+        chip.setPosition(
+          sx + (to.x - sx) * t,
+          sy + (to.y - sy) * t - Math.sin(t * Math.PI) * 56,
+        );
+        const px = 34 - 10 * t; // 34px shrinking to 24px as it lands
+        chip.setDisplaySize(px, px);
+      },
+      onComplete: () => {
+        chip.destroy();
+        const pulse = this.add.image(to.x, to.y, 'fx-glow');
+        pulse.setTint(PALETTE_INT.warmGlow);
+        pulse.setBlendMode(Phaser.BlendModes.ADD);
+        pulse.setScale(0.08);
+        pulse.setDepth(1500);
+        this.tweens.add({
+          targets: pulse,
+          scale: 0.16,
+          alpha: 0,
+          duration: 220,
+          ease: 'quad.out',
+          onComplete: () => pulse.destroy(),
+        });
+      },
+    });
   }
 
   private refreshAll(): void {
@@ -981,6 +1093,11 @@ export class UIScene extends Phaser.Scene {
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
       else if (this.worldMapPanel.visible) this.worldMapPanel.setVisible(false);
       else if (this.howToPlayPanel.visible) this.howToPlayPanel.setVisible(false);
+      // F1/F4: these were missing — an open Manifest/Goal board/Ledgerhouse
+      // shrugged off Esc, and (with the wheel-zoom panel gate) blocked zoom.
+      else if (this.manifestPanel.visible) this.manifestPanel.setVisible(false);
+      else if (this.goalPanel.visible) this.goalPanel.setVisible(false);
+      else if (this.bankPanel.visible) this.bankPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;
@@ -995,6 +1112,50 @@ export class UIScene extends Phaser.Scene {
         if (session.room !== null) send.selectSlot(session.room, { slot: i });
       });
     });
+  }
+
+  /**
+   * F2 — the slot context menu: only actions the server actually honours.
+   * Use = warmcup/cellwax (pack consumables the room implements); Split =
+   * stackables with qty > 1 and a free slot in the same container. All
+   * intents — the server validates and echoes.
+   */
+  private openSlotMenu(strip: SlotStrip, pointer: Phaser.Input.Pointer): void {
+    const idx = strip.slotIndexAt(pointer.x, pointer.y);
+    if (idx === null) return;
+    const inv = strip.source === 'inventory' ? gameState.inventory : gameState.hotbar;
+    const stack = inv.slots[idx];
+    if (stack === null || stack === undefined) return;
+    const actions: { label: string; onPick(): void }[] = [];
+    if (strip.source === 'inventory' && (stack.itemId === 'warmcup' || stack.itemId === 'cellwax')) {
+      actions.push({
+        label: 'Use',
+        onPick: () => {
+          if (session.room !== null) send.useItem(session.room, { slot: idx });
+        },
+      });
+    }
+    const emptyIdx = inv.slots.findIndex((s) => s === null);
+    if (stack.qty > 1 && stack.durability === undefined && emptyIdx >= 0) {
+      const half = Math.floor(stack.qty / 2);
+      actions.push({
+        label: `Split ×${half}`,
+        onPick: () => {
+          if (session.room !== null) {
+            send.moveStack(session.room, {
+              from: strip.source === 'inventory' ? 'pack' : 'hotbar',
+              fromIdx: idx,
+              to: strip.source === 'inventory' ? 'pack' : 'hotbar',
+              toIdx: emptyIdx,
+              qty: half,
+            });
+          }
+        },
+      });
+    }
+    if (actions.length === 0) return;
+    sound.uiClick();
+    this.slotMenu.show(pointer.x + 4, pointer.y + 4, actions);
   }
 
   private beginDrag(strip: SlotStrip, pointer: Phaser.Input.Pointer): void {
@@ -1051,5 +1212,29 @@ export class UIScene extends Phaser.Scene {
       // Dropped nowhere: no change.
       this.refreshAll();
     });
+  }
+
+  /**
+   * F1: publish "a panel is open" every frame so the world camera's wheel
+   * zoom stands down while one is up — a wheel over the Manifest was zooming
+   * the market behind it. Polling the same visibility flags the Escape chain
+   * uses means no open/close path can ever forget to update the flag.
+   */
+  update(): void {
+    session.panelOpen =
+      this.merchantPanel.visible ||
+      this.benchPanel.visible ||
+      this.questPanel.visible ||
+      this.tradePanel.visible ||
+      this.shopPanel.visible ||
+      this.chargePanel.visible ||
+      this.manifestPanel.visible ||
+      this.goalPanel.visible ||
+      this.bankPanel.visible ||
+      this.worldMapPanel.visible ||
+      this.howToPlayPanel.visible ||
+      this.skillsPanel.visible ||
+      this.foundryPanel.visible ||
+      this.inventoryPanel.visible;
   }
 }

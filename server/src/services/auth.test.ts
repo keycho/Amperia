@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import jwt from 'jsonwebtoken';
-import nacl from 'tweetnacl';
-import bs58 from 'bs58';
-import { linkWallet, validSparkName, verifyToken } from './auth.js';
+import { authenticateWallet, validSparkName, verifyToken } from './auth.js';
 
 describe('verifyToken', () => {
   const SECRET = process.env.JWT_SECRET ?? 'amperia-dev-secret-change-me';
@@ -31,20 +29,27 @@ describe('validSparkName', () => {
   });
 });
 
-describe('linkWallet signature checks (pre-DB validation)', () => {
-  it('rejects a message that does not reference the account', async () => {
-    await expect(linkWallet('acct1', 'x', 'unrelated message', 'x')).rejects.toThrow(
-      /reference this account/,
-    );
+describe('authenticateWallet (SIWE) — rejects before any DB write', () => {
+  // The find-or-create half is exercised end-to-end against a live server in
+  // the checkpoint (siwe.e2e). Here we prove a bad sign-in never reaches the
+  // DB: a malformed message and a bogus signature both throw first.
+  it('rejects a malformed sign-in message', async () => {
+    await expect(authenticateWallet('not a siwe message', '0xdead')).rejects.toThrow(/malformed/i);
   });
 
-  it('rejects malformed keys and bad signatures before touching the DB', async () => {
-    await expect(linkWallet('acct1', '!!notbase58!!', 'msg acct1', 'sig')).rejects.toThrow();
-    const kp = nacl.sign.keyPair();
-    const msg = 'link acct1 to this wallet';
-    const wrongSig = nacl.sign.detached(new TextEncoder().encode('other'), kp.secretKey);
-    await expect(
-      linkWallet('acct1', bs58.encode(kp.publicKey), msg, bs58.encode(wrongSig)),
-    ).rejects.toThrow(/does not verify/);
+  it('rejects a non-hex signature', async () => {
+    const msg = [
+      'amperia.example wants you to sign in with your Ethereum account:',
+      `0x${'a'.repeat(40)}`,
+      '',
+      'Sign in to AMPERIA.',
+      '',
+      'URI: https://amperia.example',
+      'Version: 1',
+      'Chain ID: 1',
+      'Nonce: deadbeef',
+      'Issued At: 2026-07-14T00:00:00.000Z',
+    ].join('\n');
+    await expect(authenticateWallet(msg, 'not-hex')).rejects.toThrow(/verify|expired/i);
   });
 });

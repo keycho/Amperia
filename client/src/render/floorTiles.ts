@@ -52,8 +52,9 @@ export function floorTileScale(): number {
 
 /** Night-air mix — a light touch now (§2: cut the purple wash ~70%).
  *  The ground is the LOW saturation tier (R3b): desaturated a step and
- *  split-toned so it sits back behind props and light sources. */
-function night(base: number, t: number): number {
+ *  split-toned so it sits back behind props and light sources. Exported
+ *  so the world-map island bake grades its miniature floors identically. */
+export function night(base: number, t: number): number {
   const dusk = PALETTE_INT.duskSky;
   const clamp = Math.max(0, Math.min(1, t));
   const mix = (sa: number, sb: number) => Math.round(sa + (sb - sa) * clamp);
@@ -61,6 +62,35 @@ function night(base: number, t: number): number {
   const g = mix((base >> 8) & 0xff, (dusk >> 8) & 0xff);
   const b = mix(base & 0xff, dusk & 0xff);
   return splitTone(sat((r << 16) | (g << 8) | b, -0.14));
+}
+
+/**
+ * The zone-material classifier (floor-fix §1), extracted so the world floor
+ * and the world-map island bake read the SAME rules and cannot drift. The
+ * rug override (market stall decor) stays WorldScene-local — rugs are
+ * furniture, not zoning, and read as noise at map scale.
+ */
+export function baseFloorKind(
+  map: import('@shared/map').WorldMap,
+  tx: number,
+  ty: number,
+): FloorKind {
+  const size = map.size;
+  const plaza = map.plaza;
+  const plazaDist = Math.max(Math.abs(tx - plaza.cx), Math.abs(ty - plaza.cy));
+  const onRoad = map.roads[ty]?.[tx] === true;
+  const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
+  const onStepRing = plaza.radius > 0 && plazaDist === plaza.radius;
+  const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
+  if (map.district === 'terrarium') {
+    // D2: warm wood underfoot on the garden tiers, plated entry apron.
+    return (map.elevation[ty]?.[tx] ?? 0) > 0 ? 'deck' : 'plating';
+  }
+  if (onRoad) return 'deck';
+  if (onStepRing) return 'paverLight';
+  if (inPlaza) return 'paver';
+  if (distToEdgeT <= 6 || (map.district === 'filament' && tx >= 44 && ty >= 44)) return 'plating';
+  return 'asphalt';
 }
 
 interface KindSpec {

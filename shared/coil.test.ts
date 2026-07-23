@@ -25,6 +25,7 @@ describe('the Fortune Coil', () => {
     expect(() => assertFreeSpin({})).not.toThrow();
     expect(() => assertFreeSpin({ bolts: 10 })).toThrow(/currency input path does not exist/);
     expect(() => assertFreeSpin({ amp: 1 })).toThrow();
+    expect(() => assertFreeSpin({ eth: 1 })).toThrow();
     expect(() => assertFreeSpin({ payment: 'x' })).toThrow();
   });
 

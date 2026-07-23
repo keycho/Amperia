@@ -3,7 +3,7 @@ import { DISTRICT_KEY, rememberedDistrict, TOKEN_KEY } from '../net/NetClient';
 import { showLoginOverlay } from '../ui/loginOverlay';
 import { bootDone } from '../boot/bootLoader';
 
-/** Email-first sign-in (guest allowed); a stored token skips the overlay. */
+/** Wallet-only sign-in, or read-only spectate (W7); a stored token skips both. */
 export class LoginScene extends Phaser.Scene {
   constructor() {
     super('login');
@@ -18,10 +18,16 @@ export class LoginScene extends Phaser.Scene {
       this.scene.start('world', { token: stored, district: rememberedDistrict() });
       return;
     }
-    void showLoginOverlay().then((r) => {
-      localStorage.setItem(TOKEN_KEY, r.token);
-      localStorage.setItem(DISTRICT_KEY, r.district);
-      this.scene.start('world', { token: r.token, district: r.district });
+    void showLoginOverlay().then((choice) => {
+      if (choice.kind === 'spectate') {
+        // No wallet, no account — spectate the spawn district read-only.
+        this.scene.start('world', { spectate: true, district: 'filament' });
+        return;
+      }
+      const { auth } = choice;
+      localStorage.setItem(TOKEN_KEY, auth.token);
+      localStorage.setItem(DISTRICT_KEY, auth.district);
+      this.scene.start('world', { token: auth.token, district: auth.district });
     });
   }
 }

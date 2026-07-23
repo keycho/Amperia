@@ -367,6 +367,73 @@ function drumsModel(variant: number): Voxel[] {
 // ── Salvage shacks (modular, with lit windows + neon sign) ────────────────
 
 /**
+ * G3 — INTERIORS BEHIND GLASS: carve a front window into a shallow lit
+ * inset. In this dimetric projection a cell d steps deeper along the wall
+ * normal only stays SCREEN-ALIGNED with the opening along the body
+ * diagonal (x-d, y-d, z-d) — so the room is carved diagonally: the face
+ * opening, the diagonal air behind it, then a warm-lit back panel whose
+ * top row is the ceiling light strip, with a sparse silhouette vignette
+ * (from a small content set) standing between panel and glass. Purely
+ * visual depth — the street reads a life inside every window.
+ *   0 shelf + jar · 1 counter stool · 2 hanging tool · 3 crate
+ */
+function carveInterior(
+  v: Voxel[],
+  o: { x0: number; w: number; z0: number; h: number; faceY: number; depth?: number },
+  content: number,
+): Voxel[] {
+  const depth = o.depth ?? 2;
+  const holes: Array<[number, number]> = [];
+  for (let x = o.x0; x < o.x0 + o.w; x++) {
+    for (let z = o.z0; z < o.z0 + o.h; z++) holes.push([x, z]);
+  }
+  const removed = new Set<string>();
+  for (const [hx, hz] of holes) {
+    // The face opening + the diagonal air corridor behind it.
+    for (let d = 0; d < depth; d++) removed.add(`${hx - d},${o.faceY - d},${hz - d}`);
+    // The panel cell itself (replaced lit below) + its +y neighbour, so
+    // the panel's visible face is always exposed, edges included.
+    removed.add(`${hx - depth},${o.faceY - depth},${hz - depth}`);
+    removed.add(`${hx - depth},${o.faceY - depth + 1},${hz - depth}`);
+  }
+  const out = v.filter((vox) => !removed.has(`${vox.x},${vox.y},${vox.z}`));
+
+  // Over-bright on purpose: the cube shader darkens visible faces, so
+  // this lands warm-lit; the top row is the ceiling light strip.
+  const backWall = shade(mixPalette('warmGlow', 'ink', 0.2), 0.3);
+  const sil = mixPalette('ink', 'structureMid', 0.3);
+  for (const [hx, hz] of holes) {
+    const topRow = hz === o.z0 + o.h - 1;
+    out.push({
+      x: hx - depth,
+      y: o.faceY - depth,
+      z: hz - depth,
+      c: topRow ? PALETTE_INT.warmGlow : shade(backWall, 0.1 - (hz - o.z0) * 0.06),
+    });
+  }
+  // One sparse silhouette between panel and glass (screen-aligned with a
+  // chosen opening cell at diagonal depth-1) — the room must stay lit.
+  const d1 = depth - 1;
+  const cx = o.x0 + Math.floor(o.w / 2);
+  switch (content % 4) {
+    case 0: // a shelf jar low in the frame, catching the light
+      out.push({ x: o.x0 - d1, y: o.faceY - d1, z: o.z0 - d1, c: sil });
+      if (o.w > 2) out.push({ x: cx - d1, y: o.faceY - d1, z: o.z0 - d1, c: PALETTE_INT.neonAmber });
+      break;
+    case 1: // the counter edge
+      out.push({ x: cx - d1, y: o.faceY - d1, z: o.z0 - d1, c: sil });
+      break;
+    case 2: // a tool hanging from the lintel
+      out.push({ x: cx - d1, y: o.faceY - d1, z: o.z0 + o.h - 2 - d1, c: sil });
+      break;
+    default: // a crate against the wall
+      out.push({ x: o.x0 + o.w - 1 - d1, y: o.faceY - d1, z: o.z0 - d1, c: sil });
+      break;
+  }
+  return out;
+}
+
+/**
  * V3 building set: EIGHT distinct designs on the 2×2-tile footprint —
  * silhouette first, and NO bare roofs (rooftops are 40% of a building's
  * read in iso; every one carries its own furniture). Doors face +y, one
@@ -391,6 +458,7 @@ function buildingModel(design: number): Voxel[] {
     v.push({ x: x + 3, y, z, c: signC });
   };
   const door = (x: number, y: number) => v.push(...mbox(x, y, 0, 3, 1, 6, MATERIALS.woodDeep));
+  let carved: Voxel[];
 
   switch (design % 8) {
     case 0: {
@@ -401,7 +469,10 @@ function buildingModel(design: number): Voxel[] {
       v.push(...mbox(-1, -1, 12, 16, 14, 1, MATERIALS.gunmetalDeep));
       v.push(...mbox(-1, 12, 11, 16, 1, 1, MATERIALS.gunmetal));
       door(3, 11);
-      v.push(...box(8, 11, 4, 3, 1, 3, window));
+      // G3: the front window is a lit room, not a decal.
+      carved = carveInterior(v, { x0: 8, w: 3, z0: 4, h: 3, faceY: 11 }, 0);
+      v.length = 0;
+      v.push(...carved);
       v.push(...box(13, 5, 5, 1, 3, 3, window));
       sign(2, 11, 8);
       v.push(...mbox(2, 3, 13, 1, 1, 3, MATERIALS.gunmetal)); // pipe
@@ -417,7 +488,10 @@ function buildingModel(design: number): Voxel[] {
       v.push(...mbox(0, 0, 9, 14, 12, 8, MATERIALS.wood)); // upper juts out
       v.push(...mbox(0, 0, 17, 14, 12, 1, MATERIALS.gunmetalDeep)); // roof
       door(4, 10);
-      v.push(...box(9, 10, 3, 2, 1, 3, window)); // ground window
+      // G3: the ground-floor window opens into a counter room.
+      carved = carveInterior(v, { x0: 9, w: 2, z0: 3, h: 3, faceY: 10 }, 1);
+      v.length = 0;
+      v.push(...carved);
       v.push(...box(3, 11, 12, 3, 1, 3, window)); // upper window (front face)
       v.push(...box(10, 11, 12, 2, 1, 3, window));
       sign(3, 10, 7);
@@ -436,7 +510,10 @@ function buildingModel(design: number): Voxel[] {
       v.push(...mbox(-1, -1, 12, 10, 14, 1, MATERIALS.gunmetalDeep)); // main roof
       v.push(...mbox(8, 4, 7, 8, 9, 1, MATERIALS.rustDeep)); // annex roof
       door(2, 11);
-      v.push(...box(5, 11, 4, 2, 1, 3, window));
+      // G3: crates stacked behind the main front window.
+      carved = carveInterior(v, { x0: 5, w: 2, z0: 4, h: 3, faceY: 11 }, 3);
+      v.length = 0;
+      v.push(...carved);
       v.push(...box(10, 11, 3, 3, 1, 2, window)); // annex window
       sign(1, 11, 8);
       // Rooflines: skylight strip on the annex, stovepipe on the main.
@@ -493,7 +570,10 @@ function buildingModel(design: number): Voxel[] {
         }
       }
       door(9, 11);
-      v.push(...box(3, 11, 3, 3, 1, 3, window));
+      // G3: tools hang in the lean-to's lit window.
+      carved = carveInterior(v, { x0: 3, w: 3, z0: 3, h: 3, faceY: 11 }, 2);
+      v.length = 0;
+      v.push(...carved);
       v.push(...box(2, 4, 9, 4, 1, 2, window)); // clerestory under the high edge
       sign(8, 11, 7);
       break;
@@ -1995,7 +2075,10 @@ function toolshedModel(variant: number): Voxel[] {
     }
   }
   v.push(...mbox(5, 11, 0, 3, 1, 6, MATERIALS.woodDeep)); // door
-  v.push(...box(10, 11, 3, 2, 1, 2, mixPalette('warmGlow', 'structureMid', 0.35))); // small window
+  // G3: the shed window shows the gardeners' tools inside.
+  const shed = carveInterior(v, { x0: 10, w: 2, z0: 3, h: 2, faceY: 11 }, 2);
+  v.length = 0;
+  v.push(...shed);
   // Pots + a watering can at the side.
   v.push(...mbox(0, 3, 0, 1, 2, 2, MATERIALS.rust));
   v.push({ x: 0, y: 3, z: 2, c: PALETTE_INT.solarGreen });

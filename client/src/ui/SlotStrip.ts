@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 import { CONFIG } from '@shared/config';
-import { ITEMS, type ItemDef } from '@shared/items';
+import { ITEMS, rarityLabel, type ItemDef } from '@shared/items';
 import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
-import { fullDurability, type Inventory } from '@shared/inventory';
+import { fullDurability, stackFor, type Inventory } from '@shared/inventory';
 import { itemThumbKey } from '../render/itemThumbs';
 import { gameState } from '../state/GameState';
 import { tooltip } from './Tooltip';
-import { kitPlate, kitText } from './kit';
+import { kitPanelPop, kitPlate, kitText } from './kit';
 
 export const SLOT_SIZE = 52;
 export const SLOT_GAP = 7;
@@ -17,6 +17,8 @@ export interface SlotStripOptions {
   title?: string;
   /** Draw a panel behind the slots. */
   panel?: boolean;
+  /** F2: a small header action (the Pack's sort button). */
+  headerAction?: { label: string; onClick(): void };
 }
 
 /** Rarity edge-glow color for a filled slot (I4): Manifest rares amber,
@@ -46,6 +48,10 @@ export class SlotStrip {
   private readonly counts: Phaser.GameObjects.Text[] = [];
   private activeSlot = -1;
   private slotCount: number;
+  /** F5 hover state: the slot under the pointer lifts a shade. */
+  private hoverSlot = -1;
+  private lastInv: Inventory | null = null;
+  private lastHidden: number | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -105,6 +111,7 @@ export class SlotStrip {
     // U3c: hovering a stocked slot shows the item card.
     this.hitZone.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       const idx = this.slotIndexAt(pointer.x, pointer.y);
+      this.setHover(idx ?? -1);
       const inv = this.source === 'inventory' ? gameState.inventory : gameState.hotbar;
       const stack = idx === null ? null : (inv.slots[idx] ?? null);
       if (stack === null) {
@@ -114,23 +121,35 @@ export class SlotStrip {
       const def = ITEMS[stack.itemId];
       const mx = pointer.event instanceof MouseEvent ? pointer.event.clientX : pointer.x;
       const my = pointer.event instanceof MouseEvent ? pointer.event.clientY : pointer.y;
+      // F2 item card: category · rarity (+ wear for gear), flavor, then the
+      // meta line — stack state and the merchant's posted unit price when
+      // one exists. In-game Bolts prices are city facts, not price talk.
       const full = fullDurability(stack.itemId);
-      const sub =
-        def.toolKind !== undefined
-          ? `tool · ${def.toolKind}${stack.durability !== undefined && full !== undefined ? ` · ${stack.durability}/${full}` : ''}`
-          : def.rare === true
-            ? 'rare — the Manifest remembers'
-            : stack.qty > 1
-              ? `×${stack.qty}`
-              : undefined;
+      const wear =
+        stack.durability !== undefined && full !== undefined
+          ? ` · ${stack.durability}/${full}`
+          : '';
+      const sub = `${def.category} · ${rarityLabel(def)}${wear}`;
+      const meta: string[] = [];
+      if (def.tool !== true) {
+        meta.push(`stack ×${stack.qty} of ${stackFor(stack.itemId)}`);
+      }
+      const unit = gameState.prices[stack.itemId];
+      if (unit !== undefined && unit > 0) {
+        meta.push(`the Merchant pays ${unit} Bolts each`);
+      }
+      if (def.rare === true) meta.push('the Manifest remembers this');
       tooltip.show(mx, my, {
         title: def.name,
-        ...(sub !== undefined ? { sub } : {}),
-        lines: [def.flavor],
+        sub,
+        lines: [def.flavor, ...(meta.length > 0 ? [meta.join(' · ')] : [])],
         thumb: { scene: this.sceneRef, key: itemThumbKey(def) },
       });
     });
-    this.hitZone.on('pointerout', () => tooltip.hide());
+    this.hitZone.on('pointerout', () => {
+      this.setHover(-1);
+      tooltip.hide();
+    });
     this.container.add(this.hitZone);
 
     for (let i = 0; i < this.slotCount; i++) {
@@ -151,6 +170,25 @@ export class SlotStrip {
         bold: true,
       });
       this.container.add(title);
+    }
+    // F2: the header action (the Pack's ⇅ sort) rides the title row.
+    if (opts.headerAction !== undefined) {
+      const act = opts.headerAction;
+      const label = kitText(scene, w - 12, -22, act.label, 'caption', {
+        color: PALETTE.neonAmber,
+        bold: true,
+      }).setOrigin(1, 0);
+      label.setInteractive({ useHandCursor: true });
+      label.on('pointerover', () => label.setColor(PALETTE.warmGlow));
+      label.on('pointerout', () => label.setColor(PALETTE.neonAmber));
+      label.on(
+        'pointerdown',
+        (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
+          ev.stopPropagation();
+          act.onClick();
+        },
+      );
+      this.container.add(label);
     }
 
     // Hotbar slots show their key binding (1-6).
@@ -178,9 +216,48 @@ export class SlotStrip {
   }
 
   setVisible(visible: boolean): void {
-    this.container.setVisible(visible);
+    if (this.opts.panel !== true) {
+      // The hotbar has no plate and never pops — it's always-on chrome.
+      this.container.setVisible(visible);
+    } else {
+      // F5: the Pack opens/closes through the one 120ms kit pop. The plate
+      // rides 36px above the container origin; the ~0.7px centre error from
+      // folding that headroom into the size is invisible at 4% scale.
+      const { w, h } = this.pixelSize();
+      if (visible) this.container.setVisible(true);
+      kitPanelPop(this.sceneRef, this.container, { w, h }, visible);
+    }
     if (visible) this.hitZone.setInteractive();
-    else this.hitZone.disableInteractive();
+    else {
+      this.hitZone.disableInteractive();
+      this.setHover(-1);
+    }
+  }
+
+  /** F5 hover: retint just the slots that changed — no full redraw. */
+  private setHover(idx: number): void {
+    if (idx === this.hoverSlot) return;
+    const prev = this.hoverSlot;
+    this.hoverSlot = idx;
+    this.tintInset(prev);
+    this.tintInset(idx);
+  }
+
+  /** One slot's inset tint/alpha from active > hover > filled state. */
+  private tintInset(i: number): void {
+    const inset = this.insets[i];
+    if (inset === undefined) return;
+    const stack = this.lastInv?.slots[i];
+    const filled = stack !== null && stack !== undefined && i !== this.lastHidden;
+    const hovered = i === this.hoverSlot;
+    inset.setTint(
+      i === this.activeSlot
+        ? mixPalette('neonAmber', 'structureMid', 0.45)
+        : hovered && filled
+          ? mixPalette('warmGlow', 'structureMid', 0.72)
+          : mixPalette('ink', 'structureMid', hovered ? 0.4 : 0.55),
+    );
+    inset.setAlpha(filled ? 1 : hovered ? 0.7 : 0.5);
   }
 
   get visible(): boolean {
@@ -218,6 +295,8 @@ export class SlotStrip {
 
   /** Redraw slot states and populate thumbnails/counts from inventory. */
   refresh(inv: Inventory, hiddenSlot: number | null = null): void {
+    this.lastInv = inv;
+    this.lastHidden = hiddenSlot;
     const g = this.bg;
     g.clear();
     const cell = SLOT_SIZE + SLOT_GAP;
@@ -227,15 +306,8 @@ export class SlotStrip {
       const stack = inv.slots[i];
       const filled = stack !== null && stack !== undefined && i !== hiddenSlot;
       // Slot states (I4): EMPTY = dim inset · FILLED = lit card + glow.
-      const inset = this.insets[i];
-      if (inset !== undefined) {
-        inset.setTint(
-          i === this.activeSlot
-            ? mixPalette('neonAmber', 'structureMid', 0.45)
-            : mixPalette('ink', 'structureMid', 0.55),
-        );
-        inset.setAlpha(filled ? 1 : 0.5);
-      }
+      // Tint/alpha live in tintInset so the F5 hover lift shares the logic.
+      this.tintInset(i);
       if (i === this.activeSlot) {
         g.lineStyle(2.5, PALETTE_INT.neonAmber, 1);
         g.strokeRoundedRect(cx - 1, cy - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, 9);

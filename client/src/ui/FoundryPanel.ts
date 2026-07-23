@@ -15,7 +15,7 @@ import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 import { cosmeticThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
-import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
+import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 812;
 const H = 528;
@@ -93,8 +93,15 @@ export class FoundryPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      this.turntable?.remove();
+      this.turntable = undefined;
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(Math.round((cam.width - W) / 2), Math.round((cam.height - H) / 2));
       this.refresh();
@@ -107,10 +114,9 @@ export class FoundryPanel {
           this.drawFeaturedSprite();
         },
       });
-    } else {
-      this.turntable?.remove();
-      this.turntable = undefined;
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private hex(key: string): string {
@@ -290,9 +296,18 @@ export class FoundryPanel {
         true,
       );
 
-      // Whole row selects → features the item.
+      // Whole row selects → features the item; hover warms the plate (F5).
       const hit = this.scene.add.zone(x0 - 6, y - 6, W - x0 - 14, 58).setOrigin(0, 0);
       hit.setInteractive({ useHandCursor: !vaulted });
+      if (!on) {
+        const paint = (hover: boolean): void => {
+          row.clear();
+          row.fillStyle(hover ? PALETTE_INT.warmGlow : PALETTE_INT.ink, hover ? 0.14 : 0.3);
+          row.fillRoundedRect(x0 - 6, y - 6, W - x0 - 14, 58, 8);
+        };
+        hit.on('pointerover', () => paint(true));
+        hit.on('pointerout', () => paint(false));
+      }
       hit.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
         ev.stopPropagation();
         this.selected = i;

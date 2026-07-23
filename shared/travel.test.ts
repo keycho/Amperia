@@ -28,11 +28,16 @@ describe('the tram line (D3)', () => {
     expect(tramToll('terrarium', 'terrarium')).toBe(0);
   });
 
-  it('PP6: The Stacks rides free from anywhere; distance keeps its price elsewhere', () => {
+  it('PP6 amended: Filament ↔ Stacks is a free ROUND TRIP; all else symmetric per hop', () => {
     const per = CONFIG.travel.tollBolts;
+    // The starter leg rides free in BOTH directions — no pay-to-come-home.
     expect(tramToll('filament', 'stacks')).toBe(0);
-    expect(tramToll('tangle', 'stacks')).toBe(0);
-    // A ride whose destination is NOT free still pays per hop.
+    expect(tramToll('stacks', 'filament')).toBe(0);
+    // Every other pair prices by distance, identically in both directions.
     expect(tramToll('stacks', 'terrarium')).toBe(per);
+    expect(tramToll('terrarium', 'stacks')).toBe(per);
+    expect(tramToll('tangle', 'stacks')).toBe(2 * per);
+    expect(tramToll('filament', 'terrarium')).toBe(2 * per);
+    expect(tramToll('terrarium', 'filament')).toBe(2 * per);
   });
 });

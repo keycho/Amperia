@@ -91,6 +91,11 @@ interface Entry {
   highlight: boolean;
   /** Resting label depth (a highlight lifts it above neighbour labels). */
   labelDepth: number;
+  /** F4 stack rule: the label yields (fades out) while this entity carries
+   *  the E-prompt and/or a speech bubble — one voice per anchor space.
+   *  Sources are independent, so a bubble ending never un-yields a label
+   *  the prompt still owns. */
+  suppressors: Set<string>;
 }
 
 export class InteractionMarkers {
@@ -101,6 +106,8 @@ export class InteractionMarkers {
   private enabled = true;
   /** Photo mode: all marker chrome snapped invisible (setPhotoHidden). */
   private photoHidden = false;
+  /** F1: counter-scale at min zoom so pictograms/labels stay legible. */
+  private zoomK = 1;
 
   constructor(scene: Phaser.Scene) {
     InteractionMarkers.ensureTextures(scene);
@@ -271,19 +278,19 @@ export class InteractionMarkers {
 
     const chip = this.scene.add
       .image(anchor.x, baseY, 'imark-chip')
-      .setScale(0.5)
+      .setScale(0.5 * this.zoomK)
       .setDepth(depth)
       .setAlpha(0);
     // Ink contour under the glyph, then the tinted glyph — the mandated
     // 8-dir contour language, in miniature.
     const iconInk = this.scene.add
       .image(anchor.x, baseY, `imark-${style.icon}-ink`)
-      .setScale(0.5 * 1.16)
+      .setScale(0.5 * 1.16 * this.zoomK)
       .setDepth(depth)
       .setAlpha(0);
     const icon = this.scene.add
       .image(anchor.x, baseY, `imark-${style.icon}`)
-      .setScale(0.5)
+      .setScale(0.5 * this.zoomK)
       .setDepth(depth + 1)
       .setAlpha(0);
     // Keep the ink twin glued to the glyph by parenting via a tiny group-ish
@@ -300,6 +307,7 @@ export class InteractionMarkers {
         strokeThickness: 3,
       })
       .setOrigin(0.5, 0)
+      .setScale(this.zoomK)
       .setDepth(depth + 1)
       .setAlpha(0);
 
@@ -324,8 +332,24 @@ export class InteractionMarkers {
       hovered: false,
       highlight: false,
       labelDepth: depth + 1,
+      suppressors: new Set(),
     });
     this.drawOutline(this.entries[this.entries.length - 1]!);
+  }
+
+  /**
+   * F1: apply the world-text counter-scale (×1/zoom below zoom 1) so glyphs,
+   * chips and name labels hold their screen size at min zoom instead of
+   * shrinking to a smudge. Base scales: glyph 0.5, ink twin 0.58, chip 0.5.
+   */
+  setZoomScale(k: number): void {
+    this.zoomK = k;
+    for (const e of this.entries) {
+      e.icon.setScale(0.5 * k);
+      (e.icon as unknown as { _ink: Phaser.GameObjects.Image })._ink.setScale(0.5 * 1.16 * k);
+      e.chip.setScale(0.5 * k);
+      e.label.setScale(k);
+    }
   }
 
   /** The entry whose footprint contains this tile (C3 label/highlight lookup). */
@@ -336,6 +360,19 @@ export class InteractionMarkers {
   /** C3: rename an interactable's label (merchant name, stall owner/empty). */
   setLabel(tx: number, ty: number, text: string): void {
     this.findEntry(tx, ty)?.label.setText(text);
+  }
+
+  /**
+   * F4 stack rule: suppress (or release) the label of the entity holding the
+   * tile — `source` is 'prompt' (the E-prompt sits on it) or 'bubble' (its
+   * NPC is speaking). The label yields while ANY source holds it; the
+   * per-frame fade lerps it out/in smoothly.
+   */
+  setSuppressed(tx: number, ty: number, source: string, on: boolean): void {
+    const e = this.findEntry(tx, ty);
+    if (e === undefined) return;
+    if (on) e.suppressors.add(source);
+    else e.suppressors.delete(source);
   }
 
   /** C3: amber-pin a target's label (tutorial) with an ink plate that reads
@@ -469,7 +506,9 @@ export class InteractionMarkers {
       iconInk.setAlpha(next);
       e.chip.setAlpha(next * 0.9);
       // C3: a hovered label always shows, even past the nearest-few cap.
-      const labelTarget = e.hovered ? 1 : e.labelAlpha;
+      // F4 stack rule: suppression (E-prompt / speech bubble on this entity)
+      // beats everything — the label yields, hover or not.
+      const labelTarget = e.suppressors.size > 0 ? 0 : e.hovered ? 1 : e.labelAlpha;
       const lcur = e.label.alpha;
       e.label.setAlpha(lcur + (labelTarget - lcur) * lerp);
 

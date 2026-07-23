@@ -10,6 +10,7 @@ import { addLayeredGlow, type LayeredGlow } from '../render/glow';
 import { worldSpriteTint } from '../render/styleConfig';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
+import { worldTextScale } from '../systems/cameraMath';
 
 /**
  * The player entity: a sprite that walks tile-to-tile along A* paths with
@@ -191,11 +192,22 @@ export class Spark {
     }
   }
 
+  /** F4 stack rule: an open speech bubble suppresses the nameplate — one
+   *  voice per anchor space. Cleared when the bubble fades/destroys. */
+  private labelSuppressed = false;
+
   /** Proximity fade (S0): scales the nameplate without touching bubbles. */
   setNameFade(alpha: number): void {
     if (this.label === null) return;
-    this.label.setAlpha(alpha);
-    this.label.setVisible(alpha > 0.02);
+    const a = this.labelSuppressed ? 0 : alpha;
+    this.label.setAlpha(a);
+    this.label.setVisible(a > 0.02);
+  }
+
+  /** F1: counter-scale nameplate + bubble so text stays legible at min zoom. */
+  setTextZoomScale(k: number): void {
+    this.label?.setScale(k);
+    this.bubble?.setScale(k);
   }
 
   setNameLabel(name: string): void {
@@ -208,6 +220,7 @@ export class Spark {
       strokeThickness: 4,
     });
     this.label.setOrigin(0.5, 1);
+    this.label.setScale(worldTextScale(this.scene.cameras.main.zoom));
     // Ease in: fade up from a step below so arrivals feel like arrivals.
     this.label.setAlpha(0);
     this.labelRise = { value: 10 };
@@ -273,9 +286,23 @@ export class Spark {
     g.fillStyle(PALETTE_INT.ink, 0.82);
     g.fillTriangle(-4, h / 2 - 1, 4, h / 2 - 1, 0, h / 2 + 6);
     const bubble = this.scene.add.container(0, 0, [g, txt]);
+    // F4 audit: the chat bubble's opaque plate, in local space (centre origin).
+    bubble.setData('kitClipRect', { ox: -w / 2, oy: -h / 2, w, h });
+    bubble.setScale(worldTextScale(this.scene.cameras.main.zoom));
     bubble.setAlpha(0);
     this.bubble = bubble;
     this.bubbleHeight = h;
+    // F4 stack rule: while the bubble speaks, the nameplate stands down.
+    this.labelSuppressed = true;
+    this.label?.setAlpha(0).setVisible(false);
+    bubble.once(Phaser.GameObjects.Events.DESTROY, () => {
+      if (this.bubble === bubble || this.bubble === null) {
+        this.labelSuppressed = false;
+        // Next proximity-fade tick restores the right alpha; nudge it now so
+        // an idle scene doesn't wait a frame with a missing plate.
+        this.label?.setVisible(true).setAlpha(1);
+      }
+    });
     this.syncBubble();
     this.scene.tweens.add({ targets: bubble, alpha: 1, duration: 160, ease: 'quad.out' });
     const fadeAt = 3400 + Math.min(2200, text.length * 28);
@@ -299,7 +326,9 @@ export class Spark {
     if (this.bubble === null) return;
     this.bubble.setPosition(
       this.image.x,
-      this.image.y - this.image.displayHeight - 16 - this.bubbleHeight / 2,
+      // bubbleHeight is pre-scale; the F1 zoom counter-scale grows the
+      // rendered box, so anchor with the live scale to keep it clear of the head.
+      this.image.y - this.image.displayHeight - 16 - (this.bubbleHeight * this.bubble.scaleY) / 2,
     );
     this.bubble.setDepth(this.image.depth + 2);
   }

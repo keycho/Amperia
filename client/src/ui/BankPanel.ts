@@ -3,10 +3,10 @@ import { ITEMS, type ItemId } from '@shared/items';
 import { mixPalette, PALETTE, UI_TEXT_WARM } from '@shared/palette';
 import type { BankSync } from '@shared/protocol';
 import { gameState } from '../state/GameState';
-import { send } from '../net/NetClient';
+import { send, SERVER_URL } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { itemThumbKey } from '../render/itemThumbs';
-import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
+import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 620;
 const H = 470;
@@ -36,6 +36,25 @@ export class BankPanel {
     this.container.add(kitPlate(scene, W, H));
     kitHeader(scene, this.container, W, 'THE LEDGERHOUSE', () => this.setVisible(false));
 
+    // The public City Ledger (the whole city's books) opens in a new tab —
+    // static (built once, survives every refresh()), sitting just under the
+    // header clear of the vault grid. Comms-clean: it's a ledger.
+    const ledgerLink = kitText(scene, W - 16, 42, 'City Ledger ↗', 'caption', {
+      color: PALETTE.neonAmber,
+    });
+    ledgerLink.setOrigin(1, 0);
+    ledgerLink.setInteractive({ useHandCursor: true });
+    ledgerLink.on('pointerover', () => ledgerLink.setColor(PALETTE.warmGlow));
+    ledgerLink.on('pointerout', () => ledgerLink.setColor(PALETTE.neonAmber));
+    ledgerLink.on(
+      'pointerdown',
+      (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev.stopPropagation();
+        window.open(`${SERVER_URL}/ledger`, '_blank', 'noopener');
+      },
+    );
+    this.container.add(ledgerLink);
+
     session.events.on(SessionEvents.bank, (sync: BankSync) => {
       this.sync = sync;
       if (!this.visible) this.setVisible(true);
@@ -45,8 +64,13 @@ export class BankPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(
         Math.round((cam.width - W) / 2),
@@ -54,6 +78,8 @@ export class BankPanel {
       );
       this.refresh();
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
@@ -88,6 +114,15 @@ export class BankPanel {
     }
     if (onClick !== null) {
       img.setInteractive({ useHandCursor: true });
+      // F5 hover: the inset warms and the thumb swells a touch.
+      img.on('pointerover', () => {
+        inset.setTint(mixPalette('warmGlow', 'structureMid', 0.72));
+        img.setDisplaySize(CELL - 2, CELL - 2);
+      });
+      img.on('pointerout', () => {
+        inset.setTint(mixPalette('ink', 'structureMid', 0.55));
+        img.setDisplaySize(CELL - 6, CELL - 6);
+      });
       img.on(
         'pointerdown',
         (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {

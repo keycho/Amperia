@@ -29,21 +29,19 @@ export const CONFIG = {
   },
 
   camera: {
-    zoomMin: 0.5,
-    zoomMax: 2,
-    /** Texel-crisp zoom steps (textures bake 2×, draw 0.5 — these ratios
-     *  decimate uniformly under NEAREST filtering; no shimmer). */
+    /** The ONLY zooms the wheel lands on (F1). Texel-crisp set: textures
+     *  bake 2× and draw at 0.5, so these ratios decimate uniformly under
+     *  NEAREST — any other ratio (0.75, 1.5) shimmers the pixel grid. */
     zoomSteps: [0.5, 1, 2] as const,
-    /** Multiplicative zoom step per wheel notch (legacy; steps rule now). */
-    zoomStepFactor: 1.12,
     /** Pixels from viewport edge that trigger edge-pan. */
     edgePanMarginPx: 24,
     /** Edge-pan speed in world px/s (at zoom 1). */
     edgePanSpeed: 520,
     /** Lerp factor for camera follow (0–1, higher = snappier). */
     followLerp: 0.08,
-    /** Extra world-px margin around the map the camera may show. */
-    boundsMarginPx: 220,
+    /** Max void visible past a deck edge, in SCREEN px — constant at every
+     *  zoom (the old fixed world-px margin showed 2× the void at zoom 2). */
+    edgeVoidScreenPx: 140,
   },
 
   player: {
@@ -457,11 +455,16 @@ export const CONFIG = {
     /** Bolts per hop along the line (recurring sink). */
     tollBolts: 5,
     /**
-     * PP6: stops that ride FREE regardless of distance. The Stacks is a free
-     * second district — it widens the starter world and teaches the tram loop
-     * without a Bolts gate; distance keeps its price everywhere else.
+     * PP6 (amended): LEGS that ride free — both directions, so the free
+     * second district is a free ROUND TRIP, never a pay-to-come-home
+     * gotcha. The Filament ↔ Stacks starter leg teaches the tram loop
+     * without a Bolts gate; every other ride prices by distance, the same
+     * in both directions.
      */
-    freeStops: ['stacks'] as string[],
+    freeLegs: [['filament', 'stacks']] as [string, string][],
+    /** Server-checked "at the gate" boarding reach (chebyshev tiles) —
+     *  handleTravel and the world map's ride-from-map shortcut share it. */
+    gateRadiusTiles: 4,
     /** Tangle gate + arrival tile. */
     tangleSpawn: { x: 4, y: 20 },
     /** Stacks gate + arrival tile (districts block D1). */
@@ -785,8 +788,11 @@ export const CONFIG = {
       xpBrawlingPerKill: 14,
       /** Rare Manifest trophy roll per kill — the ONLY drop of any kind. */
       trophyChance: 0.04,
-      /** Home range: the SE scrap fringe among the amperite spoil (W0 layout). */
-      homeBox: { x0: 45, y0: 45, x1: 56, y1: 56 },
+      /** Home range: the SE scrap fringe among the amperite spoil (W0
+       *  layout). Pulled to the deep corner so the fringe's reach (leash 7
+       *  from any home seat) clears the FIRST BOLTS gather pocket north of
+       *  it — shared/tutorialPath.test.ts guards this line. */
+      homeBox: { x0: 49, y0: 49, x1: 56, y1: 56 },
     },
     /** Placeable Heatlamp: riveted on the spot from Salvage (a real sink). */
     heatlamp: {

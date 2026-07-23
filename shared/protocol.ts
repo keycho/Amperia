@@ -26,6 +26,7 @@ export const MSG = {
   donate: 'donate',
   travel: 'travel',
   travelGo: 'travelGo',
+  cityPresence: 'cityPresence',
   delivery: 'delivery',
   deliverySync: 'deliverySync',
   tend: 'tend',
@@ -48,6 +49,8 @@ export const MSG = {
   goalClaim: 'goalClaim',
   coilSpin: 'coilSpin',
   bank: 'bank',
+  sortPack: 'sortPack',
+  crafted: 'crafted',
   loftpod: 'loftpod',
   loftpodSync: 'loftpodSync',
   // server → client (results/events)
@@ -95,6 +98,13 @@ export interface MoveStackIntent {
   fromIdx: number;
   to: 'pack' | 'hotbar';
   toIdx: number;
+  /** F2 split: move only this many (≤ stack). Omitted = the whole stack. */
+  qty?: number;
+}
+
+/** Player → server (F2): sort the Pack — merge stacks, order by category. */
+export interface SortPackIntent {
+  target: 'pack';
 }
 
 export interface ChatIntent {
@@ -209,6 +219,11 @@ export interface UseItemIntent {
   slot: number;
 }
 
+/** Server → own client (F3): a craft landed — drives the result-card moment. */
+export interface CraftedEvent {
+  itemId: string;
+}
+
 /** Player → server: craft a recipe at the Tinkerbench. */
 export interface CraftIntent {
   recipeId: string;
@@ -245,6 +260,12 @@ export interface TravelIntent {
 /** Server → player: leave this room and join the named district. */
 export interface TravelGo {
   to: DistrictId;
+}
+
+/** Server → all: live seated-Spark counts per district (world map M3).
+ *  Presence facts only — no value, no identities. */
+export interface CityPresenceEvent {
+  counts: Partial<Record<DistrictId, number>>;
 }
 
 /** U1a player → server: take a parcel at the post / drop it at the landing. */

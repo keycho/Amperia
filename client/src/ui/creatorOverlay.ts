@@ -19,20 +19,14 @@ import {
   ownedForSlot,
 } from '@shared/cosmetics';
 import { intToHex, PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { rollSparkName } from '@shared/sparkNames';
 import { sound } from '../audio/sound';
 import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 import { swallowGameInput } from './domGuard';
 
 /** U2d: roll-a-name — seeds in the city's voice. */
-const NAME_HEADS = ['Weld', 'Volt', 'Flux', 'Brass', 'Coil', 'Ember', 'Socket', 'Dyna', 'Rivet', 'Amp'];
-const NAME_TAILS = ['a', 'ka', 'ric', 'low', 'mira', 'tin', 'na', 'wick', 'ette', 'bolt', 'sy', 'ler'];
-function rollName(): string {
-  const head = NAME_HEADS[Math.floor(Math.random() * NAME_HEADS.length)] as string;
-  const tail = NAME_TAILS[Math.floor(Math.random() * NAME_TAILS.length)] as string;
-  const n = Math.random() < 0.35 ? `-${Math.floor(10 + Math.random() * 90)}` : '';
-  return `${head}${tail}${n}`;
-}
+const rollName = rollSparkName; // F5: one shared city-voice list (server seats from it too)
 
 /**
  * The character creator (I2) — first login (full: name + look) and
@@ -185,7 +179,9 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
     nameRow.style.cssText = 'display:flex;gap:6px;align-items:center;';
     nameInput = document.createElement('input');
     nameInput.type = 'text';
-    nameInput.value = opts.currentName;
+    // First sign-in arrives with a blank name (the machine placeholder is
+    // stripped upstream) — seed a cozy rolled name so no one starts nameless.
+    nameInput.value = opts.currentName !== '' ? opts.currentName : rollName();
     nameInput.maxLength = 16;
     nameInput.placeholder = 'Spark name';
     nameInput.style.cssText = [
@@ -254,6 +250,8 @@ export function showCreatorOverlay(opts: CreatorOpts): CreatorHandle {
           .catch(() => undefined);
       }, 350);
     });
+    // Check availability of the seeded name right away.
+    nameInput.dispatchEvent(new Event('input'));
   }
 
   const rowLabel = (text: string) => {

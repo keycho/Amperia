@@ -58,7 +58,8 @@ export const SERVER_URL: string = resolveServerUrl();
 export interface AuthResponse {
   token: string;
   sparkName: string;
-  email: string | null;
+  /** The signed-in wallet (lowercased) — the account identity. */
+  walletAddress: string;
   /** Last persisted district — rejoin the Spark where they left off. */
   district: DistrictId;
 }
@@ -74,11 +75,21 @@ async function authPost(path: string, body: Record<string, unknown>): Promise<Au
   return data;
 }
 
+/**
+ * Wallet-only auth (W2–W5). `nonce()` fetches a single-use server nonce; the
+ * wallet module folds it into an EIP-4361 message, signs it, and `wallet()`
+ * posts the message + signature for server-side verification + find-or-create.
+ */
 export const auth = {
-  register: (email: string, password: string, sparkName: string) =>
-    authPost('/auth/register', { email, password, sparkName }),
-  login: (email: string, password: string) => authPost('/auth/login', { email, password }),
-  guest: (sparkName?: string) => authPost('/auth/guest', sparkName ? { sparkName } : {}),
+  nonce: async (): Promise<{ nonce: string }> => {
+    const res = await fetch(`${SERVER_URL}/auth/nonce`);
+    const data = (await res.json()) as { nonce?: string; error?: string };
+    if (!res.ok || typeof data.nonce !== 'string') {
+      throw new Error(data.error ?? 'Could not start sign-in.');
+    }
+    return { nonce: data.nonce };
+  },
+  wallet: (message: string, signature: string) => authPost('/auth/wallet', { message, signature }),
 };
 
 export const TOKEN_KEY = 'amperia.token';
@@ -102,6 +113,16 @@ export type FilamentRoom = Room<any>;
 export async function joinDistrict(token: string, district: DistrictId): Promise<FilamentRoom> {
   const client = new Client(SERVER_URL);
   return client.joinOrCreate(district, { token });
+}
+
+/**
+ * Join a district as a read-only spectator (W7) — no token, no account. The
+ * server seats a temporary, non-persistent Visitor; every value action is
+ * refused with a "connect your wallet" prompt until they connect one.
+ */
+export async function joinDistrictSpectate(district: DistrictId): Promise<FilamentRoom> {
+  const client = new Client(SERVER_URL);
+  return client.joinOrCreate(district, { spectate: true });
 }
 
 export { getStateCallbacks, MSG };
@@ -135,4 +156,6 @@ export const send = {
   /** The Fortune Coil: the spin takes NOTHING — free: true is the whole payload. */
   coilSpin: (room: FilamentRoom) => room.send(MSG.coilSpin, { free: true }),
   bank: (room: FilamentRoom, msg: BankIntent) => room.send(MSG.bank, msg),
+  /** F2: server-authoritative Pack sort. */
+  sortPack: (room: FilamentRoom) => room.send(MSG.sortPack, { target: 'pack' }),
 };
