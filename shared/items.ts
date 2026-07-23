@@ -2,6 +2,11 @@
  * Item definitions. UI strings live here and must follow the comms rules
  * (CLAUDE.md golden rule 11): players "collect", quests "reward" — never
  * "earn"/"yield"/investment talk anywhere in game text.
+ *
+ * F2: every item carries the full card — distinct voxel icon (no two items
+ * share one; enforced by items.test.ts), display name, 1–2 lines of flavor,
+ * a category + rarity read, and an explicit stack size (tools and wearables
+ * are 1; the server honours per-item stacks via inventory.stackFor).
  */
 export type ItemId =
   // resources
@@ -53,13 +58,26 @@ export type ToolKind =
   | 'riveter'
   | 'sparkwrench';
 
+/** The category tag every item card shows (and the Pack sort order). */
+export type ItemCategory =
+  | 'resource'
+  | 'tool'
+  | 'weapon'
+  | 'consumable'
+  | 'curio'
+  | 'cosmetic';
+
 export interface ItemDef {
   id: ItemId;
   name: string;
   flavor: string;
+  /** Category tag — tooltip read + the Pack's sort order. */
+  category: ItemCategory;
+  /** Per-item stack size (tools/wearables 1). The server enforces this. */
+  stack: number;
   /** Texture key for the inventory icon. */
   icon: string;
-  /** Palette key to tint the icon with (white/stock icons only). */
+  /** Palette key accenting the icon's REAL accent voxels (never a wash). */
   iconTint?: string;
   /** True for Manifest-worthy rare variants. */
   rare?: boolean;
@@ -73,35 +91,54 @@ export interface ItemDef {
   cosmetic?: boolean;
 }
 
+/** The human read of an item's rarity line: rare > tier > common. */
+export function rarityLabel(def: ItemDef): string {
+  if (def.rare === true) return 'rare';
+  if (def.tier === 3) return 'Coilworked';
+  if (def.tier === 2) return 'Brassbound';
+  if (def.tier === 1) return 'Tinker';
+  return 'common';
+}
+
 export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
   salvage: {
     id: 'salvage',
     name: 'Salvage',
     flavor: 'Scrap plate, wire, and bolt-ends. The city runs on it.',
+    category: 'resource',
+    stack: 999,
     icon: 'icon-salvage',
   },
   brass: {
     id: 'brass',
     name: 'Brass',
     flavor: 'Warm metal from the seams. Loves a polish.',
+    category: 'resource',
+    stack: 999,
     icon: 'icon-brass',
   },
   amperite: {
     id: 'amperite',
     name: 'Amperite',
     flavor: 'Charge-crystal, still humming. Handle with dry gloves.',
+    category: 'resource',
+    stack: 999,
     icon: 'icon-amperite',
   },
   glowkoi: {
     id: 'glowkoi',
     name: 'Glowkoi',
     flavor: 'A lantern with fins. The canals are full of them.',
+    category: 'resource',
+    stack: 999,
     icon: 'icon-glowkoi',
   },
   signal: {
     id: 'signal',
     name: 'Signal',
     flavor: 'A clean slice of the old frequencies, bottled.',
+    category: 'resource',
+    stack: 999,
     icon: 'icon-signal',
     iconTint: 'neonCyan',
   },
@@ -109,6 +146,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'gildedScrap',
     name: 'Gilded Scrap',
     flavor: 'A glimmer of old goldwork in the junk. One for the Manifest.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-gilded-scrap',
     rare: true,
   },
@@ -116,6 +155,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'blueHotBrass',
     name: 'Blue-Hot Brass',
     flavor: 'Seam metal that never quite cooled. The Manifest wants it.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-blue-hot-brass',
     iconTint: 'neonCyan',
     rare: true,
@@ -124,6 +165,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'prismaticGlowkoi',
     name: 'Prismatic Glowkoi',
     flavor: 'Every color the canal has ever seen, swimming.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-prismatic-glowkoi',
     iconTint: 'neonRose',
     rare: true,
@@ -132,6 +175,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'ghostFrequency',
     name: 'Ghost Frequency',
     flavor: 'A voice from the dead grid, caught mid-word.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-ghost-frequency',
     iconTint: 'neonRose',
     rare: true,
@@ -140,6 +185,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'silverfern',
     name: 'Silverfern',
     flavor: 'A frond gone chrome in the compost. The gardeners bow to it.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-silverfern',
     rare: true,
   },
@@ -147,6 +194,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'emberseed',
     name: 'Emberseed',
     flavor: 'Warm to the touch, and it never sprouts. One for the Manifest.',
+    category: 'curio',
+    stack: 50,
     icon: 'icon-emberseed',
     rare: true,
   },
@@ -154,38 +203,44 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'dentedCrest',
     name: 'Dented Crest',
     flavor: "A Scuttlebot's maker-mark, pried off mid-scuffle. The Manifest wants it.",
-    icon: 'icon-gilded-scrap',
-    iconTint: 'neonRose',
+    category: 'curio',
+    stack: 50,
+    icon: 'icon-dented-crest',
     rare: true,
   },
   wispFilament: {
     id: 'wispFilament',
     name: 'Wisp Filament',
     flavor: 'A hair of living charge, still warm. Popped from a Sparkwisp.',
-    icon: 'icon-gilded-scrap',
-    iconTint: 'neonTeal',
+    category: 'curio',
+    stack: 50,
+    icon: 'icon-wisp-filament',
     rare: true,
   },
   drayPlate: {
     id: 'drayPlate',
     name: 'Dray Plate',
-    flavor: "Armor off a rogue Draymule's flank. It took a crowd to earn the dent.",
-    icon: 'icon-gilded-scrap',
-    iconTint: 'emberOrange',
+    flavor: "Armor off a rogue Draymule's flank. It took a crowd to put that dent in.",
+    category: 'curio',
+    stack: 50,
+    icon: 'icon-dray-plate',
     rare: true,
   },
   waxChit: {
     id: 'waxChit',
     name: 'Wax-Sealed Chit',
     flavor: 'A courier tip, pressed in wax. Worth nothing. Kept forever.',
-    icon: 'icon-gilded-scrap',
-    iconTint: 'violetNeon',
+    category: 'curio',
+    stack: 50,
+    icon: 'icon-wax-chit',
     rare: true,
   },
   warmcup: {
     id: 'warmcup',
     name: 'Warmcup',
     flavor: 'Hot broth in a battered tin. Mends a Spark from the inside.',
+    category: 'consumable',
+    stack: 24,
     icon: 'icon-warmcup',
     iconTint: 'neonAmber',
   },
@@ -193,6 +248,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'cellwax',
     name: 'Cellwax',
     flavor: 'Tool balm. Works worn joints and coils back into shape.',
+    category: 'consumable',
+    stack: 24,
     icon: 'icon-cellwax',
     iconTint: 'neonTeal',
   },
@@ -200,6 +257,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'heatlamp',
     name: 'Heatlamp',
     flavor: 'A riveted-together warm spot. Sparks mend faster in its pool.',
+    category: 'consumable',
+    stack: 8,
     icon: 'icon-heatlamp',
     iconTint: 'warmGlow',
   },
@@ -207,6 +266,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'magclaw',
     name: 'Magclaw',
     flavor: 'Magnetic grabber. Junk heaps give it up easy.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-magclaw',
     tool: true,
     toolKind: 'magclaw',
@@ -216,6 +277,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'brassMagclaw',
     name: 'Brassbound Magclaw',
     flavor: 'Rebuilt around a brass core. Grips like it means it.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-magclaw',
     iconTint: 'neonAmber',
     tool: true,
@@ -226,6 +289,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'coilMagclaw',
     name: 'Coilworked Magclaw',
     flavor: 'Amperite windings hum in the grip. Junk leaps to it.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-magclaw',
     iconTint: 'neonTeal',
     tool: true,
@@ -236,6 +301,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'drillhammer',
     name: 'Drillhammer',
     flavor: 'For seams and crystal both. Mind the rhythm.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-drillhammer',
     tool: true,
     toolKind: 'drillhammer',
@@ -245,6 +312,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'brassDrillhammer',
     name: 'Brassbound Drillhammer',
     flavor: 'Weighted brass head. The seams answer faster.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-drillhammer',
     iconTint: 'neonAmber',
     tool: true,
@@ -255,6 +324,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'coilDrillhammer',
     name: 'Coilworked Drillhammer',
     flavor: 'Charge-assisted strikes. Crystal barely argues.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-drillhammer',
     iconTint: 'neonTeal',
     tool: true,
@@ -265,6 +336,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'skimnet',
     name: 'Skimnet',
     flavor: 'Cast light, land bright.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-skimnet',
     tool: true,
     toolKind: 'skimnet',
@@ -274,6 +347,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'brassSkimnet',
     name: 'Brassbound Skimnet',
     flavor: 'Brass-ringed mouth holds its shape mid-cast.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-skimnet',
     iconTint: 'neonAmber',
     tool: true,
@@ -284,6 +359,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'coilSkimnet',
     name: 'Coilworked Skimnet',
     flavor: "The mesh glows faintly. Koi can't look away.",
+    category: 'tool',
+    stack: 1,
     icon: 'icon-skimnet',
     iconTint: 'neonTeal',
     tool: true,
@@ -294,6 +371,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'tuner',
     name: 'Tuner',
     flavor: 'A radio deck older than the dusk. Still true.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-tuner',
     iconTint: 'neonAmber',
     tool: true,
@@ -304,8 +383,10 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'brassTuner',
     name: 'Brassbound Tuner',
     flavor: 'Brass horn, cleaner static, warmer lock.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-tuner',
-    iconTint: 'neonAmber',
+    iconTint: 'warmGlow',
     tool: true,
     toolKind: 'tuner',
     tier: 2,
@@ -314,6 +395,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'coilTuner',
     name: 'Coilworked Tuner',
     flavor: 'Hears the old grid like it never went quiet.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-tuner',
     iconTint: 'neonTeal',
     tool: true,
@@ -324,6 +407,8 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'riveter',
     name: 'Riveter',
     flavor: 'For building, when there is something to build.',
+    category: 'tool',
+    stack: 1,
     icon: 'icon-riveter',
     iconTint: 'warmGlow',
     tool: true,
@@ -334,7 +419,9 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'sparkwrench',
     name: 'Sparkwrench',
     flavor: 'A heavy wrench with opinions. Scuttlebots respect it.',
-    icon: 'icon-riveter',
+    category: 'weapon',
+    stack: 1,
+    icon: 'icon-sparkwrench',
     tool: true,
     toolKind: 'sparkwrench',
     tier: 1,
@@ -343,7 +430,9 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'brassSparkwrench',
     name: 'Brassbound Sparkwrench',
     flavor: 'Brass knuckle-guard. Swings with authority.',
-    icon: 'icon-riveter',
+    category: 'weapon',
+    stack: 1,
+    icon: 'icon-sparkwrench',
     iconTint: 'neonAmber',
     tool: true,
     toolKind: 'sparkwrench',
@@ -353,7 +442,9 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'coilSparkwrench',
     name: 'Coilworked Sparkwrench',
     flavor: 'Every hit lands with a little lightning in it.',
-    icon: 'icon-riveter',
+    category: 'weapon',
+    stack: 1,
+    icon: 'icon-sparkwrench',
     iconTint: 'neonTeal',
     tool: true,
     toolKind: 'sparkwrench',
@@ -363,8 +454,9 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     id: 'starterScarf',
     name: 'Dispatch Scarf',
     flavor: "The Dispatcher's thank-you. Worn proud at the neck.",
-    icon: 'icon-gilded-scrap',
-    iconTint: 'neonRose',
+    category: 'cosmetic',
+    stack: 1,
+    icon: 'icon-scarf',
     cosmetic: true,
   },
 };

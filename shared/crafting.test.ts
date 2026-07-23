@@ -62,7 +62,7 @@ describe('repairQuote', () => {
 describe('durability-aware inventory', () => {
   it('gear never stacks and is born at full durability', () => {
     const inv = makeInventory(4);
-    const r = addItem(inv, 'sparkwrench', 2, 999);
+    const r = addItem(inv, 'sparkwrench', 2);
     expect(r.added).toBe(2);
     expect(r.inv.slots[0]).toEqual({
       itemId: 'sparkwrench',
@@ -73,8 +73,8 @@ describe('durability-aware inventory', () => {
   });
   it('transfer swaps rather than merges gear', () => {
     const inv = makeInventory(4);
-    const a = addItem(inv, 'sparkwrench', 2, 999).inv;
-    const moved = transfer(a, 0, a, 1, 999);
+    const a = addItem(inv, 'sparkwrench', 2).inv;
+    const moved = transfer(a, 0, a, 1);
     expect(moved.src.slots[0]?.qty).toBe(1);
     expect(moved.src.slots[1]?.qty).toBe(1);
   });

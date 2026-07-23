@@ -6,6 +6,7 @@ import {
   makeInventory,
   makeStarterHotbar,
   removeItem,
+  sortInventory,
   transfer,
   type Inventory,
   countItem,
@@ -97,6 +98,8 @@ import {
   type PlayerTradeIntent,
   type SelectSlotIntent,
   type CraftIntent,
+  type CraftedEvent,
+  type SortPackIntent,
   type DonateIntent,
   type QuestIntent,
   type ReclaimIntent,
@@ -407,6 +410,15 @@ export class FilamentRoom extends Room<FilamentState> {
     this.onMessage<InspectIntent>(MSG.inspect, (client, msg) => this.handleInspect(client, msg));
     guarded<GoalClaimIntent>(MSG.goalClaim, (client, msg) => {
       void this.handleGoalClaim(client, msg);
+    });
+    guarded<SortPackIntent>(MSG.sortPack, (client, _msg) => {
+      // F2: server-authoritative Pack sort — merge stacks (per-item caps),
+      // order by category/name; nothing is created or destroyed.
+      const rt = this.runtimes.get(client.sessionId);
+      if (rt === undefined) return;
+      rt.pack = sortInventory(rt.pack);
+      client.send(MSG.inventory, this.inventorySync(rt));
+      void this.persist(rt);
     });
     guarded<BankIntent>(MSG.bank, (client, msg) => {
       void this.handleBank(client, msg).catch((err) =>
@@ -934,13 +946,13 @@ export class FilamentRoom extends Room<FilamentState> {
     if (!Number.isInteger(msg.fromIdx) || !Number.isInteger(msg.toIdx)) return;
     if (msg.fromIdx < 0 || msg.fromIdx >= src.slots.length) return;
     if (msg.toIdx < 0 || msg.toIdx >= dst.slots.length) return;
-    const r = transfer(
-      src,
-      msg.fromIdx,
-      msg.from === msg.to ? src : dst,
-      msg.toIdx,
-      CONFIG.inventory.stackMax,
-    );
+    // F2 split: an optional qty moves part of the stack (validated in the
+    // pure transfer — partial onto a mismatched stack is refused there).
+    const qty =
+      typeof msg.qty === 'number' && Number.isInteger(msg.qty) && msg.qty > 0
+        ? msg.qty
+        : undefined;
+    const r = transfer(src, msg.fromIdx, msg.from === msg.to ? src : dst, msg.toIdx, qty);
     if (msg.from === 'pack') rt.pack = r.src;
     else rt.hotbar = r.src;
     if (msg.to === 'pack') rt.pack = r.dst;
@@ -1214,7 +1226,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (prize.kind === 'bolts') {
       rt.bolts += prize.amount;
     } else if (prize.kind === 'item') {
-      const add = addItem(rt.pack, prize.itemId as ItemId, prize.amount, CONFIG.inventory.stackMax);
+      const add = addItem(rt.pack, prize.itemId as ItemId, prize.amount);
       rt.pack = add.inv;
       if (prize.itemId === 'gildedScrap' && add.added > 0) {
         this.recordManifest(client, rt, 'gildedScrap');
@@ -1284,7 +1296,7 @@ export class FilamentRoom extends Room<FilamentState> {
       const stack = from.slots[slot];
       if (stack === null || stack === undefined) return;
       const moving = Math.min(qty, stack.qty);
-      const add = addItem(to, stack.itemId as ItemId, moving, CONFIG.inventory.stackMax);
+      const add = addItem(to, stack.itemId as ItemId, moving);
       if (add.added <= 0) {
         client.send(MSG.notice, {
           text: msg.action === 'deposit' ? 'The vault shelf is full.' : 'Your Pack is full.',
@@ -1823,7 +1835,7 @@ export class FilamentRoom extends Room<FilamentState> {
     };
     const trophy = TROPHY[m.kind];
     const grantTrophy = (c: Client, r: PlayerRuntime): void => {
-      const rr = addItem(r.pack, trophy, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(r.pack, trophy, 1);
       if (rr.added <= 0) return;
       r.pack = rr.inv;
       ledger.log({
@@ -1846,8 +1858,8 @@ export class FilamentRoom extends Room<FilamentState> {
         const salvage =
           dm.salvageMin + Math.floor(this.rng() * (dm.salvageMax - dm.salvageMin + 1));
         const brass = dm.brassMin + Math.floor(this.rng() * (dm.brassMax - dm.brassMin + 1));
-        r.pack = addItem(r.pack, 'salvage', salvage, CONFIG.inventory.stackMax).inv;
-        r.pack = addItem(r.pack, 'brass', brass, CONFIG.inventory.stackMax).inv;
+        r.pack = addItem(r.pack, 'salvage', salvage).inv;
+        r.pack = addItem(r.pack, 'brass', brass).inv;
         ledger.log({
           type: 'gather',
           account: r.accountId,
@@ -2103,7 +2115,7 @@ export class FilamentRoom extends Room<FilamentState> {
         client.send(MSG.notice, { text: `That costs ${ware.price} Bolts.` });
         return;
       }
-      const add = addItem(rt.pack, ware.itemId as ItemId, 1, CONFIG.inventory.stackMax);
+      const add = addItem(rt.pack, ware.itemId as ItemId, 1);
       if (add.added < 1) {
         client.send(MSG.notice, { text: 'Your Pack is full.' });
         return;
@@ -2387,7 +2399,6 @@ export class FilamentRoom extends Room<FilamentState> {
       rtB.pack,
       rtB.bolts,
       offerB,
-      CONFIG.inventory.stackMax,
     );
     if (!r.ok) {
       // Nothing moved. Stale offers (pack changed since staging) come back
@@ -2658,9 +2669,9 @@ export class FilamentRoom extends Room<FilamentState> {
           if (isGear) {
             const back = rt.pack.slots[msg.slot];
             if (back === null) rt.pack.slots[msg.slot] = { itemId: line.itemId, qty: 1, durability: line.durability };
-            else rt.pack = addItem(rt.pack, line.itemId, 1, CONFIG.inventory.stackMax).inv;
+            else rt.pack = addItem(rt.pack, line.itemId, 1).inv;
           } else {
-            rt.pack = addItem(rt.pack, line.itemId, qty, CONFIG.inventory.stackMax).inv;
+            rt.pack = addItem(rt.pack, line.itemId, qty).inv;
           }
           notice(err);
           client.send(MSG.inventory, this.inventorySync(rt));
@@ -2685,7 +2696,7 @@ export class FilamentRoom extends Room<FilamentState> {
           return;
         }
         if (this.runtimes.get(client.sessionId) !== rt) return;
-        const add = addItem(rt.pack, r.taken.itemId, r.taken.qty, CONFIG.inventory.stackMax);
+        const add = addItem(rt.pack, r.taken.itemId, r.taken.qty);
         rt.pack = add.inv;
         if (add.overflow > 0) {
           // Pack filled mid-flight: park the rest in the mailbox, no loss.
@@ -2753,7 +2764,7 @@ export class FilamentRoom extends Room<FilamentState> {
           }
           return;
         }
-        const add = addItem(rt.pack, r.bought.itemId, r.bought.qty, CONFIG.inventory.stackMax);
+        const add = addItem(rt.pack, r.bought.itemId, r.bought.qty);
         rt.pack = add.inv;
         if (r.bought.durability !== undefined) {
           // Gear travels with its wear: stamp it onto the slot just added.
@@ -2817,7 +2828,7 @@ export class FilamentRoom extends Room<FilamentState> {
         rt.bolts += parcel.bolts;
         const leftover: typeof parcel.stock = [];
         for (const item of parcel.stock) {
-          const add = addItem(rt.pack, item.itemId, item.qty, CONFIG.inventory.stackMax);
+          const add = addItem(rt.pack, item.itemId, item.qty);
           rt.pack = add.inv;
           if (item.durability !== undefined && add.added > 0) {
             for (let i = rt.pack.slots.length - 1; i >= 0; i--) {
@@ -2981,11 +2992,11 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       return;
     }
-    const add = addItem(rt.pack, recipe.output as ItemId, 1, CONFIG.inventory.stackMax);
+    const add = addItem(rt.pack, recipe.output as ItemId, 1);
     if (add.added < 1) {
       // Refund materials if the pack is full — crafts never eat inputs.
       for (const [mid, qty] of Object.entries(recipe.materials)) {
-        rt.pack = addItem(rt.pack, mid as ItemId, qty, CONFIG.inventory.stackMax).inv;
+        rt.pack = addItem(rt.pack, mid as ItemId, qty).inv;
       }
       client.send(MSG.notice, { text: 'Your Pack is full.' });
       return;
@@ -3004,6 +3015,8 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.inventory, this.inventorySync(rt));
     client.send(MSG.notice, { text: `Crafted: ${ITEMS[recipe.output as ItemId].name}.` });
+    // F3: the result-card moment on the client rides this dedicated event.
+    client.send(MSG.crafted, { itemId: recipe.output } satisfies CraftedEvent);
     this.questProgress(client, rt, { type: 'craft' });
   }
 
@@ -3264,7 +3277,7 @@ export class FilamentRoom extends Room<FilamentState> {
     // The occasional tip: a Manifest keepsake, never currency.
     let tipped = false;
     if (this.rng() < cfg.rareTipChance) {
-      const rr = addItem(rt.pack, 'waxChit', 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, 'waxChit', 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         tipped = true;
@@ -3308,7 +3321,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (this.rng() < chance) {
       const pool = CONFIG.terrarium.rares;
       rare = pool[Math.floor(this.rng() * pool.length)] as ItemId;
-      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, rare, 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         this.recordManifest(client, rt, rare);
@@ -3475,7 +3488,7 @@ export class FilamentRoom extends Room<FilamentState> {
     const fee = Math.min(CONFIG.tangle.scrapcache.reclaimFeeBolts, cache.bolts);
     rt.bolts += cache.bolts - fee;
     for (const stack of cache.stacks) {
-      rt.pack = addItem(rt.pack, stack.itemId, stack.qty, CONFIG.inventory.stackMax).inv;
+      rt.pack = addItem(rt.pack, stack.itemId, stack.qty).inv;
     }
     this.caches.delete(msg.cacheId);
     this.state.caches.delete(msg.cacheId);
@@ -4418,13 +4431,13 @@ export class FilamentRoom extends Room<FilamentState> {
   ): void {
     let added = 0;
     if (qty > 0) {
-      const r = addItem(rt.pack, itemId, qty, CONFIG.inventory.stackMax);
+      const r = addItem(rt.pack, itemId, qty);
       rt.pack = r.inv;
       added = r.added;
     }
     let rareGranted: ItemId | null = null;
     if (rare !== null) {
-      const rr = addItem(rt.pack, rare, 1, CONFIG.inventory.stackMax);
+      const rr = addItem(rt.pack, rare, 1);
       if (rr.added > 0) {
         rt.pack = rr.inv;
         rareGranted = rare;

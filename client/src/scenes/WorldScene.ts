@@ -2049,7 +2049,7 @@ export class WorldScene extends Phaser.Scene {
       // Stop on full pack: simulate one unit landing (the inventory sync
       // arrives with the loot, so the mirror is current by now).
       const yieldId = WorldScene.NODE_YIELD[run.kind];
-      if (addItem(gameState.inventory, yieldId, 1, CONFIG.inventory.stackMax).added === 0) {
+      if (addItem(gameState.inventory, yieldId, 1).added === 0) {
         this.cancelAutoGather();
         return; // the loot toast already said the pack is full
       }

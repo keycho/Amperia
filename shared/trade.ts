@@ -110,7 +110,7 @@ function takeOffer(pack: Inventory, offer: TradeOffer): Inventory | null {
 }
 
 /** Add an offer's lines into a pack clone; null if anything overflows. */
-function giveOffer(pack: Inventory, offer: TradeOffer, stackMax: number): Inventory | null {
+function giveOffer(pack: Inventory, offer: TradeOffer): Inventory | null {
   let next: Inventory = { slots: pack.slots.map((s) => (s === null ? null : { ...s })) };
   for (const line of offer.items) {
     if (ITEMS[line.itemId].tool === true) {
@@ -119,7 +119,7 @@ function giveOffer(pack: Inventory, offer: TradeOffer, stackMax: number): Invent
       if (idx < 0) return null;
       next.slots[idx] = { itemId: line.itemId, qty: 1, durability: line.durability };
     } else {
-      const r = addItem(next, line.itemId, line.qty, stackMax);
+      const r = addItem(next, line.itemId, line.qty);
       if (r.overflow > 0) return null;
       next = r.inv;
     }
@@ -151,7 +151,6 @@ export function settleTrade(
   packB: Inventory,
   boltsB: number,
   offerB: TradeOffer,
-  stackMax: number,
 ): SettleResult {
   if (validateOffer(packA, boltsA, offerA) !== null) return { ok: false, reason: 'aInvalid' };
   if (validateOffer(packB, boltsB, offerB) !== null) return { ok: false, reason: 'bInvalid' };
@@ -159,9 +158,9 @@ export function settleTrade(
   const bWithout = takeOffer(packB, offerB);
   if (aWithout === null) return { ok: false, reason: 'aInvalid' };
   if (bWithout === null) return { ok: false, reason: 'bInvalid' };
-  const aFinal = giveOffer(aWithout, offerB, stackMax);
+  const aFinal = giveOffer(aWithout, offerB);
   if (aFinal === null) return { ok: false, reason: 'aPackFull' };
-  const bFinal = giveOffer(bWithout, offerA, stackMax);
+  const bFinal = giveOffer(bWithout, offerA);
   if (bFinal === null) return { ok: false, reason: 'bPackFull' };
   return {
     ok: true,

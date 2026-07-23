@@ -12,12 +12,11 @@ import {
   type TradeOffer,
 } from './trade';
 
-const MAX = CONFIG.inventory.stackMax;
 
 function packWith(items: Array<[string, number]>): Inventory {
   let inv = makeInventory(8);
   for (const [id, qty] of items) {
-    inv = addItem(inv, id as never, qty, MAX).inv;
+    inv = addItem(inv, id as never, qty).inv;
   }
   return inv;
 }
@@ -89,7 +88,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       40,
       { bolts: 0, items: [{ itemId: 'brass', qty: 12 }] },
-      MAX,
     );
     if (!r.ok) throw new Error('expected ok');
     expect(countItem(r.packA, 'salvage')).toBe(10);
@@ -115,7 +113,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       0,
       { bolts: 0, items: [{ itemId: 'glowkoi', qty: 4 }] },
-      MAX,
     );
     if (!r.ok) throw new Error('expected ok');
     const moved = r.packB.slots.find((s) => s?.itemId === 'brassTuner');
@@ -138,7 +135,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       0,
       emptyOffer(),
-      MAX,
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -157,7 +153,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       0,
       { bolts: 0, items: [{ itemId: 'magclaw', qty: 1, durability: 120 }] },
-      MAX,
     );
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -175,7 +170,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       0,
       emptyOffer(),
-      MAX,
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -192,7 +186,6 @@ describe('settleTrade — the escrowed atomic swap', () => {
       b,
       0,
       emptyOffer(),
-      MAX,
     );
     if (!r.ok) throw new Error('expected ok');
     expect(countItem(r.packB, 'signal')).toBe(3);

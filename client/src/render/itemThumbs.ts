@@ -182,7 +182,89 @@ const BUILDERS: Record<string, (accent: number) => Voxel[]> = {
   // D2c garden rares.
   'icon-silverfern': () => silverfernModel(),
   'icon-emberseed': () => emberseedModel(),
+  // F2: every item its own silhouette — these six previously borrowed the
+  // gilded-scrap / riveter models and read as duplicates in the Pack.
+  'icon-dented-crest': () => dentedCrestModel(),
+  'icon-wisp-filament': () => wispFilamentModel(),
+  'icon-dray-plate': () => drayPlateModel(),
+  'icon-wax-chit': () => waxChitModel(),
+  'icon-sparkwrench': (a) => sparkwrenchModel(a),
+  'icon-scarf': () => scarfModel(),
 };
+
+/** A Scuttlebot's maker-mark: a pointed badge, one corner caved in. */
+function dentedCrestModel(): Voxel[] {
+  const steel = blendInt(C.metal, C.ink, 0.15);
+  const v = box(0, 0, 1, 4, 1, 3, steel);
+  v.push({ x: 1, y: 0, z: 0, c: steel }); // the point
+  v.push({ x: 2, y: 0, z: 0, c: shade(steel, -0.3) });
+  v.push({ x: 1, y: 0, z: 4, c: shade(steel, 0.25) }); // crown ridge
+  v.push({ x: 2, y: 0, z: 4, c: shade(steel, 0.25) });
+  v.push({ x: 1, y: 0, z: 2, c: C.rose }); // the maker's sigil
+  v.push({ x: 3, y: 0, z: 3, c: shade(steel, -0.45) }); // the dent
+  return v;
+}
+
+/** A hair of living charge — a rising zig of light with a hot tip. */
+function wispFilamentModel(): Voxel[] {
+  const glow = blendInt(C.teal, C.glow, 0.4);
+  return [
+    { x: 0, y: 0, z: 0, c: shade(glow, -0.2) },
+    { x: 1, y: 0, z: 1, c: glow },
+    { x: 1, y: 0, z: 2, c: C.teal },
+    { x: 2, y: 0, z: 3, c: glow },
+    { x: 2, y: 0, z: 4, c: C.teal },
+    { x: 3, y: 0, z: 5, c: C.glow }, // the hot tip
+  ];
+}
+
+/** Draymule flank armor: a riveted slab with a crowd-sized dent. */
+function drayPlateModel(): Voxel[] {
+  const plate = blendInt(MATERIAL_INT.rust, C.ink, 0.1);
+  const v = box(0, 0, 0, 4, 1, 4, plate);
+  v.push({ x: 0, y: 0, z: 4, c: shade(plate, 0.2) }); // top lip
+  v.push({ x: 3, y: 0, z: 4, c: shade(plate, 0.2) });
+  for (const [x, z] of [[0, 0], [3, 0], [0, 3], [3, 3]] as const) {
+    v.push({ x, y: 1, z, c: C.metal }); // rivets proud of the face
+  }
+  v.push({ x: 2, y: 1, z: 2, c: shade(plate, -0.4) }); // the dent
+  v.push({ x: 1, y: 1, z: 1, c: shade(plate, -0.25) });
+  return v;
+}
+
+/** A courier tip pressed in wax: a paper tag, sealed, string through it. */
+function waxChitModel(): Voxel[] {
+  const paper = blendInt(MATERIAL_INT.paintOchre, C.glow, 0.35);
+  const v = box(0, 0, 0, 3, 1, 4, paper);
+  v.push({ x: 1, y: 1, z: 1, c: C.rose }); // the wax seal, proud
+  v.push({ x: 1, y: 0, z: 4, c: shade(paper, -0.2) }); // punched corner
+  v.push({ x: 2, y: 0, z: 5, c: blendInt(C.ochre, C.ink, 0.4) }); // string
+  return v;
+}
+
+/** A heavy open-end wrench with opinions — jaw up, knurled grip. */
+function sparkwrenchModel(accent: number): Voxel[] {
+  const steel = C.metal;
+  const v = box(1, 0, 0, 1, 1, 4, steel); // shaft
+  v.push({ x: 1, y: 0, z: 4, c: shade(steel, 0.2) }); // head base
+  v.push({ x: 0, y: 0, z: 5, c: steel }); // left jaw
+  v.push({ x: 2, y: 0, z: 5, c: steel }); // right jaw
+  v.push({ x: 0, y: 0, z: 6, c: accent }); // jaw tips
+  v.push({ x: 2, y: 0, z: 6, c: accent });
+  v.push({ x: 1, y: 0, z: 1, c: blendInt(steel, C.ink, 0.35) }); // grip wrap
+  v.push({ x: 1, y: 0, z: 0, c: accent }); // pommel spark
+  return v;
+}
+
+/** The Dispatch Scarf — the wardrobe model, promoted to an item icon. */
+function scarfModel(): Voxel[] {
+  const rose = PALETTE_INT.neonRose;
+  const deep = blendInt(rose, C.ink, 0.3);
+  const v = box(0, 0, 1, 4, 3, 1, rose);
+  v.push(...box(0, 2, 0, 1, 1, 1, deep)); // trailing tail
+  v.push({ x: 0, y: 2, z: 2, c: deep });
+  return v;
+}
 
 /** A frond gone chrome — stem + mirrored silver-green leaflets. */
 function silverfernModel(): Voxel[] {
@@ -223,6 +305,7 @@ const DEFAULT_ACCENT: Record<string, number> = {
   'icon-skimnet': C.teal,
   'icon-tuner': PALETTE_INT.neonCyan,
   'icon-riveter': C.amber,
+  'icon-sparkwrench': C.rose,
 };
 
 /** Draw one mini model onto a plum card, centered, 3-tone shaded. */
