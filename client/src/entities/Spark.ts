@@ -51,6 +51,8 @@ export class Spark {
   private mug: Phaser.GameObjects.Image | null = null;
   private mugTween: Phaser.Tweens.Tween | null = null;
   private hiccupTimer: Phaser.Time.TimerEvent | null = null;
+  /** L3: the coilroll's thin smoke curl while leaning. */
+  private coilrollTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -188,6 +190,46 @@ export class Spark {
     });
   }
 
+  /** L3: while leaning, the coilroll's tip breathes a thin smoke curl —
+   *  stylized, two soft motes at a time, nothing more. */
+  private syncCoilroll(): void {
+    if (this.pose !== 'lean') {
+      this.coilrollTimer?.remove();
+      this.coilrollTimer = null;
+      return;
+    }
+    if (this.coilrollTimer !== null) return;
+    this.coilrollTimer = this.scene.time.addEvent({
+      delay: 1500,
+      loop: true,
+      callback: () => {
+        if (this.pose !== 'lean') return;
+        const hx = this.image.x - 8;
+        const hy = this.image.y - 14;
+        for (const d of [0, 350]) {
+          this.scene.time.delayedCall(d, () => {
+            if (this.pose !== 'lean') return;
+            const puff = this.scene.add.image(hx + (Math.random() - 0.5) * 3, hy, 'fx-glow');
+            puff.setTint(PALETTE_INT.structureMid);
+            puff.setAlpha(0.16);
+            puff.setScale(0.014);
+            puff.setDepth(this.image.depth + 2);
+            this.scene.tweens.add({
+              targets: puff,
+              y: hy - 15 - Math.random() * 7,
+              x: puff.x + 3 + Math.random() * 3,
+              alpha: 0,
+              scale: 0.03,
+              duration: 1700,
+              ease: 'sine.out',
+              onComplete: () => puff.destroy(),
+            });
+          });
+        }
+      },
+    });
+  }
+
   /** The Bulb hat carries its own warm emissive glow (render/glow.ts). */
   private syncBulbGlow(): void {
     const wearing = decodeEquipped(this.equipped).head === 'bulbHat';
@@ -240,7 +282,7 @@ export class Spark {
     if (id === this.pose) return;
     if (id !== null) this.standIfSitting();
     this.pose = id;
-    this.applyTexture();
+    this.applyTexture();  this.syncCoilroll();
   }
 
   /**
@@ -580,6 +622,7 @@ export class Spark {
   destroy(): void {
     this.mugTween?.stop();
     this.hiccupTimer?.remove();
+    this.coilrollTimer?.remove();
     this.mug?.destroy();
     if (this.bulbGlow !== null) {
       this.bulbGlow.core.destroy();

@@ -43,6 +43,8 @@ export const SessionEvents = {
   openBench: 'openBench',
   /** Open the Amped Bar menu (world → UI scene, city-life L2). */
   openBar: 'openBar',
+  /** L3: the menu's take-a-seat — WorldScene walks to a stool + sits. */
+  takeSeat: 'takeSeat',
   /** Open the Dispatcher's quest board (world → UI scene). */
   openQuests: 'openQuests',
   /** Personal quest log sync: payload QuestsSync. */

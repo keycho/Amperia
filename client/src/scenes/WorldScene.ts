@@ -368,6 +368,8 @@ export class WorldScene extends Phaser.Scene {
     this.spawnNodes();
     this.buildInteractionMarkers();
     this.setupAmbientChatter();
+    // L3: the bar menu's take-a-seat — walk to a free stool, then sit.
+    session.events.on(SessionEvents.takeSeat, () => this.takeBarSeat());
     this.setupFirstLoop();
     this.setupInput();
 
@@ -2113,6 +2115,56 @@ export class WorldScene extends Phaser.Scene {
       this.time.delayedCall(15000, () => {
         if (this.autoGather === run && run.cycles === sentCycles) this.cancelAutoGather();
       });
+    });
+  }
+
+  /** L3: walk to the nearest free bar stool and settle onto it. */
+  private seatWatch: Phaser.Time.TimerEvent | null = null;
+
+  private takeBarSeat(): void {
+    const room = this.room;
+    if (room === null) return;
+    const me = this.sparks.get(room.sessionId);
+    if (me === undefined) return;
+    const taken = new Set(
+      [...this.sparks.entries()]
+        .filter(([sid]) => sid !== room.sessionId)
+        .map(([, sp]) => `${sp.tile.x},${sp.tile.y}`),
+    );
+    const free = this.map.barSpots.filter((t) => !taken.has(`${t.x},${t.y}`));
+    if (free.length === 0) {
+      floatText(this, me.image.x, me.image.y - 60, 'every stool is taken', PALETTE.warmGlow);
+      return;
+    }
+    free.sort(
+      (a3, b3) =>
+        Math.abs(a3.x - me.tile.x) + Math.abs(a3.y - me.tile.y) -
+        (Math.abs(b3.x - me.tile.x) + Math.abs(b3.y - me.tile.y)),
+    );
+    const spot = free[0] as { x: number; y: number };
+    send.move(room, { x: spot.x, y: spot.y });
+    this.seatWatch?.remove();
+    let waited = 0;
+    this.seatWatch = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        waited += 200;
+        const cur = this.sparks.get(room.sessionId);
+        if (
+          cur !== undefined &&
+          cur.tile.x === spot.x &&
+          cur.tile.y === spot.y &&
+          !cur.isMoving
+        ) {
+          send.idle(room, { pose: 'sit' });
+          this.seatWatch?.remove();
+          this.seatWatch = null;
+        } else if (waited > 8000) {
+          this.seatWatch?.remove();
+          this.seatWatch = null;
+        }
+      },
     });
   }
 

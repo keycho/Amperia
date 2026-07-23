@@ -113,6 +113,7 @@ import {
   type WardrobeIntent,
   type UseItemIntent,
   type BarIntent,
+  type IdleIntent,
   type DeliveryIntent,
   type TendIntent,
   type EmoteId,
@@ -477,6 +478,7 @@ export class FilamentRoom extends Room<FilamentState> {
     void this.refreshCharge(true);
     guarded<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
     guarded<BarIntent>(MSG.bar, (client, msg) => this.handleBar(client, msg));
+    guarded<IdleIntent>(MSG.idle, (client, msg) => this.handleIdle(client, msg));
     guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
@@ -818,6 +820,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (path === null) return;
     this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
+    this.clearIdle(client.sessionId, rt);
     rt.move = setPath(rt.move, path);
     this.broadcast(MSG.moveAccepted, { sessionId: client.sessionId, path });
   }
@@ -1484,6 +1487,14 @@ export class FilamentRoom extends Room<FilamentState> {
         from: rt.sparkName,
         emote: cmd.slice(1) as EmoteId,
       });
+      // L3: /sit is now a PERSISTENT idle loop, not just the flourish —
+      // late joiners see the sitter too (the old broadcast desynced them).
+      if (cmd === '/sit') this.handleIdle(client, { pose: 'sit' });
+    } else if (cmd === '/lean' || cmd === '/warm') {
+      // L3: the other idle loops, command-started anywhere.
+      this.handleIdle(client, { pose: cmd.slice(1) as 'lean' | 'warm' });
+    } else if (cmd === '/stand') {
+      this.handleIdle(client, { pose: '' });
     } else if (cmd === '/trade') {
       const name = text.slice(cmd.length).trim().toLowerCase();
       if (name === '') {
@@ -3033,6 +3044,31 @@ export class FilamentRoom extends Room<FilamentState> {
     this.broadcast(MSG.notice, { text: `${rt.sparkName} bought a round.` });
   }
 
+  /**
+   * City-life L3: persistent idle loops. Presentation only — the pose
+   * replicates through ps.pose (the same wire the working pose uses) so
+   * everyone, including late joiners, sees a sitter sitting. Moving or
+   * gathering stands you up; the server stays the single pose authority.
+   */
+  private handleIdle(client: Client, msg: IdleIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (rt.session !== null) return; // mid-gather: the tool owns the pose
+    const pose = msg.pose;
+    if (pose !== 'sit' && pose !== 'lean' && pose !== 'warm' && pose !== '') return;
+    rt.idlePose = pose === '' ? null : pose;
+    const ps = this.state.players.get(client.sessionId);
+    if (ps !== undefined) ps.pose = pose;
+  }
+
+  /** Stand up out of an idle loop (movement, gathering, logout capture). */
+  private clearIdle(sessionId: string, rt: PlayerRuntime): void {
+    if (rt.idlePose === null) return;
+    rt.idlePose = null;
+    const ps = this.state.players.get(sessionId);
+    if (ps !== undefined && ps.gathering === false) ps.pose = '';
+  }
+
   /** Decrement the active tool's durability; 0 = broken (kept, unusable). */
   private wearActiveTool(client: Client, rt: PlayerRuntime): void {
     const slot = rt.hotbar.slots[rt.activeSlot];
@@ -4506,9 +4542,15 @@ export class FilamentRoom extends Room<FilamentState> {
     if (ps === undefined) return;
     ps.gathering = gathering;
     // Working pose (presentation only): the tool the session's node needs.
-    const kind = this.runtimes.get(sessionId)?.session?.kind;
+    // L3: starting work stands you out of an idle loop; ending work falls
+    // back to the idle pose if one is somehow still set (belt + braces).
+    const rt = this.runtimes.get(sessionId);
+    if (gathering && rt !== undefined) rt.idlePose = null;
+    const kind = rt?.session?.kind;
     ps.pose =
-      gathering && kind !== undefined ? CONFIG.tools.requiredByNode[kind] : '';
+      gathering && kind !== undefined
+        ? CONFIG.tools.requiredByNode[kind]
+        : (rt?.idlePose ?? '');
   }
 
   private sendNodeEvent(client: Client, payload: NodeEventPayload): void {

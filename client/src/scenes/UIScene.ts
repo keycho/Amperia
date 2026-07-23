@@ -523,6 +523,7 @@ export class UIScene extends Phaser.Scene {
     this.chat = new ChatUI(this);
     this.skillsPanel = new SkillsPanel(this);
     this.barPanel = new BarPanel(this);
+    this.barPanel.onTakeSeat = () => session.events.emit(SessionEvents.takeSeat);
     this.merchantPanel = new MerchantPanel(this);
     this.benchPanel = new BenchPanel(this);
     this.questPanel = new QuestPanel(this);
