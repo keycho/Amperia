@@ -50,6 +50,7 @@ const PROP_LOOK: Partial<Record<PropKind, { h: number; top: number; accent?: num
   tower: { h: 6.5, top: night(MATERIAL_INT.concrete, 0.2), accent: PALETTE_INT.warmGlow },
   dynamo: { h: 7.5, top: MATERIAL_INT.gunmetal, accent: PALETTE_INT.neonAmber },
   ledgerhouse: { h: 3.6, top: MATERIAL_INT.paintOchre, accent: PALETTE_INT.warmGlow },
+  ampedbar: { h: 3.2, top: MATERIAL_INT.paintOchre, accent: PALETTE_INT.neonAmber },
   shack: { h: 2.2, top: MATERIAL_INT.rust },
   toolshed: { h: 2.0, top: MATERIAL_INT.rust },
   stall: { h: 1.6, top: MATERIAL_INT.paintRose, accent: PALETTE_INT.warmGlow },

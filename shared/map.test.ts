@@ -208,22 +208,39 @@ describe('buildWorldMap', () => {
     }
   });
 
-  it('blocks every prop footprint (the Ledgerhouse hall stays walkable)', () => {
+  it('blocks every prop footprint (only carved interiors stay walkable)', () => {
     for (const p of map.props) {
       for (let dy = 0; dy < p.h; dy++) {
         for (let dx = 0; dx < p.w; dx++) {
           const tx = p.x + dx;
           const ty = p.y + dy;
-          // S5: the bank's interior hall + door are carved back open by
-          // design — the ONLY prop allowed walkable tiles, and each one
-          // must be a registered bankInterior tile.
+          // S5/L1: the bank hall and the Amped Bar hall are carved back
+          // open by design — the ONLY props allowed walkable tiles, and
+          // each one must be a registered interior tile.
           if (p.kind === 'ledgerhouse' && map.walkable[ty]?.[tx] === true) {
             expect(map.bankInterior.some((t) => t.x === tx && t.y === ty)).toBe(true);
+            continue;
+          }
+          if (p.kind === 'ampedbar' && map.walkable[ty]?.[tx] === true) {
+            expect(map.barInterior.some((t) => t.x === tx && t.y === ty)).toBe(true);
             continue;
           }
           expect(map.walkable[ty]?.[tx]).toBe(false);
         }
       }
+    }
+  });
+
+  it('L1: the Amped Bar hall is inside the venue, reachable, with stools', () => {
+    const bar = map.props.find((p) => p.kind === 'ampedbar');
+    expect(bar).toBeDefined();
+    expect(map.barInterior.length).toBeGreaterThanOrEqual(5);
+    expect(map.barSpots.length).toBeGreaterThanOrEqual(3);
+    for (const t of map.barInterior) {
+      expect(map.walkable[t.y]?.[t.x]).toBe(true);
+    }
+    for (const s of map.barSpots) {
+      expect(map.barInterior.some((t) => t.x === s.x && t.y === s.y)).toBe(true);
     }
   });
 

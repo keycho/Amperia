@@ -1110,6 +1110,86 @@ function fortunecoilModel(): Voxel[] {
   return v;
 }
 
+/**
+ * THE AMPED BAR (city-life L1): the Filament's watering hole on a 6×4
+ * footprint. South-facing so the camera gets the lit face: door gap +
+ * carved windows on the south wall, counter running the width of the
+ * hall with stools tucked under, bottle shelf glowing on the backbar,
+ * Vessa behind the taps, snug table nooks in the flanks, and the sign
+ * board over the door (the client hangs the glowing name shingle).
+ * The hall row + door stay walkable in the shared map — Sparks sit at
+ * the counter for real.
+ */
+function ampedbarModel(): Voxel[] {
+  const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const hair = mixPalette('structureMid', 'ink', 0.45);
+  const inkBoard = mixPalette('ink', 'structureMid', 0.2);
+  const v: Voxel[] = [];
+  // Floor slab: warm wood underfoot, wall to wall.
+  v.push(...mbox(0, 0, 0, 48, 32, 1, MATERIALS.wood));
+  // Backbar wall (north), tall — carries the shelf and the glow.
+  v.push(...mbox(0, 0, 1, 48, 4, 12, MATERIALS.gunmetalDeep));
+  // Side walls, ochre paint with a rust bite at the east base.
+  v.push(...mbox(0, 4, 1, 4, 24, 10, MATERIALS.paintOchre));
+  for (const vox of mbox(44, 4, 1, 4, 24, 10, MATERIALS.paintOchre)) {
+    v.push(
+      vox.z < 3 && vox.y > 20 ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox,
+    );
+  }
+  // South wall segments flanking the door gap (voxels x16-31 = tiles 2-3).
+  v.push(...mbox(4, 28, 1, 12, 4, 9, MATERIALS.paintOchre));
+  v.push(...mbox(32, 28, 1, 12, 4, 9, MATERIALS.paintOchre));
+  // Lintel over the door + the sign board (client adds the name shingle).
+  v.push(...mbox(16, 28, 7, 16, 4, 3, MATERIALS.paintOchre));
+  v.push(...box(15, 31, 10, 18, 1, 4, inkBoard));
+  for (let i = 0; i < 6; i++) {
+    v.push({ x: 17 + i * 3, y: 31, z: 11 + (i % 2), c: i % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose });
+  }
+  // Roof over the back half only — the hall row sits under the open dusk
+  // so seated Sparks stay visible; parapet lip on the roof edge.
+  v.push(...mbox(-1, -1, 13, 50, 17, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(-1, 15, 12, 50, 1, 1, MATERIALS.gunmetal));
+  // The counter across the hall, lighter worn top.
+  v.push(...mbox(6, 12, 1, 36, 3, 4, MATERIALS.wood));
+  for (const vox of mbox(6, 12, 5, 36, 3, 1, MATERIALS.wood)) {
+    v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  }
+  // Taps: two gunmetal stubs with an amber tell.
+  v.push(...mbox(14, 12, 6, 1, 1, 2, MATERIALS.gunmetal));
+  v.push(...mbox(28, 12, 6, 1, 1, 2, MATERIALS.gunmetal));
+  v.push({ x: 14, y: 12, z: 8, c: PALETTE_INT.neonAmber });
+  // Backbar bottle shelf: a wood rail with the city's colors racked on it.
+  v.push(...mbox(2, 1, 6, 44, 2, 1, MATERIALS.wood));
+  const bottleTints = [
+    PALETTE_INT.neonTeal,
+    PALETTE_INT.neonAmber,
+    PALETTE_INT.neonRose,
+    mixPalette('warmGlow', 'groundAccent', 0.2),
+  ];
+  for (let i = 0; i < 12; i++) {
+    v.push({ x: 4 + i * 3 + (i % 2), y: 1, z: 7, c: bottleTints[i % 4] as number });
+  }
+  // Vessa behind the taps: rose apron, dark crop, says little.
+  v.push(...mbox(21, 8, 1, 3, 2, 4, MATERIALS.paintRose));
+  v.push(...box(21, 8, 5, 3, 2, 2, skin));
+  v.push(...box(21, 8, 7, 3, 2, 1, hair));
+  // Stools tucked under the counter lip at the three seat tiles.
+  for (const sx of [10, 18, 34]) {
+    v.push(...mbox(sx, 15, 1, 2, 1, 1, MATERIALS.woodDeep));
+    v.push(...mbox(sx - 1, 15, 2, 4, 1, 1, MATERIALS.wood));
+  }
+  // Snug table nooks in the wall flanks — a couple of tables, mugs out.
+  for (const nx of [4, 41]) {
+    v.push(...mbox(nx, 18, 1, 3, 3, 3, MATERIALS.woodDeep));
+    v.push(...mbox(nx - 1, 17, 4, 5, 5, 1, MATERIALS.wood));
+    v.push({ x: nx, y: 18, z: 5, c: mixPalette('warmGlow', 'groundAccent', 0.15) });
+  }
+  // Hanging lamps under the roof edge (the client adds the soft glows).
+  v.push({ x: 12, y: 14, z: 11, c: PALETTE_INT.warmGlow });
+  v.push({ x: 36, y: 14, z: 11, c: PALETTE_INT.warmGlow });
+  return v;
+}
+
 /** A leaning tool rack — the work corner's silhouette. */
 function toolrackModel(): Voxel[] {
   const v: Voxel[] = [];
@@ -2430,6 +2510,7 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   }
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
+  bakeVoxelModel(scene, { name: 'ampedbar', voxels: ampedbarModel() });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
   // G6b world edges: rim segments per orientation/look, trusses, trestles,

@@ -17,11 +17,12 @@ const STATEMENT =
 
 /** Fixed camera anchors (Filament tiles) — NEVER change these between a
  *  before and an after run; the pairs must align. */
-const ANGLES = [
-  { name: 'market-street', probe: 'merchant', zoom: 1 },
-  { name: 'back-street', probe: 'backstreet', zoom: 1 },
-  { name: 'storefront', probe: 'ledgerhouse', zoom: 2 },
-];
+const ANGLES = (process.env.GROUND_ANGLES ?? 'market-street:merchant:1,back-street:backstreet:1,storefront:ledgerhouse:2')
+  .split(',')
+  .map((spec) => {
+    const [name, probe, zoom] = spec.split(':');
+    return { name, probe, zoom: Number(zoom) };
+  });
 
 async function signIn() {
   const account = privateKeyToAccount(generatePrivateKey());
@@ -69,7 +70,7 @@ for (const a of ANGLES) {
   const tile = await page.evaluate(([probe]) => {
     const scene = window.__amperia.game.scene.getScene('world');
     const m = scene.map;
-    if (probe === 'merchant' || probe === 'ledgerhouse') {
+    if (probe !== 'backstreet') {
       const p = m.props.find((pr) => pr.kind === probe);
       return p === undefined ? null : { x: Math.round(p.x + p.w / 2), y: Math.round(p.y + p.h + 2) };
     }

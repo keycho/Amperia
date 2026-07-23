@@ -2324,6 +2324,7 @@ export class WorldScene extends Phaser.Scene {
       if (p.kind === 'merchant') lightSpots.push({ x: p.x, y: p.y, cool: false });
       if (p.kind === 'tinkerbench') lightSpots.push({ x: p.x, y: p.y, cool: true });
       if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
+      if (p.kind === 'ampedbar') lightSpots.push({ x: p.x + 2, y: p.y + 3, cool: false });
     }
     for (const n of this.map.nodes) {
       // Antennas keep an always-on beacon + pool; koi spots glow only while
@@ -3346,6 +3347,47 @@ export class WorldScene extends Phaser.Scene {
           this.registerInteract(img, { x: p.x + 1, y: p.y + 3 }, 3, 'Bank', () => {
             if (this.room !== null) send.bank(this.room, { action: 'open' });
           });
+          break;
+        }
+        case 'ampedbar': {
+          const img = this.propSprite('ampedbar', x, y);
+          hoverTip(img, () => ({
+            title: 'The Amped Bar',
+            sub: 'drinks · company · a stool with your name on it',
+            lines: ['Warm light, cold fizz. Vessa keeps both honest.'],
+          }));
+          // The glowing name shingle over the door — emissive language,
+          // same voice as the stall shingles.
+          const doorW = tileToWorld(p.x + 2, p.y + Math.max(0, p.h - 1));
+          const shingle = this.add.text(doorW.x + TILE_W / 2, doorW.y - 74, 'THE AMPED BAR', {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: PALETTE.neonAmber,
+            fontStyle: 'bold',
+            stroke: PALETTE.ink,
+            strokeThickness: 3,
+          });
+          shingle.setOrigin(0.5, 1);
+          shingle.setDepth(depthForWorldY(y) + 3);
+          shingle.setAlpha(0.95);
+          // Hall warmth + the door lamp — the bar glows like a kept fire.
+          const hall = tileToWorld(p.x + 3, p.y + 2);
+          addLayeredGlow(this, hall.x, hall.y - 22, PALETTE_INT.warmGlow, 0.55, img.depth + 1, 0.45);
+          const door = tileToWorld(p.x + 2, p.y + 3);
+          addLayeredGlow(this, door.x + TILE_W / 2, door.y - 26, PALETTE_INT.neonAmber, 0.3, img.depth + 1, 0.5);
+          this.addGroundPool(door.x + TILE_W / 2, door.y + 4, PALETTE_INT.neonAmber, 0.5);
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x + 2, y: p.y + 3 },
+            3,
+            'Enter',
+            () => {
+              this.greetNpc('ampedbar', img);
+              session.events.emit(SessionEvents.openBar);
+            },
+            { hint: 'the door is on the south side' },
+          );
           break;
         }
         case 'fortunecoil': {

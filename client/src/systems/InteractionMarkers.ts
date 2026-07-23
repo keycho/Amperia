@@ -47,7 +47,8 @@ type IconKey =
   | 'quest'
   | 'craft'
   | 'haul'
-  | 'tend';
+  | 'tend'
+  | 'mug';
 
 export const INTERACTABLE_STYLES: Record<string, KindStyle> = {
   // Gatherables — each skill its own glyph, but all clearly "work this".
@@ -69,6 +70,8 @@ export const INTERACTABLE_STYLES: Record<string, KindStyle> = {
   // Quest NPCs.
   dispatcher: { icon: 'quest', label: 'Dispatcher', lift: 58 },
   warden: { icon: 'quest', label: 'Charge Warden', lift: 58 },
+  // City life (L1): the watering hole.
+  ampedbar: { icon: 'mug', label: 'The Amped Bar', lift: 100 },
 };
 
 interface Entry {
@@ -207,6 +210,16 @@ export class InteractionMarkers {
       }
       g.fillStyle(c, 1);
       g.fillCircle(C, C, 3);
+    });
+    // mug — the Amped Bar tankard: body, handle, a line of foam.
+    draw('mug', warm, (g, c) => {
+      g.lineStyle(3, c, 1);
+      g.strokeRect(C - 9, C - 8, 13, 17);
+      g.beginPath();
+      g.arc(C + 7, C, 5, -Math.PI / 2, Math.PI / 2);
+      g.strokePath();
+      g.lineStyle(2, c, 1);
+      g.lineBetween(C - 6, C - 4, C + 1, C - 4);
     });
     // ledger — the bank ledger book.
     draw('ledger', warm, (g, c) => {

@@ -83,7 +83,10 @@ export type PropKind =
   | 'mothertrellis'
   /** D2 — a raised crop bed (2×1) and the gardeners' tool shed (2×2). */
   | 'gardenbed'
-  | 'toolshed';
+  | 'toolshed'
+  /** L1 THE AMPED BAR — the Filament's watering hole (6×4, walls block,
+   *  the hall + south door stay walkable like the Ledgerhouse). */
+  | 'ampedbar';
 
 export interface Prop {
   kind: PropKind;
@@ -147,6 +150,12 @@ export interface WorldMap {
   catwalks: TilePoint[];
   /** The Ledgerhouse hall (S5): bank actions are valid ONLY on these tiles. */
   bankInterior: TilePoint[];
+  /** The Amped Bar hall (L1): the carved-walkable tiles inside the venue
+   *  (stool row + door). Bar actions are reach-checked against the prop;
+   *  this list exists for the walkable-footprint test + client seating. */
+  barInterior: TilePoint[];
+  /** The stool tiles a Spark can take a seat on (subset of barInterior). */
+  barSpots: TilePoint[];
   /** V5: raised footbridge deck tiles (the client rails their edges). */
   footbridges: TilePoint[];
   /** D2: Loftpod berth pads (nw corner of each 3×3 walkable pad).
@@ -422,6 +431,32 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
       (walkable[t.y] as boolean[])[t.x] = true;
       bankInterior.push(t);
     }
+  }
+
+  // THE AMPED BAR (city-life L1): the Filament's watering hole, one row
+  // south of the Nightstalls promenade so its lit face and south door read
+  // straight at the camera. Walls block; the stool row + the door stay
+  // walkable (the Ledgerhouse carve pattern). Stools are the row tiles
+  // fronting the counter; (32,49) is the standing gap inside the door.
+  const barInterior: TilePoint[] = [];
+  const barSpots: TilePoint[] = [];
+  {
+    const bar: Prop = { kind: 'ampedbar', x: 29, y: 47, w: 6, h: 4, variant: 0 };
+    props.push(bar);
+    blockFootprint(walkable, bar);
+    const hall: TilePoint[] = [
+      { x: 30, y: 49 },
+      { x: 31, y: 49 },
+      { x: 32, y: 49 },
+      { x: 33, y: 49 },
+      { x: 31, y: 50 }, // the door pair (south wall gap)
+      { x: 32, y: 50 },
+    ];
+    for (const t of hall) {
+      (walkable[t.y] as boolean[])[t.x] = true;
+      barInterior.push(t);
+    }
+    barSpots.push({ x: 30, y: 49 }, { x: 31, y: 49 }, { x: 33, y: 49 });
   }
 
   // The Fortune Coil: the daily ritual wheel, standing alone NORTH of the
@@ -704,7 +739,7 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     { x: 30, y: 38 },
     { x: 30, y: 45 },
   ];
-  return { district: 'filament', size, walkable, canal, roads, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior, footbridges, loftberths: [] };
+  return { district: 'filament', size, walkable, canal, roads, props, nodes, plaza, shopStalls, elevation, ramp, catwalks, bankInterior, barInterior, barSpots, footbridges, loftberths: [] };
 }
 
 /**
@@ -999,7 +1034,7 @@ export function buildTangleMap(seed: number = CONFIG.map.seed ^ 0x7a9): WorldMap
 
   // One pool at the gate — arrivals get their entrance moment even here.
   const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
-  return { district: 'tangle', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
+  return { district: 'tangle', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], barInterior: [], barSpots: [], footbridges: [], loftberths: [] };
 }
 
 /**
@@ -1187,7 +1222,7 @@ export function buildStacksMap(seed: number = CONFIG.map.seed ^ 0x57ac): WorldMa
     { x: 20, y: 28 },
     { x: 34, y: 15 },
   ];
-  return { district: 'stacks', size, walkable, canal, roads, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths: [] };
+  return { district: 'stacks', size, walkable, canal, roads, props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], barInterior: [], barSpots: [], footbridges: [], loftberths: [] };
 }
 
 /**
@@ -1331,7 +1366,7 @@ export function buildTerrariumMap(seed: number = CONFIG.map.seed ^ 0x7e88): Worl
     { x: 4, y: 20 },
     { x: 29, y: 19 },
   ];
-  return { district: 'terrarium', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], footbridges: [], loftberths };
+  return { district: 'terrarium', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], barInterior: [], barSpots: [], footbridges: [], loftberths };
 }
 
 export function buildDistrictMap(district: DistrictId): WorldMap {
