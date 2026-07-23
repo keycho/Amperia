@@ -23,6 +23,8 @@ export class PlayerState extends Schema {
   equipped = '';
   /** Charge-regalia name-glow trim ('' = none) — never gameplay. */
   trim = '';
+  /** The drink riding in hand ('' = none) — presentation only (L2). */
+  drink = '';
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
@@ -35,6 +37,7 @@ defineTypes(PlayerState, {
   maxHp: 'int16',
   equipped: 'string',
   trim: 'string',
+  drink: 'string',
 });
 
 export class MobState extends Schema {

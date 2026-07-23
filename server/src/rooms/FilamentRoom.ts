@@ -112,6 +112,7 @@ import {
   type TradeIntent,
   type WardrobeIntent,
   type UseItemIntent,
+  type BarIntent,
   type DeliveryIntent,
   type TendIntent,
   type EmoteId,
@@ -251,6 +252,10 @@ interface PlayerRuntime {
   healAcc: number;
   lastAttackAtMs: number;
   gatherTargetNode: number | null;
+  /** L2: the drink in hand expires at this clock ('' state when null). */
+  drinkUntilMs: number | null;
+  /** L3: the persistent idle loop ('sit'|'lean'|'warm'), null = none. */
+  idlePose: string | null;
   session: Session | null;
   lastChatAtMs: number;
   /** H2 rate limit: timestamps of recent messages in the rolling window. */
@@ -471,6 +476,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     void this.refreshCharge(true);
     guarded<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    guarded<BarIntent>(MSG.bar, (client, msg) => this.handleBar(client, msg));
     guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
@@ -577,6 +583,8 @@ export class FilamentRoom extends Room<FilamentState> {
       lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
+      drinkUntilMs: null,
+      idlePose: null,
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -707,6 +715,8 @@ export class FilamentRoom extends Room<FilamentState> {
       lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
+      drinkUntilMs: null,
+      idlePose: null,
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -1692,6 +1702,17 @@ export class FilamentRoom extends Room<FilamentState> {
         if (rt.session === null) continue;
         const c = this.clients.find((cc) => cc.sessionId === sid);
         if (c !== undefined) this.sendRested(c, rt);
+      }
+    }
+    // L2: finished drinks — the glass comes back (visual state only).
+    {
+      const now = Date.now();
+      for (const [sid, rt] of this.runtimes.entries()) {
+        if (rt.drinkUntilMs !== null && now >= rt.drinkUntilMs) {
+          rt.drinkUntilMs = null;
+          const ps = this.state.players.get(sid);
+          if (ps !== undefined) ps.drink = '';
+        }
       }
     }
     // Periodic persistence (~every 30s of ticks).
@@ -2942,6 +2963,74 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       client.send(MSG.notice, { text: `Cellwax worked into the ${def.name}.` });
     }
+  }
+
+  /**
+   * THE AMPED BAR (city-life L2). Drinks are Bolts-priced PURE SINKS:
+   * poured straight into the hand (ps.drink drives the mug visual), never
+   * into the pack, never into stats — golden rule 3 has no bar exception.
+   * 'round' pours for every seated-or-standing Spark within reach of the
+   * venue and toasts the room; the buyer pays for every glass.
+   */
+  private handleBar(client: Client, msg: BarIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (!this.nearProp(rt, 'ampedbar', CONFIG.bar.reachTiles)) {
+      client.send(MSG.notice, { text: 'The Amped Bar is south of the stalls.' });
+      return;
+    }
+    const drink = CONFIG.bar.drinks.find((d) => d.id === msg.drinkId);
+    if (drink === undefined) return;
+
+    const pour = (target: PlayerRuntime, sid: string): void => {
+      target.drinkUntilMs = Date.now() + CONFIG.bar.drinkSeconds * 1000;
+      const ps = this.state.players.get(sid);
+      if (ps !== undefined) ps.drink = drink.id;
+    };
+
+    if (msg.action === 'buy') {
+      if (rt.bolts < drink.price) {
+        client.send(MSG.notice, { text: `That's ${drink.price} Bolts.` });
+        return;
+      }
+      rt.bolts -= drink.price;
+      pour(rt, client.sessionId);
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'barDrink', drinkId: drink.id, bolts: drink.price },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, { text: 'Vessa slides it over.' });
+      return;
+    }
+
+    // 'round' — every non-spectator Spark within reach gets a glass.
+    const patrons: Array<{ sid: string; rt: PlayerRuntime }> = [];
+    for (const [sid, other] of this.runtimes.entries()) {
+      if (other.spectator || other.hp <= 0) continue;
+      if (this.nearProp(other, 'ampedbar', CONFIG.bar.reachTiles)) {
+        patrons.push({ sid, rt: other });
+      }
+    }
+    const total = drink.price * patrons.length;
+    if (patrons.length < 2) {
+      client.send(MSG.notice, { text: "It's just you at the bar — buy a glass instead." });
+      return;
+    }
+    if (rt.bolts < total) {
+      client.send(MSG.notice, { text: `A round here is ${total} Bolts.` });
+      return;
+    }
+    rt.bolts -= total;
+    for (const p of patrons) pour(p.rt, p.sid);
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'barRound', drinkId: drink.id, sparks: patrons.length, bolts: total },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    this.broadcast(MSG.notice, { text: `${rt.sparkName} bought a round.` });
   }
 
   /** Decrement the active tool's durability; 0 = broken (kept, unusable). */

@@ -806,6 +806,9 @@ export class WorldScene extends Phaser.Scene {
       spark.setEquipped(p.equipped);
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
+      // L2: the drink in hand — mug overlay + sip loop, purely visual.
+      proxy(p).listen('drink', (v: string) => spark.setDrink(v === '' ? null : v));
+      spark.setDrink(p.drink === '' ? null : p.drink);
       // Working pose while gathering (server-set, presentation only).
       proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
       spark.setPose(p.pose === '' ? null : p.pose);

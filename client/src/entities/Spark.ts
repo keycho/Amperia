@@ -46,6 +46,11 @@ export class Spark {
   /** U4b /sit: dipped into the deck until the next step or pose. */
   private sitting = false;
   private shadow: Phaser.GameObjects.Image;
+  /** L2: the drink in hand — a persistent mug overlay + sip loop. */
+  private drinkId: string | null = null;
+  private mug: Phaser.GameObjects.Image | null = null;
+  private mugTween: Phaser.Tweens.Tween | null = null;
+  private hiccupTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -114,6 +119,73 @@ export class Spark {
     bakeSparkAppearance(this.scene, this.appearance, { equipped: wire });
     this.applyTexture();
     this.syncBulbGlow();
+  }
+
+  /**
+   * L2: the drink in hand. A tiny tinted mug rides at hand height with a
+   * slow sip loop and the occasional quiet hiccup — purely visual, synced
+   * through syncLabel like the bulb glow so it walks with the Spark.
+   */
+  setDrink(id: string | null): void {
+    if (id === this.drinkId) return;
+    this.drinkId = id;
+    if (this.mug !== null) {
+      this.mugTween?.stop();
+      this.mugTween = null;
+      this.hiccupTimer?.remove();
+      this.hiccupTimer = null;
+      this.mug.destroy();
+      this.mug = null;
+      // Back to the base grade (mode B/C tints world sprites).
+      const wt = worldSpriteTint();
+      if (wt !== null) this.image.setTint(wt);
+      else this.image.clearTint();
+    }
+    if (id === null) return;
+    const tintKey = CONFIG.bar.drinks.find((d) => d.id === id)?.tint ?? 'warmGlow';
+    const tint = PALETTE_INT[tintKey as keyof typeof PALETTE_INT] ?? PALETTE_INT.warmGlow;
+    this.mug = this.scene.add.image(this.image.x + 11, this.image.y - 16, 'fx-mug');
+    this.mug.setTint(tint);
+    this.mug.setDepth(this.image.depth + 2);
+    // The sip: the mug rises toward the head and settles back, unhurried.
+    const mug = this.mug;
+    this.mugTween = this.scene.tweens.add({
+      targets: mug,
+      y: '-=7',
+      duration: 700,
+      hold: 500,
+      yoyo: true,
+      repeat: -1,
+      repeatDelay: 2800 + Math.random() * 1600,
+      ease: 'sine.inout',
+    });
+    // A warm cheek — the subtlest tint lift while the glass is up.
+    this.image.setTint(0xffefdf);
+    // The occasional hiccup, never on a beat.
+    this.hiccupTimer = this.scene.time.addEvent({
+      delay: 11000 + Math.random() * 8000,
+      loop: true,
+      callback: () => {
+        if (Math.random() < 0.55 || this.mug === null) return;
+        const hic = this.scene.add.text(this.image.x + 10, this.image.y - this.image.displayHeight, 'hic', {
+          fontFamily: 'monospace',
+          fontSize: '9px',
+          color: PALETTE.warmGlow,
+          stroke: PALETTE.ink,
+          strokeThickness: 2,
+        });
+        hic.setOrigin(0.5, 1);
+        hic.setDepth(this.image.depth + 2);
+        this.scene.tweens.add({
+          targets: hic,
+          y: hic.y - 10,
+          alpha: 0,
+          duration: 900,
+          ease: 'quad.out',
+          onComplete: () => hic.destroy(),
+        });
+      },
+    });
   }
 
   /** The Bulb hat carries its own warm emissive glow (render/glow.ts). */
@@ -245,6 +317,13 @@ export class Spark {
 
   private syncLabel(): void {
     this.shadow.setPosition(this.image.x, this.image.y - 2);
+    if (this.mug !== null && (this.mugTween === null || !this.mugTween.isPlaying())) {
+      this.mug.setPosition(this.image.x + 11, this.image.y - 16);
+      this.mug.setDepth(this.image.depth + 2);
+    } else if (this.mug !== null) {
+      this.mug.setX(this.image.x + 11);
+      this.mug.setDepth(this.image.depth + 2);
+    }
     if (this.bulbGlow !== null) {
       const gx = this.image.x;
       const gy = this.image.y - this.image.displayHeight + 8;
@@ -499,6 +578,9 @@ export class Spark {
   }
 
   destroy(): void {
+    this.mugTween?.stop();
+    this.hiccupTimer?.remove();
+    this.mug?.destroy();
     if (this.bulbGlow !== null) {
       this.bulbGlow.core.destroy();
       this.bulbGlow.mid.destroy();

@@ -19,6 +19,8 @@ export const MSG = {
   trade: 'trade',
   prices: 'prices',
   useItem: 'useItem',
+  bar: 'bar',
+  idle: 'idle',
   craft: 'craft',
   repair: 'repair',
   quest: 'quest',
@@ -217,6 +219,20 @@ export interface PricesSync {
 /** Player → server: use a consumable from a pack slot. */
 export interface UseItemIntent {
   slot: number;
+}
+
+/** Player → server: the Amped Bar (city-life L2). 'buy' pours one drink
+ *  in hand; 'round' pours for every Spark at the bar (bigger sink, one
+ *  toast). Purely visual/social — drinks never touch stats or inventory. */
+export interface BarIntent {
+  action: 'buy' | 'round';
+  drinkId: string;
+}
+
+/** Player → server: start (or clear) a persistent idle loop (L3).
+ *  Presentation only — the pose replicates so everyone sees it. */
+export interface IdleIntent {
+  pose: 'sit' | 'lean' | 'warm' | '';
 }
 
 /** Server → own client (F3): a craft landed — drives the result-card moment. */
@@ -666,6 +682,8 @@ export interface PlayerStateShape {
   gathering: boolean;
   /** Working-pose tool id while gathering ('' = none) — presentation only. */
   pose: string;
+  /** The drink riding in hand ('' = none) — presentation only (L2). */
+  drink: string;
   /** Creator appearance code (shared/appearance.ts) — presentation only. */
   appearance: string;
   hp: number;

@@ -11,6 +11,7 @@ import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
 import { ContextMenu } from '../ui/ContextMenu';
 import { BenchPanel } from '../ui/BenchPanel';
+import { BarPanel } from '../ui/BarPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
@@ -57,6 +58,7 @@ export class UIScene extends Phaser.Scene {
   private skillsPanel!: SkillsPanel;
   private merchantPanel!: MerchantPanel;
   private benchPanel!: BenchPanel;
+  private barPanel!: BarPanel;
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
   private inspectCard!: InspectCard;
@@ -520,6 +522,7 @@ export class UIScene extends Phaser.Scene {
 
     this.chat = new ChatUI(this);
     this.skillsPanel = new SkillsPanel(this);
+    this.barPanel = new BarPanel(this);
     this.merchantPanel = new MerchantPanel(this);
     this.benchPanel = new BenchPanel(this);
     this.questPanel = new QuestPanel(this);
@@ -645,6 +648,7 @@ export class UIScene extends Phaser.Scene {
     });
     gameState.events.on(GameEvents.inventoryChanged, () => {
       if (this.merchantPanel.visible) this.merchantPanel.refresh();
+      if (this.barPanel.visible) this.barPanel.refresh();
       if (this.benchPanel.visible) this.benchPanel.refresh();
       if (this.tradePanel.visible) this.tradePanel.refresh();
       if (this.shopPanel.visible) this.shopPanel.refresh();
@@ -1087,6 +1091,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.shopPanel.visible) this.shopPanel.setVisible(false);
       else if (this.chargePanel.visible) this.chargePanel.setVisible(false);
       else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
+      else if (this.barPanel.visible) this.barPanel.setVisible(false);
       else if (this.questPanel.visible) this.questPanel.setVisible(false);
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
@@ -1223,6 +1228,7 @@ export class UIScene extends Phaser.Scene {
   update(): void {
     session.panelOpen =
       this.merchantPanel.visible ||
+      this.barPanel.visible ||
       this.benchPanel.visible ||
       this.questPanel.visible ||
       this.tradePanel.visible ||
