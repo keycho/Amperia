@@ -6,12 +6,15 @@ import {
   type DistrictId,
   type WorldMap,
 } from '@shared/map';
-import { blendInt, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { session } from '../net/session';
+import { bakeDistrictIsland, islandTextureSize } from '../render/mapBake';
 import { kitHeader, kitPlate, kitText, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 780;
 const H = 470;
+/** Baked island diamond width (px) — the miniature render's footprint. */
+const ISLAND_W = 150;
 
 /** Screen-space island anchors (centers), in tram-line order. */
 const ISLAND_AT: Record<DistrictId, { x: number; y: number }> = {
@@ -21,13 +24,6 @@ const ISLAND_AT: Record<DistrictId, { x: number; y: number }> = {
   tangle: { x: 644, y: 292 },
 };
 
-/** Per-district accent — the color the quarter glows on the map. */
-const ISLAND_ACCENT: Record<DistrictId, number> = {
-  filament: PALETTE_INT.neonAmber,
-  stacks: PALETTE_INT.violetNeon,
-  terrarium: PALETTE_INT.solarGreen,
-  tangle: PALETTE_INT.neonTeal,
-};
 
 /**
  * The world map (D4a), opened with TAB: the four districts as lit islands
@@ -90,11 +86,12 @@ export class WorldMapPanel {
     return m;
   }
 
-  /** Project a tile of a district's map into panel space (mini isometric). */
+  /** Project a tile of a district's map into panel space (mini isometric).
+   *  Matches the island bake's projection so markers land on the render. */
   private project(d: DistrictId, tx: number, ty: number): { x: number; y: number } {
     const m = this.mapFor(d);
     const at = ISLAND_AT[d];
-    const s = 130 / (2 * m.size); // island span ≈ 130px wide
+    const s = ISLAND_W / (2 * m.size);
     const c = m.size / 2;
     return {
       x: at.x + (tx - ty) * s * 2,
@@ -147,38 +144,24 @@ export class WorldMapPanel {
       }
     }
 
-    // The islands: each district's real walkable silhouette, lit its color.
+    // The islands: real miniature renders baked from the world data (M1) —
+    // the same maps, the same zone classifier, the same materials.
     for (const d of line) {
-      const m = this.mapFor(d);
-      const accent = ISLAND_ACCENT[d];
+      const at = ISLAND_AT[d];
+      const key = bakeDistrictIsland(this.scene, d, ISLAND_W);
+      const tex = islandTextureSize(d, ISLAND_W);
+      const island = this.scene.add.image(at.x, at.y, key);
+      // Anchor so the bake's projection centre lands exactly on ISLAND_AT —
+      // gate markers and the you-dot then sit true on the render.
+      island.setOrigin(0.5, (30 + ISLAND_W / 4) / tex.h);
+      island.setAlpha(d === here ? 1 : 0.85);
+      this.container.add(island);
+      this.dynamic.push(island);
+
+      // Tramgate marker: the stop's diamond, bright and named.
       const g = this.scene.add.graphics();
       this.container.add(g);
       this.dynamic.push(g);
-      const s = 130 / (2 * m.size);
-      for (let ty = 0; ty < m.size; ty++) {
-        for (let tx = 0; tx < m.size; tx++) {
-          const walk = m.walkable[ty]?.[tx] === true;
-          const canal = m.canal[ty]?.[tx] === true;
-          if (!walk && !canal) continue;
-          const pt = this.project(d, tx, ty);
-          const lift = (m.elevation[ty]?.[tx] ?? 0) > 0;
-          const tint = canal
-            ? blendInt(PALETTE_INT.neonTeal, PALETTE_INT.ink, 0.55)
-            : blendInt(accent, PALETTE_INT.structureMid, lift ? 0.55 : 0.75);
-          g.fillStyle(tint, d === here ? 0.95 : 0.7);
-          // A tiny diamond per tile — the quarter reads as an iso island.
-          g.fillPoints(
-            [
-              new Phaser.Geom.Point(pt.x, pt.y - s),
-              new Phaser.Geom.Point(pt.x + s * 2, pt.y),
-              new Phaser.Geom.Point(pt.x, pt.y + s),
-              new Phaser.Geom.Point(pt.x - s * 2, pt.y),
-            ],
-            true,
-          );
-        }
-      }
-      // Tramgate marker: the stop's diamond, bright and named.
       const gp = gatePoint(d);
       g.fillStyle(PALETTE_INT.neonAmber, 1);
       g.fillPoints(
@@ -190,10 +173,9 @@ export class WorldMapPanel {
         ],
         true,
       );
-      const at = ISLAND_AT[d];
       const name = this.text(
         at.x,
-        at.y + 130 / 4 + 18,
+        at.y + ISLAND_W / 4 + 18,
         d === here ? `▸ ${DISTRICT_NAMES[d]}` : DISTRICT_NAMES[d],
         d === here ? PALETTE.neonAmber : UI_TEXT_WARM,
         'body',

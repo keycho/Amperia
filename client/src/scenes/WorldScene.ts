@@ -103,7 +103,7 @@ import { session, SessionEvents } from '../net/session';
 import { showCreatorOverlay, type CreatorHandle } from '../ui/creatorOverlay';
 import { sound } from '../audio/sound';
 import { floatText } from '../render/effects';
-import { floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
+import { baseFloorKind, floorTileKey, floorTileScale, type FloorKind } from '../render/floorTiles';
 import { addEmberMotes, addFlicker, addSteamVent } from '../render/life';
 import { TEX_SCALE } from '../render/textures';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
@@ -2361,29 +2361,22 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Floor-fix §1: per-tile baked diamonds — the zone material changes
-        // read the district layout; no drawn gridlines anywhere. The Tangle
-        // keeps only the industrial zones: plating fringe, asphalt maze.
-        const isFilament = this.map.district === 'filament';
-        // W3: the decked streets come straight from the shared road network.
+        // read the district layout; no drawn gridlines anywhere. The zoning
+        // rules live in baseFloorKind (shared with the world-map bake); the
+        // rug override is stall furniture and stays here. The zone flags
+        // remain locals — the lip/stain/puddle passes below key off them.
         const onRoad = this.map.roads[ty]?.[tx] === true;
         const inPlaza = plaza.radius > 0 && plazaDist <= plaza.radius;
         const onStepRing = plaza.radius > 0 && plazaDist === plaza.radius;
-        const distToEdgeT = Math.min(tx, ty, size - 1 - tx, size - 1 - ty);
         const rugVariant = rugTiles.get(ty * size + tx);
         let kind: FloorKind;
         let seed = (tx * 31 + ty * 17) | 0;
         if (rugVariant !== undefined) {
           kind = 'rug';
           seed = rugVariant;
-        } else if (this.map.district === 'terrarium') {
-          // D2: the garden tier is WARM WOOD underfoot (§12B) — decked
-          // terraces, plated entry apron, never asphalt, never lawn.
-          kind = (this.map.elevation[ty]?.[tx] ?? 0) > 0 ? 'deck' : 'plating';
-        } else if (onRoad) kind = 'deck';
-        else if (onStepRing) kind = 'paverLight';
-        else if (inPlaza) kind = 'paver';
-        else if (distToEdgeT <= 6 || (isFilament && tx >= 44 && ty >= 44)) kind = 'plating';
-        else kind = 'asphalt';
+        } else {
+          kind = baseFloorKind(this.map, tx, ty);
+        }
         const tile = this.add.image(x, y, floorTileKey(kind, seed));
         tile.setScale(floorTileScale());
         tile.setDepth(DEPTH_FLOOR);
