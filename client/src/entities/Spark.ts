@@ -192,11 +192,16 @@ export class Spark {
     }
   }
 
+  /** F4 stack rule: an open speech bubble suppresses the nameplate — one
+   *  voice per anchor space. Cleared when the bubble fades/destroys. */
+  private labelSuppressed = false;
+
   /** Proximity fade (S0): scales the nameplate without touching bubbles. */
   setNameFade(alpha: number): void {
     if (this.label === null) return;
-    this.label.setAlpha(alpha);
-    this.label.setVisible(alpha > 0.02);
+    const a = this.labelSuppressed ? 0 : alpha;
+    this.label.setAlpha(a);
+    this.label.setVisible(a > 0.02);
   }
 
   /** F1: counter-scale nameplate + bubble so text stays legible at min zoom. */
@@ -285,6 +290,17 @@ export class Spark {
     bubble.setAlpha(0);
     this.bubble = bubble;
     this.bubbleHeight = h;
+    // F4 stack rule: while the bubble speaks, the nameplate stands down.
+    this.labelSuppressed = true;
+    this.label?.setAlpha(0).setVisible(false);
+    bubble.once(Phaser.GameObjects.Events.DESTROY, () => {
+      if (this.bubble === bubble || this.bubble === null) {
+        this.labelSuppressed = false;
+        // Next proximity-fade tick restores the right alpha; nudge it now so
+        // an idle scene doesn't wait a frame with a missing plate.
+        this.label?.setVisible(true).setAlpha(1);
+      }
+    });
     this.syncBubble();
     this.scene.tweens.add({ targets: bubble, alpha: 1, duration: 160, ease: 'quad.out' });
     const fadeAt = 3400 + Math.min(2200, text.length * 28);

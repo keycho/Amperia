@@ -91,6 +91,11 @@ interface Entry {
   highlight: boolean;
   /** Resting label depth (a highlight lifts it above neighbour labels). */
   labelDepth: number;
+  /** F4 stack rule: the label yields (fades out) while this entity carries
+   *  the E-prompt and/or a speech bubble — one voice per anchor space.
+   *  Sources are independent, so a bubble ending never un-yields a label
+   *  the prompt still owns. */
+  suppressors: Set<string>;
 }
 
 export class InteractionMarkers {
@@ -327,6 +332,7 @@ export class InteractionMarkers {
       hovered: false,
       highlight: false,
       labelDepth: depth + 1,
+      suppressors: new Set(),
     });
     this.drawOutline(this.entries[this.entries.length - 1]!);
   }
@@ -354,6 +360,19 @@ export class InteractionMarkers {
   /** C3: rename an interactable's label (merchant name, stall owner/empty). */
   setLabel(tx: number, ty: number, text: string): void {
     this.findEntry(tx, ty)?.label.setText(text);
+  }
+
+  /**
+   * F4 stack rule: suppress (or release) the label of the entity holding the
+   * tile — `source` is 'prompt' (the E-prompt sits on it) or 'bubble' (its
+   * NPC is speaking). The label yields while ANY source holds it; the
+   * per-frame fade lerps it out/in smoothly.
+   */
+  setSuppressed(tx: number, ty: number, source: string, on: boolean): void {
+    const e = this.findEntry(tx, ty);
+    if (e === undefined) return;
+    if (on) e.suppressors.add(source);
+    else e.suppressors.delete(source);
   }
 
   /** C3: amber-pin a target's label (tutorial) with an ink plate that reads
@@ -487,7 +506,9 @@ export class InteractionMarkers {
       iconInk.setAlpha(next);
       e.chip.setAlpha(next * 0.9);
       // C3: a hovered label always shows, even past the nearest-few cap.
-      const labelTarget = e.hovered ? 1 : e.labelAlpha;
+      // F4 stack rule: suppression (E-prompt / speech bubble on this entity)
+      // beats everything — the label yields, hover or not.
+      const labelTarget = e.suppressors.size > 0 ? 0 : e.hovered ? 1 : e.labelAlpha;
       const lcur = e.label.alpha;
       e.label.setAlpha(lcur + (labelTarget - lcur) * lerp);
 

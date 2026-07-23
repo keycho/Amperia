@@ -1518,6 +1518,15 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     }
+    // F4 stack rule: the E-prompt owns the lowest slot — the target's marker
+    // label yields while the prompt sits on it (released on target change).
+    const prev = this.eTarget;
+    if (prev !== null && prev !== target) {
+      this.markers?.setSuppressed(prev.tile.x, prev.tile.y, 'prompt', false);
+    }
+    if (target !== null && prev !== target) {
+      this.markers?.setSuppressed(target.tile.x, target.tile.y, 'prompt', true);
+    }
     this.eTarget = target;
     session.eInteractActive = target !== null;
     if (target === null) {
@@ -1610,7 +1619,26 @@ export class WorldScene extends Phaser.Scene {
   /** PP2: float a speech bubble over an NPC (ambient line or interaction greet). */
   private speakNpc(kind: string, footX: number, footY: number, line: string): void {
     const lift = NPC_CHATTER[kind]?.lift ?? 90;
-    showSpeechBubble(this, footX, footY - lift, line, depthForWorldY(footY) + 30);
+    // F4 stack rules within this entity's anchor space:
+    //  · the bubble suppresses the marker label for its whole lifetime;
+    //  · the E-prompt keeps the lowest slot — if it currently sits on this
+    //    entity, the bubble's tail tip rises to clear the prompt plate.
+    let tipY = footY - lift;
+    const t = worldToTileFloor(footX, footY);
+    const promptHere =
+      this.eTarget !== null &&
+      t.tx >= this.eTarget.tile.x - 1 &&
+      t.tx <= this.eTarget.tile.x + 2 &&
+      t.ty >= this.eTarget.tile.y - 1 &&
+      t.ty <= this.eTarget.tile.y + 2 &&
+      this.ePrompt?.visible === true;
+    if (promptHere && this.ePrompt !== null) {
+      tipY = Math.min(tipY, this.ePrompt.y - 13 * this.ePrompt.scaleY - 6);
+    }
+    this.markers?.setSuppressed(t.tx, t.ty, 'bubble', true);
+    showSpeechBubble(this, footX, tipY, line, depthForWorldY(footY) + 30, () =>
+      this.markers?.setSuppressed(t.tx, t.ty, 'bubble', false),
+    );
   }
 
   /** PP2: the NPC's greeting bubble when a Spark interacts with it. */

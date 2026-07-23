@@ -19,6 +19,9 @@ export function showSpeechBubble(
   y: number,
   text: string,
   depth: number,
+  /** F4: fires when the bubble is gone (fade end or early destroy) — the
+   *  world-anchor stack rule un-suppresses the speaker's label off this. */
+  onClose?: () => void,
 ): Phaser.GameObjects.Container {
   const pad = SPACE.sm;
   const t = kitText(scene, 0, 0, text, 'body', { color: UI_TEXT_WARM });
@@ -54,6 +57,7 @@ export function showSpeechBubble(
   // Rise in, hold, fade out.
   c.setAlpha(0);
   c.y = y + 6;
+  if (onClose !== undefined) c.once(Phaser.GameObjects.Events.DESTROY, onClose);
   scene.tweens.add({ targets: c, alpha: 1, y, duration: 220, ease: 'quad.out' });
   scene.time.delayedCall(HOLD_MS, () => {
     if (!c.active) return;
