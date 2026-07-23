@@ -28,6 +28,7 @@ import { Minimap } from '../ui/Minimap';
 import { EmoteWheel } from '../ui/EmoteWheel';
 import { setSetting, settings } from '../settings';
 import { ManifestPanel, showManifestToast } from '../ui/ManifestPanel';
+import { showResultCard } from '../ui/ResultCard';
 import { TradePanel } from '../ui/TradePanel';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
 import { type Chip, kitChip, kitPlate, kitText, SPACE, UIK } from '../ui/kit';
@@ -481,6 +482,20 @@ export class UIScene extends Phaser.Scene {
     // F2: cache the merchant's posted prices for the item tooltips.
     session.events.on(SessionEvents.prices, (p: PricesSync) => {
       gameState.prices = p.buy;
+    });
+    // F3: a craft landing gets the result-card moment — the item LARGE with
+    // a glow pulse + confetti (the Coil's celebration language, reused).
+    session.events.on(SessionEvents.crafted, (e: { itemId: string }) => {
+      const def = ITEMS[e.itemId as keyof typeof ITEMS];
+      if (def === undefined) return;
+      showResultCard(this, {
+        thumbKey: itemThumbKey(def),
+        kicker: 'FRESH FROM THE TINKERBENCH',
+        title: def.name,
+        flavor: def.flavor,
+        big: (def.tier ?? 1) >= 3,
+      });
+      if (this.benchPanel.visible) this.benchPanel.refresh();
     });
     this.hotbar.setActiveSlot(gameState.activeHotbarSlot);
 

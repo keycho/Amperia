@@ -18,6 +18,7 @@ import type {
   ChargeStateShape,
   ChargeSyncEvent,
   ChatBroadcast,
+  CraftedEvent,
   CombatEvent,
   EmoteBroadcast,
   LampStateShape,
@@ -1076,6 +1077,9 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
+    );
+    room.onMessage(MSG.crafted, (e: CraftedEvent) =>
+      session.events.emit(SessionEvents.crafted, e),
     );
     room.onMessage(MSG.quests, (sync: QuestsSync) =>
       session.events.emit(SessionEvents.quests, sync),

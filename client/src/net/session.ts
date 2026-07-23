@@ -45,6 +45,8 @@ export const SessionEvents = {
   openQuests: 'openQuests',
   /** Personal quest log sync: payload QuestsSync. */
   quests: 'quests',
+  /** F3: a craft landed — payload CraftedEvent (drives the result card). */
+  crafted: 'crafted',
   /** HUD tracker line for the first active quest (string). */
   questTracker: 'questTracker',
   /** Direct trade flow (world → UI scene): payloads from @shared/protocol. */
