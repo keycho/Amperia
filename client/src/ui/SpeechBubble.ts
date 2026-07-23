@@ -53,6 +53,8 @@ export function showSpeechBubble(
   g.strokePath();
   t.setPosition(-tw / 2, top + pad);
   c.add([g, t]);
+  // F4 audit: the bubble's opaque plate, in local space (origin = tail tip).
+  c.setData('kitClipRect', { ox: -w / 2, oy: top, w, h });
 
   // Rise in, hold, fade out.
   c.setAlpha(0);

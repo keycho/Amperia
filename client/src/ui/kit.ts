@@ -66,6 +66,10 @@ export function kitText(
  */
 export function kitPlate(scene: Phaser.Scene, w: number, h: number, r = RADIUS): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics();
+  // F4 overlap detector: plates declare their opaque rect so the audit can
+  // (a) require child texts to stay inside and (b) treat covered text as
+  // hidden, not colliding. Local-space offset + size.
+  g.setData('kitClipRect', { ox: 0, oy: 0, w, h });
   g.fillStyle(UIK.shadow, 0.34);
   g.fillRoundedRect(3, 5, w, h, r);
   g.fillStyle(UIK.plate, 0.92);
@@ -123,6 +127,10 @@ export function kitHeader(
     color: PALETTE.neonAmber,
     bold: true,
   }).setOrigin(0, 0.5);
+  // F4: a long title must never cross the ✕ or the plate edge — one line,
+  // ellipsis-clamped to the space between the glyph and the close button.
+  t.setWordWrapWidth(Math.max(60, w - (SPACE.md + 13) - SPACE.md - 26));
+  kitClampLines(t, 1);
   container.add(t);
 
   if (onClose !== undefined) container.add(kitCloseButton(scene, w - SPACE.md, HEADER_H / 2, onClose));
@@ -450,6 +458,7 @@ export function kitChip(
     g.lineStyle(1, UIK.border, 0.9);
     g.strokeRoundedRect(0.5, 0.5, w - 1, h - 1, h / 2);
     c.setSize(w, h);
+    c.setData('kitClipRect', { ox: 0, oy: 0, w, h }); // F4 audit: opaque pill
   };
   layout();
   c.setValue = (str: string): void => {

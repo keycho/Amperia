@@ -9,3 +9,4 @@ Thumbs.db
 coverage/
 db/prisma/generated/
 logs/
+client/tests/.overlap-out/

@@ -286,6 +286,8 @@ export class Spark {
     g.fillStyle(PALETTE_INT.ink, 0.82);
     g.fillTriangle(-4, h / 2 - 1, 4, h / 2 - 1, 0, h / 2 + 6);
     const bubble = this.scene.add.container(0, 0, [g, txt]);
+    // F4 audit: the chat bubble's opaque plate, in local space (centre origin).
+    bubble.setData('kitClipRect', { ox: -w / 2, oy: -h / 2, w, h });
     bubble.setScale(worldTextScale(this.scene.cameras.main.zoom));
     bubble.setAlpha(0);
     this.bubble = bubble;

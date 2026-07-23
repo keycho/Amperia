@@ -5,11 +5,12 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
 import { sound } from '../audio/sound';
-import { kitButton, kitHeader, kitPlate, kitText } from './kit';
+import { kitButton, kitClampLines, kitHeader, kitPlate, kitText, SPACE } from './kit';
 
 const PANEL_W = 440;
-const PANEL_H = 380;
+const PANEL_H_MIN = 380;
 const BAR_W = PANEL_W - 32;
+const WRAP_W = PANEL_W - 32;
 
 /**
  * The Citywide Charge panel (the Warden's ledger): the weekly meter with
@@ -34,8 +35,10 @@ export class ChargePanel {
     });
   }
 
+  private lastH = PANEL_H_MIN;
+
   pixelSize(): { w: number; h: number } {
-    return { w: PANEL_W, h: PANEL_H };
+    return { w: PANEL_W, h: this.lastH };
   }
 
   setPosition(x: number, y: number): void {
@@ -48,27 +51,30 @@ export class ChargePanel {
     if (v) this.refresh();
   }
 
+  /**
+   * F4 flow layout: every line wraps inside the plate (the buff and regalia
+   * copy used to run 40–80px past the edge) and each band measures the one
+   * above; the plate takes the flowed height. The header title is clamped by
+   * kitHeader itself so a long week key never crosses the ✕.
+   */
   refresh(): void {
     this.container.removeAll(true);
     const sync = this.sync;
     if (sync === null) return;
-
-    this.container.add(kitPlate(this.scene, PANEL_W, PANEL_H));
-    kitHeader(
-      this.scene,
-      this.container,
-      PANEL_W,
-      `The Citywide Charge — week of ${sync.weekKey}`,
-      () => this.setVisible(false),
-    );
 
     const add = (
       x: number,
       y: number,
       text: string,
       color = UI_TEXT_WARM,
+      wrapW?: number,
+      maxLines = 2,
     ): Phaser.GameObjects.Text => {
       const t = kitText(this.scene, x, y, text, 'body', { color });
+      if (wrapW !== undefined) {
+        t.setWordWrapWidth(wrapW);
+        kitClampLines(t, maxLines);
+      }
       this.container.add(t);
       return t;
     };
@@ -87,28 +93,37 @@ export class ChargePanel {
       bar.lineBetween(x, 42, x, 64);
     }
     this.container.add(bar);
-    add(16, 70, `${sync.total} Amperite banked by the city`, PALETTE.warmGlow);
+
+    let y = 70;
+    const flow = (t: Phaser.GameObjects.Text, gap = 7): void => {
+      y += Math.ceil(t.height) + gap;
+    };
+    flow(add(16, y, `${sync.total} Amperite banked by the city`, PALETTE.warmGlow, WRAP_W));
     const tierLine =
       sync.tier >= sync.thresholds.length
         ? 'FESTIVAL BLAZE — every string light burns'
         : `tier ${sync.tier} · ${(sync.thresholds[sync.tier] ?? 0) - sync.total} more lights tier ${sync.tier + 1}`;
-    add(16, 92, tierLine, sync.tier >= 3 ? PALETTE.neonAmber : UI_TEXT_WARM);
-    add(
-      16,
-      114,
-      sync.buffActive
-        ? `Weekend buff glowing: +${sync.buffPct}% gather XP citywide`
-        : 'Reach tier 1 and the weekend brings a citywide gather-XP buff.',
-      sync.buffActive ? PALETTE.neonTeal : UI_TEXT_WARM,
+    flow(add(16, y, tierLine, sync.tier >= 3 ? PALETTE.neonAmber : UI_TEXT_WARM, WRAP_W));
+    flow(
+      add(
+        16,
+        y,
+        sync.buffActive
+          ? `Weekend buff glowing: +${sync.buffPct}% gather XP citywide`
+          : 'Reach tier 1 and the weekend brings a citywide gather-XP buff.',
+        sync.buffActive ? PALETTE.neonTeal : UI_TEXT_WARM,
+        WRAP_W,
+      ),
     );
-    add(16, 136, 'Top Sparks carry an untradeable name-glow — regalia only.', UI_TEXT_WARM);
+    flow(add(16, y, 'Top Sparks carry an untradeable name-glow — regalia only.', UI_TEXT_WARM, WRAP_W));
 
     // ── donate ──────────────────────────────────────────────────────────
+    y += 8;
     const have = gameState.count('amperite');
-    add(16, 166, `Your Amperite: ${have}`, PALETTE.warmGlow);
+    const haveLine = add(16, y, `Your Amperite: ${have}`, PALETTE.warmGlow, 150, 1);
     if (have > 0 && session.room !== null) {
       this.container.add(
-        kitButton(this.scene, 180, 160, 'donate 5', {
+        kitButton(this.scene, 180, y - 6, 'donate 5', {
           width: 90,
           height: 22,
           onClick: () => {
@@ -120,7 +135,7 @@ export class ChargePanel {
         }),
       );
       this.container.add(
-        kitButton(this.scene, 280, 160, 'donate all', {
+        kitButton(this.scene, 280, y - 6, 'donate all', {
           width: 100,
           height: 22,
           primary: true,
@@ -133,15 +148,33 @@ export class ChargePanel {
         }),
       );
     }
+    flow(haveLine, 12);
 
     // ── leaderboard ─────────────────────────────────────────────────────
-    add(16, 196, "THIS WEEK'S BRIGHTEST SPARKS", PALETTE.neonTeal);
+    flow(add(16, y, "THIS WEEK'S BRIGHTEST SPARKS", PALETTE.neonTeal, WRAP_W, 1));
     if (sync.top.length === 0) {
-      add(16, 218, 'No donations yet — the Dynamo waits.', UI_TEXT_WARM);
+      flow(add(16, y, 'No donations yet — the Dynamo waits.', UI_TEXT_WARM, WRAP_W, 1));
     }
     sync.top.slice(0, 7).forEach((row, i) => {
-      add(16, 218 + i * 20, `${i + 1}. ${row.sparkName}`, UI_TEXT_WARM);
-      add(280, 218 + i * 20, `${row.amperite} Amperite`, PALETTE.warmGlow);
+      const name = add(16, y, `${i + 1}. ${row.sparkName}`, UI_TEXT_WARM, 250, 1);
+      add(280, y, `${row.amperite} Amperite`, PALETTE.warmGlow, PANEL_W - 280 - 16, 1);
+      flow(name, 6);
     });
+
+    // Plate LAST from the flowed height; header on top; recentre.
+    this.lastH = Math.max(PANEL_H_MIN, y + SPACE.md);
+    this.container.addAt(kitPlate(this.scene, PANEL_W, this.lastH), 0);
+    kitHeader(
+      this.scene,
+      this.container,
+      PANEL_W,
+      `The Citywide Charge — week of ${sync.weekKey}`,
+      () => this.setVisible(false),
+    );
+    const cam = this.scene.cameras.main;
+    this.container.setPosition(
+      Math.round((cam.width - PANEL_W) / 2),
+      Math.round(Math.max(30, (cam.height - this.lastH) / 2 - 10)),
+    );
   }
 }

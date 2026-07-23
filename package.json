@@ -2,7 +2,7 @@
   "name": "amperia",
   "private": true,
   "version": "0.0.0",
-  "description": "AMPERIA — isometric cozy salvage-punk MMO. Keep the city lit.",
+  "description": "AMPERIA \u2014 isometric cozy salvage-punk MMO. Keep the city lit.",
   "workspaces": [
     "client",
     "server",
@@ -18,7 +18,8 @@
     "db:generate": "node db/node_modules/prisma/build/index.js generate --schema db/prisma/schema.prisma",
     "db:migrate": "node db/node_modules/prisma/build/index.js migrate dev --schema db/prisma/schema.prisma",
     "db:deploy": "node db/node_modules/prisma/build/index.js migrate deploy --schema db/prisma/schema.prisma",
-    "db:seed": "node server/dist/seed.mjs"
+    "db:seed": "node server/dist/seed.mjs",
+    "test:overlap": "node client/tests/overlapTour.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"

@@ -256,6 +256,7 @@ export class WorldScene extends Phaser.Scene {
     this.nodes = new Map();
     this.sparks = new Map();
     this.mobs = new Map();
+    this.npcBubbles = new Map();
     this.lampViews = new Map();
     this.cacheViews = new Map();
     this.ambientBots = [];
@@ -1481,6 +1482,8 @@ export class WorldScene extends Phaser.Scene {
     const box = this.add.container(0, 0, [bg, txt]);
     box.setDepth(1e6);
     box.setVisible(false);
+    // F4 audit: the prompt's opaque pill, in local space.
+    box.setData('kitClipRect', { ox: -46, oy: -13, w: 92, h: 26 });
     this.ePrompt = box;
   }
 
@@ -1616,15 +1619,22 @@ export class WorldScene extends Phaser.Scene {
     this.speakNpc(s.kind, s.x, s.y, def.lines[idx]!);
   }
 
+  /** F4: one live bubble per NPC anchor — a new line REPLACES the old one
+   *  (the detector caught interact-greets stacking on ambient lines). */
+  private npcBubbles = new Map<string, Phaser.GameObjects.Container>();
+
   /** PP2: float a speech bubble over an NPC (ambient line or interaction greet). */
   private speakNpc(kind: string, footX: number, footY: number, line: string): void {
     const lift = NPC_CHATTER[kind]?.lift ?? 90;
     // F4 stack rules within this entity's anchor space:
+    //  · one bubble per speaker — a fresh line replaces the live one;
     //  · the bubble suppresses the marker label for its whole lifetime;
     //  · the E-prompt keeps the lowest slot — if it currently sits on this
     //    entity, the bubble's tail tip rises to clear the prompt plate.
     let tipY = footY - lift;
     const t = worldToTileFloor(footX, footY);
+    const anchorKey = `${t.tx},${t.ty}`;
+    this.npcBubbles.get(anchorKey)?.destroy(); // its DESTROY releases suppression
     const promptHere =
       this.eTarget !== null &&
       t.tx >= this.eTarget.tile.x - 1 &&
@@ -1636,9 +1646,11 @@ export class WorldScene extends Phaser.Scene {
       tipY = Math.min(tipY, this.ePrompt.y - 13 * this.ePrompt.scaleY - 6);
     }
     this.markers?.setSuppressed(t.tx, t.ty, 'bubble', true);
-    showSpeechBubble(this, footX, tipY, line, depthForWorldY(footY) + 30, () =>
-      this.markers?.setSuppressed(t.tx, t.ty, 'bubble', false),
-    );
+    const bubble = showSpeechBubble(this, footX, tipY, line, depthForWorldY(footY) + 30, () => {
+      this.markers?.setSuppressed(t.tx, t.ty, 'bubble', false);
+      if (this.npcBubbles.get(anchorKey) === bubble) this.npcBubbles.delete(anchorKey);
+    });
+    this.npcBubbles.set(anchorKey, bubble);
   }
 
   /** PP2: the NPC's greeting bubble when a Spark interacts with it. */

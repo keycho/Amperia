@@ -358,15 +358,20 @@ export class UIScene extends Phaser.Scene {
    */
   private renderTutorial(m: TutorialModel): void {
     if (this.tutorialPanel === null) {
-      // PP1: the checklist rides the kit plate.
-      const g = kitPlate(this, 272, 96);
       const title = kitText(this, SPACE.md, SPACE.sm, 'FIRST BOLTS', 'caption', {
         color: PALETTE.neonAmber,
         bold: true,
       });
-      this.tutorialLines = m.steps.map((_, i) =>
-        kitText(this, SPACE.md, 30 + i * 20, '', 'caption', { color: UI_TEXT_WARM }),
+      this.tutorialLines = m.steps.map((step, i) =>
+        // Seed the real copy immediately so the plate can be MEASURED — the
+        // fixed 272px plate clipped the longest step (F4 detector find).
+        kitText(this, SPACE.md, 30 + i * 20, `☐ ${step.label}`, 'caption', {
+          color: UI_TEXT_WARM,
+        }),
       );
+      const maxW = Math.max(240, ...this.tutorialLines.map((l) => Math.ceil(l.width)));
+      // PP1: the checklist rides the kit plate — sized to its content.
+      const g = kitPlate(this, maxW + SPACE.md * 2, 30 + m.steps.length * 20 + SPACE.sm);
       const panel = this.add.container(12, 90, [g, title, ...this.tutorialLines]);
       panel.setDepth(930);
       panel.setAlpha(0);
@@ -981,10 +986,11 @@ export class UIScene extends Phaser.Scene {
       else if (this.skillsPanel.visible) this.skillsPanel.setVisible(false);
       else if (this.worldMapPanel.visible) this.worldMapPanel.setVisible(false);
       else if (this.howToPlayPanel.visible) this.howToPlayPanel.setVisible(false);
-      // F1: these two were missing — an open Manifest/Goal board shrugged off
-      // Esc, and (with the new wheel-zoom panel gate) silently blocked zoom.
+      // F1/F4: these were missing — an open Manifest/Goal board/Ledgerhouse
+      // shrugged off Esc, and (with the wheel-zoom panel gate) blocked zoom.
       else if (this.manifestPanel.visible) this.manifestPanel.setVisible(false);
       else if (this.goalPanel.visible) this.goalPanel.setVisible(false);
+      else if (this.bankPanel.visible) this.bankPanel.setVisible(false);
     });
     kb.on('keydown-ENTER', () => {
       if (typing()) return;
