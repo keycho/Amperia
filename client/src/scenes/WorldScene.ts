@@ -87,6 +87,7 @@ import {
   TILE_H,
   TILE_W,
   tileToWorld,
+  worldToTile,
   worldToTileFloor,
 } from '../iso/project';
 import {
@@ -112,7 +113,7 @@ import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
 import { placeAmbientNpcs } from '../render/ambientNpcs';
 import { placeGroundDecals } from '../render/groundDecals';
-import { bloom, worldSpriteTint } from '../render/styleConfig';
+import { bloom, DARKNESS, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
 import { itemThumbKey } from '../render/itemThumbs';
 import {
@@ -194,6 +195,9 @@ export class WorldScene extends Phaser.Scene {
     nextOkMs: number;
   }> = [];
   private mobs = new Map<string, Mob>();
+  /** G4: every standing light source (tile coords) — the darkness gradient
+   *  and prop dimming both key off distance to the nearest of these. */
+  private lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
   private ambientBots: AmbientScuttlebot[] = [];
@@ -2308,7 +2312,10 @@ export class WorldScene extends Phaser.Scene {
 
     // Where lamplight lands (tile coords) — the wet glaze catches it there.
     // §B9 light discipline: every sheen spot maps to a REAL glow source.
+    // G4: the same list drives the darkness gradient (field, reused by
+    // the overlay pass and prop dimming).
     const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
+    this.lightSpots = lightSpots;
     for (const p of this.map.props) {
       if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
@@ -2571,6 +2578,57 @@ export class WorldScene extends Phaser.Scene {
         voidG.fillPath();
       }
     }
+
+    // ── G4: the darkness gradient ───────────────────────────────────────
+    // Away from standing lights the ground drops through QUANTIZED ink
+    // bands with a checker-dither transition — light pools become pools
+    // again. Ink over the floor colors, capped well above pure black.
+    {
+      const dark = this.add.graphics();
+      dark.setDepth(DEPTH_FLOOR + 2); // over decals/sheen, under shadows
+      for (let ty = 0; ty < size; ty++) {
+        for (let tx = 0; tx < size; tx++) {
+          const ground =
+            this.map.walkable[ty]?.[tx] === true || this.map.canal[ty]?.[tx] === true;
+          if (!ground) continue;
+          const band = this.darknessBand(tx, ty);
+          if (band === 0) continue;
+          const a = (band / DARKNESS.bands) * DARKNESS.maxAlpha;
+          const { x, y } = tileToWorld(tx, ty);
+          dark.fillStyle(PALETTE_INT.ink, a);
+          this.traceDiamond(dark, x, y);
+          dark.fillPath();
+        }
+      }
+    }
+  }
+
+  /** G4: chebyshev tiles to the nearest standing light source. */
+  private lightDist(tx: number, ty: number): number {
+    let best = Infinity;
+    for (const sp of this.lightSpots) {
+      const d = Math.max(Math.abs(sp.x - tx), Math.abs(sp.y - ty));
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /** G4: quantized darkness band 0..bands for a tile, with the middle half
+   *  of every transition dithered on the tile checker — pixel-grammar
+   *  falloff, not a smooth ramp. */
+  private darknessBand(tx: number, ty: number): number {
+    const d = this.lightDist(tx, ty);
+    const t = Math.max(
+      0,
+      Math.min(1, (d - DARKNESS.poolRadius) / (DARKNESS.farRadius - DARKNESS.poolRadius)),
+    );
+    const f = t * DARKNESS.bands;
+    const base = Math.floor(f);
+    const frac = f - base;
+    if (frac > 0.25 && frac < 0.75) {
+      return Math.min(DARKNESS.bands, base + ((tx + ty) % 2));
+    }
+    return Math.min(DARKNESS.bands, Math.round(f));
   }
 
   /**
@@ -4637,7 +4695,20 @@ export class WorldScene extends Phaser.Scene {
   private propSprite(name: string, x: number, y: number): Phaser.GameObjects.Image {
     const img = addVoxelSprite(this, name, x, y);
     const wt = worldSpriteTint();
-    if (wt !== null) img.setTint(wt);
+    // G4: props in the dark sink with the ground — a quantized dim toward
+    // dusk, banded like the floor so a lamp visibly claims its circle.
+    const t = worldToTile(x, y);
+    const band = this.darknessBand(t.tx, t.ty);
+    const base = wt ?? 0xffffff;
+    if (band > 0) {
+      const dim = 1 - (band / DARKNESS.bands) * DARKNESS.propDim;
+      const r = Math.round(((base >> 16) & 0xff) * dim);
+      const gc = Math.round(((base >> 8) & 0xff) * dim);
+      const b = Math.round((base & 0xff) * dim);
+      img.setTint((r << 16) | (gc << 8) | b);
+    } else if (wt !== null) {
+      img.setTint(wt);
+    }
     img.setDepth(depthForWorldY(y));
     this.occlusion.register(img);
     return img;

@@ -43,6 +43,25 @@ export interface StyleConfig {
   };
 }
 
+/**
+ * G4 — the darkness gradient: away from real light sources the ground and
+ * props drop noticeably darker (never pure black), through QUANTIZED bands
+ * with a checker-dither transition instead of a smooth ramp — the pixel
+ * grammar's idea of falloff. One set for all modes, like shadows.
+ */
+export const DARKNESS = {
+  /** Ink alpha over the floor at full distance (floor minimum guard). */
+  maxAlpha: 0.32,
+  /** Inside this tile radius of a light: untouched — the pool. */
+  poolRadius: 2.5,
+  /** Beyond this: full darkness band. */
+  farRadius: 7.5,
+  /** Number of quantized bands between pool and far. */
+  bands: 3,
+  /** How far props dim at full distance (0..1 mix toward dusk-dark). */
+  propDim: 0.28,
+} as const;
+
 /** G1: shadows are grounding, not a style toggle — one set for all modes. */
 const SHADOWS: StyleConfig['shadows'] = {
   alpha: 0.8,

@@ -470,7 +470,7 @@ function buildingModel(design: number): Voxel[] {
       v.push(...mbox(-1, 12, 11, 16, 1, 1, MATERIALS.gunmetal));
       door(3, 11);
       // G3: the front window is a lit room, not a decal.
-      let carved = carveInterior(v, { x0: 8, w: 3, z0: 4, h: 3, faceY: 11 }, 0);
+      carved = carveInterior(v, { x0: 8, w: 3, z0: 4, h: 3, faceY: 11 }, 0);
       v.length = 0;
       v.push(...carved);
       v.push(...box(13, 5, 5, 1, 3, 3, window));
