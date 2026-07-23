@@ -298,11 +298,13 @@ function emberseedModel(): Voxel[] {
   return v;
 }
 
-/** Fallback accents per family when the item declares no iconTint. */
+/** Fallback accents per family when the item declares no iconTint. Tinker
+ *  tiers wear MUTED workman colors — the neon accents belong to the upper
+ *  tiers (a Tinker claw in coil-teal read as a duplicate; audit-caught). */
 const DEFAULT_ACCENT: Record<string, number> = {
-  'icon-magclaw': C.teal,
+  'icon-magclaw': blendInt(C.teal, PALETTE_INT.structureMid, 0.6),
   'icon-drillhammer': blendInt(C.amber, PALETTE_INT.structureMid, 0.3),
-  'icon-skimnet': C.teal,
+  'icon-skimnet': C.ochre,
   'icon-tuner': PALETTE_INT.neonCyan,
   'icon-riveter': C.amber,
   'icon-sparkwrench': C.rose,
