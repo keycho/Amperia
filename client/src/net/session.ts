@@ -86,4 +86,7 @@ export const SessionEvents = {
   banner: 'banner',
   /** U3d: you went down — payload the youDown combat event. */
   deathRecap: 'deathRecap',
+  /** F5: loot landed — fly a thumb chip from the node's screen point to the
+   *  hotbar. Payload { itemId, sx, sy } (screen coords from WorldScene). */
+  lootChipFly: 'lootChipFly',
 } as const;

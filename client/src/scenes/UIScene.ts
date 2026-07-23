@@ -429,6 +429,9 @@ export class UIScene extends Phaser.Scene {
       t.setDepth(902);
       t.setAlpha(0);
       t.setInteractive({ useHandCursor: true });
+      // F5 hover: the HUD shortcut warms under the pointer.
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(PALETTE.neonTeal));
       t.on('pointerdown', onClick);
       this.tweens.add({ targets: t, alpha: 1, duration: 500 });
       this.discloseIcons.push(t);
@@ -497,6 +500,11 @@ export class UIScene extends Phaser.Scene {
       });
       if (this.benchPanel.visible) this.benchPanel.refresh();
     });
+    // F5: the pickup chip — the loot thumb arcs from the node into the belt.
+    session.events.on(
+      SessionEvents.lootChipFly,
+      (e: { itemId: string; sx: number; sy: number }) => this.flyLootChip(e.itemId, e.sx, e.sy),
+    );
     this.hotbar.setActiveSlot(gameState.activeHotbarSlot);
 
     // PP1: HUD counters are proper kit chips (pill plate + glyph + value).
@@ -755,6 +763,9 @@ export class UIScene extends Phaser.Scene {
     gear.setAlpha(0.85);
     gear.setDepth(902);
     gear.setInteractive({ useHandCursor: true });
+    // F5 hover, matching the [?] button's treatment below.
+    gear.on('pointerover', () => gear.setAlpha(1));
+    gear.on('pointerout', () => gear.setAlpha(0.85));
     const placeGear = () => gear.setPosition(this.scale.width - 22, 44);
     placeGear();
     this.scale.on('resize', placeGear);
@@ -829,6 +840,8 @@ export class UIScene extends Phaser.Scene {
       const refresh = () => t.setText(`${get() ? '[on ]' : '[off]'} ${text}`);
       refresh();
       t.setInteractive({ useHandCursor: true });
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(UI_TEXT_WARM));
       t.on('pointerdown', () => {
         sound.uiClick();
         set(!get());
@@ -865,6 +878,8 @@ export class UIScene extends Phaser.Scene {
       gritLabel.setText(`[${gritName(settings().grit)}] texture (reload)`);
     refreshGrit();
     gritLabel.setInteractive({ useHandCursor: true });
+    gritLabel.on('pointerover', () => gritLabel.setColor(PALETTE.warmGlow));
+    gritLabel.on('pointerout', () => gritLabel.setColor(UI_TEXT_WARM));
     gritLabel.on('pointerdown', () => {
       sound.uiClick();
       const cur = GRIT_OPTS.indexOf(settings().grit);
@@ -920,6 +935,59 @@ export class UIScene extends Phaser.Scene {
     this.hpBar.fillRoundedRect(x + 2, y + 2, Math.max(4, (W - 4) * frac), 8, 4);
     this.hpText.setText(`⚡ ${this.hp.hp}/${this.hp.maxHp}`);
     this.hpText.setPosition(x + W + 8, y - 1);
+  }
+
+  /** F5: the pickup chip — the loot thumb arcs from the node's screen point
+   *  into the hotbar (the matching slot when the item rides the belt, the
+   *  strip's centre otherwise) and lands with a soft warm pulse. */
+  private flyLootChip(itemId: string, sx: number, sy: number): void {
+    const def = ITEMS[itemId as keyof typeof ITEMS];
+    if (def === undefined) return;
+    const slot = gameState.hotbar.slots.findIndex((s) => s?.itemId === itemId);
+    const hb = this.hotbar.pixelSize();
+    const to =
+      slot >= 0
+        ? this.hotbar.slotCenter(slot)
+        : {
+            x: this.hotbar.container.x + hb.w / 2,
+            y: this.hotbar.container.y + hb.h / 2,
+          };
+    const chip = this.add.image(sx, sy, itemThumbKey(def));
+    chip.setDisplaySize(34, 34);
+    chip.setDepth(1500);
+    const state = { t: 0 };
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 420,
+      ease: 'quad.in',
+      onUpdate: () => {
+        const t = state.t;
+        // A shallow arc: lerp the line, lift by a half-sine on the way.
+        chip.setPosition(
+          sx + (to.x - sx) * t,
+          sy + (to.y - sy) * t - Math.sin(t * Math.PI) * 56,
+        );
+        const px = 34 - 10 * t; // 34px shrinking to 24px as it lands
+        chip.setDisplaySize(px, px);
+      },
+      onComplete: () => {
+        chip.destroy();
+        const pulse = this.add.image(to.x, to.y, 'fx-glow');
+        pulse.setTint(PALETTE_INT.warmGlow);
+        pulse.setBlendMode(Phaser.BlendModes.ADD);
+        pulse.setScale(0.08);
+        pulse.setDepth(1500);
+        this.tweens.add({
+          targets: pulse,
+          scale: 0.16,
+          alpha: 0,
+          duration: 220,
+          ease: 'quad.out',
+          onComplete: () => pulse.destroy(),
+        });
+      },
+    });
   }
 
   private refreshAll(): void {

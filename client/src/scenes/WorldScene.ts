@@ -1040,9 +1040,20 @@ export class WorldScene extends Phaser.Scene {
       const node = this.nodes.get(e.nodeId);
       const nx = node?.image.x ?? 0;
       const ny = (node?.image.y ?? 0) - 70;
+      // F5 pickup chip: hand the node's SCREEN point to the UI scene so the
+      // loot thumb can arc into the hotbar (centre = scroll + width/2).
+      const flyChip = (itemId: string): void => {
+        const cam = this.cameras.main;
+        session.events.emit(SessionEvents.lootChipFly, {
+          itemId,
+          sx: (nx - (cam.scrollX + cam.width / 2)) * cam.zoom + cam.width / 2,
+          sy: (ny + 40 - (cam.scrollY + cam.height / 2)) * cam.zoom + cam.height / 2,
+        });
+      };
       if (e.qty > 0) {
         floatText(this, nx, ny, `+${e.qty} ${ITEMS[e.itemId].name}`);
         sound.gatherChirp();
+        flyChip(e.itemId);
         // U5c: a quick spark burst off the node as the haul lands.
         if (node !== undefined) {
           for (let i = 0; i < 4; i++) {
@@ -1068,6 +1079,7 @@ export class WorldScene extends Phaser.Scene {
       if (e.rare !== null) {
         floatText(this, nx, ny - 20, `+1 ${ITEMS[e.rare].name} ✦`, PALETTE.neonAmber);
         sound.rareChime();
+        flyChip(e.rare);
       }
       // U4d: a landed cycle queues the next; a zero take = full pack, stop.
       if (e.qty > 0 || e.rare !== null) this.autoGatherNext(e.nodeId);
@@ -2091,15 +2103,14 @@ export class WorldScene extends Phaser.Scene {
     if (identity === null || this.room === null) return;
     const room = this.room;
     this.creatorMode = mode;
-    // A first wallet sign-in seats the Spark under a machine placeholder
-    // (Spark-xxxxxx); don't pre-fill that into the name field — pass it blank
-    // so the creator seeds a cozy rolled name for the player to keep or change.
-    const isPlaceholder = /^Spark-[0-9a-f]{6}$/.test(identity.sparkName);
+    // F5a: a first wallet sign-in seats the Spark under a rolled cozy name
+    // (never a machine id), so pre-filling it keeps the creator consistent
+    // with what other Sparks already saw in-world.
     this.creator = showCreatorOverlay({
       scene: this,
       mode,
       currentCode: identity.appearance,
-      currentName: mode === 'first' && isPlaceholder ? '' : identity.sparkName,
+      currentName: identity.sparkName,
       owned: identity.owned,
       currentEquipped: identity.equipped,
       onConfirm: (code, name) => {
