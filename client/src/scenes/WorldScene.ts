@@ -111,6 +111,7 @@ import { TEX_SCALE } from '../render/textures';
 import { addVoxelSprite, syncVoxelShadows } from '../render/voxel';
 import { VariantPicker } from '../render/propVariants';
 import { placeAmbientNpcs } from '../render/ambientNpcs';
+import { placeGroundDecals } from '../render/groundDecals';
 import { bloom, worldSpriteTint } from '../render/styleConfig';
 import { addLayeredGlow } from '../render/glow';
 import { itemThumbKey } from '../render/itemThumbs';
@@ -291,6 +292,9 @@ export class WorldScene extends Phaser.Scene {
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
     this.drawFloor();
+    // G2: the authored grime layer — cracks, weeds, stains, scraps — laid
+    // deterministically per tile so every client walks the same streets.
+    placeGroundDecals(this, this.map);
     this.placeWorldRim();
     this.placeProps();
     this.placeLoftBerths();
