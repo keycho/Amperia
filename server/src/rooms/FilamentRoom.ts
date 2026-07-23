@@ -521,7 +521,7 @@ export class FilamentRoom extends Room<FilamentState> {
       const toll = tramToll(character.district as DistrictId, this.districtId);
       if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
       bolts -= toll;
-      // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+      // PP6 (amended): a free leg (Filament ↔ Stacks) charges nothing → no sink log.
       if (toll > 0) {
         ledger.log({
           type: 'spend',
@@ -3433,7 +3433,7 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     rt.bolts -= toll;
     rt.pendingDistrict = msg.to;
-    // PP6: a free stop (The Stacks) charges nothing, so it logs no sink.
+    // PP6 (amended): a free leg (Filament ↔ Stacks) charges nothing → no sink log.
     if (toll > 0) {
       ledger.log({
         type: 'spend',

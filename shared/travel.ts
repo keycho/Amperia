@@ -19,9 +19,14 @@ export function tramHops(from: DistrictId, to: DistrictId): number {
 
 /**
  * Bolts toll for the ride. 0 means the tram has nowhere to take you — OR the
- * destination rides free (PP6: The Stacks). Distance keeps its price elsewhere.
+ * ride is a free LEG (PP6 amended: Filament ↔ Stacks rides free BOTH ways —
+ * a free round trip, never a pay-to-come-home gotcha). Every other ride
+ * prices by distance, identically in both directions.
  */
 export function tramToll(from: DistrictId, to: DistrictId): number {
-  if (CONFIG.travel.freeStops.includes(to)) return 0;
+  const free = CONFIG.travel.freeLegs.some(
+    ([a, b]) => (a === from && b === to) || (a === to && b === from),
+  );
+  if (free) return 0;
   return tramHops(from, to) * CONFIG.travel.tollBolts;
 }

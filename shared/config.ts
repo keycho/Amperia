@@ -455,11 +455,13 @@ export const CONFIG = {
     /** Bolts per hop along the line (recurring sink). */
     tollBolts: 5,
     /**
-     * PP6: stops that ride FREE regardless of distance. The Stacks is a free
-     * second district — it widens the starter world and teaches the tram loop
-     * without a Bolts gate; distance keeps its price everywhere else.
+     * PP6 (amended): LEGS that ride free — both directions, so the free
+     * second district is a free ROUND TRIP, never a pay-to-come-home
+     * gotcha. The Filament ↔ Stacks starter leg teaches the tram loop
+     * without a Bolts gate; every other ride prices by distance, the same
+     * in both directions.
      */
-    freeStops: ['stacks'] as string[],
+    freeLegs: [['filament', 'stacks']] as [string, string][],
     /** Server-checked "at the gate" boarding reach (chebyshev tiles) —
      *  handleTravel and the world map's ride-from-map shortcut share it. */
     gateRadiusTiles: 4,
