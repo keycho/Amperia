@@ -783,8 +783,11 @@ export const CONFIG = {
       xpBrawlingPerKill: 14,
       /** Rare Manifest trophy roll per kill — the ONLY drop of any kind. */
       trophyChance: 0.04,
-      /** Home range: the SE scrap fringe among the amperite spoil (W0 layout). */
-      homeBox: { x0: 45, y0: 45, x1: 56, y1: 56 },
+      /** Home range: the SE scrap fringe among the amperite spoil (W0
+       *  layout). Pulled to the deep corner so the fringe's reach (leash 7
+       *  from any home seat) clears the FIRST BOLTS gather pocket north of
+       *  it — shared/tutorialPath.test.ts guards this line. */
+      homeBox: { x0: 49, y0: 49, x1: 56, y1: 56 },
     },
     /** Placeable Heatlamp: riveted on the spot from Salvage (a real sink). */
     heatlamp: {
