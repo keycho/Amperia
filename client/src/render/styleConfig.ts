@@ -27,7 +27,32 @@ export interface StyleConfig {
   vignetteScale: number;
   /** Internal render height for pixel mode (null = native). */
   pixelHeight: number | null;
+  /** G1 contact shadows — every strength routes through here. */
+  shadows: {
+    /** Placed voxel-shadow image alpha (props, mobs, nodes, structures). */
+    alpha: number;
+    /** Extra alpha lerped in by sprite width (big props ground harder). */
+    wideBonus: number;
+    wideAtPx: number;
+    /** In-bake pass alphas: soft fringe / core / contact-AO ring. */
+    fringe: number;
+    core: number;
+    contact: number;
+    /** The walking-entity ellipse passes (fx-contact-shadow, out→in). */
+    entity: [number, number, number];
+  };
 }
+
+/** G1: shadows are grounding, not a style toggle — one set for all modes. */
+const SHADOWS: StyleConfig['shadows'] = {
+  alpha: 0.8,
+  wideBonus: 0.12,
+  wideAtPx: 220,
+  fringe: 0.22,
+  core: 0.52,
+  contact: 0.66,
+  entity: [0.28, 0.46, 0.56],
+};
 
 function parseMode(): { mode: StyleMode; pixelHeight: number | null } {
   const raw = new URLSearchParams(window.location.search).get('style')?.toLowerCase() ?? 'a';
@@ -49,6 +74,7 @@ export const STYLE: StyleConfig =
         washScale: 1,
         vignetteScale: 1,
         pixelHeight: null,
+        shadows: SHADOWS,
       }
     : {
         mode: parsed.mode,
@@ -58,6 +84,7 @@ export const STYLE: StyleConfig =
         washScale: 0.28,
         vignetteScale: 1.35,
         pixelHeight: parsed.pixelHeight,
+        shadows: SHADOWS,
       };
 
 /** Grade a floor/graphics fill color through the style. */

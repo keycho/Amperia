@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE_INT, sat, splitTone } from '@shared/palette';
 import { DEPTH_SHADOW } from '../iso/project';
 import { GRIT, GRIT_FACE, gritDownsample } from './grit';
+import { STYLE } from './styleConfig';
 import { voxelHash, type Material } from './materials';
 
 /**
@@ -72,8 +73,8 @@ export interface VoxelModel {
  */
 export const SHADOW_SHEAR_X = 1.15;
 export const SHADOW_SHEAR_Y = 0.35;
-/** Overall alpha the cast-shadow layer renders at. */
-export const SHADOW_ALPHA = 0.55;
+/** Overall alpha the cast-shadow layer renders at (G1: config-driven). */
+export const SHADOW_ALPHA = STYLE.shadows.alpha;
 
 export interface BakedVoxelSprite {
   key: string;
@@ -567,10 +568,12 @@ function bakeShadow(
     g.fillPath();
   };
   // Fringe pass (soft edge), then core pass; contact cells darkest.
-  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.7, 1.7, 0.16);
-  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.05, 1.05, 0.4);
+  // Pass strengths come from the style config (G1) — grounding, tunable.
+  const sh = STYLE.shadows;
+  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.7, 1.7, sh.fringe);
+  for (const c of cells) diamond(c.px + ox, c.py + oy, 1.05, 1.05, sh.core);
   for (const c of cells) {
-    if (c.contact) diamond(c.px + ox, c.py + oy, 0.9, 0.9, 0.5);
+    if (c.contact) diamond(c.px + ox, c.py + oy, 0.9, 0.9, sh.contact);
   }
   g.generateTexture(key, w, h);
   g.destroy();
@@ -732,7 +735,11 @@ export function addVoxelSprite(
     const shadow = scene.add.image(worldX, worldY, shadowBaked.key);
     shadow.setOrigin(shadowBaked.originX, shadowBaked.originY);
     shadow.setScale(shadowBaked.scale);
-    shadow.setAlpha(SHADOW_ALPHA);
+    // G1: wide props ground a shade harder than small clutter.
+    const sh = STYLE.shadows;
+    shadow.setAlpha(
+      Math.min(1, sh.alpha + sh.wideBonus * Math.min(1, img.displayWidth / sh.wideAtPx)),
+    );
     shadow.setDepth(DEPTH_SHADOW);
     img.setData('shadowImg', shadow);
     img.once(Phaser.GameObjects.Events.DESTROY, () => shadow.destroy());

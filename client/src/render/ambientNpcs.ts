@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { DistrictId } from '@shared/map';
-import { depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
+import { DEPTH_SHADOW, depthForWorldY, TILE_H, tileToWorld } from '../iso/project';
 import { bakeSparkAppearance } from './sparkModel';
 import { worldSpriteTint } from './styleConfig';
 import { addVoxelSprite, applyVoxelTexture } from './voxel';
@@ -82,6 +82,12 @@ export function placeAmbientNpcs(scene: Phaser.Scene, district: DistrictId): voi
     const wt = worldSpriteTint();
     if (wt !== null) img.setTint(wt);
     img.setDepth(depthForWorldY(anchorY));
+    // G1: citizens ground like players — spark bakes carry no cast shadow,
+    // so the walking-entity contact ellipse goes underfoot here too.
+    const shadow = scene.add.image(x, anchorY - 2, 'fx-contact-shadow');
+    shadow.setScale(0.62);
+    shadow.setAlpha(0.75);
+    shadow.setDepth(DEPTH_SHADOW);
     // Breathing: a slow, tiny settle — alive, not animated furniture.
     scene.tweens.add({
       targets: img,
