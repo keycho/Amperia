@@ -281,6 +281,30 @@ async function runTour(viewport) {
     await teardown(state);
   }
 
+  // 3b — the world map's acting surfaces (map M2-M4): the hovered-island
+  // info plate, a leg fare pill, and the board-at-a-gate hint. Driven by
+  // the panel's own methods so the states are deterministic.
+  await pageA.keyboard.press('Tab');
+  await pageA.waitForTimeout(400);
+  await pageA.evaluate(() => {
+    const ui = window.__amperia.game.scene.getScene('ui');
+    ui.worldMapPanel.showIslandInfo('stacks', 'filament');
+  });
+  await capture('map-hover');
+  await pageA.evaluate(() => {
+    const ui = window.__amperia.game.scene.getScene('ui');
+    ui.worldMapPanel.clearIslandInfo();
+    ui.worldMapPanel.showFare('filament', 'stacks');
+  });
+  await capture('map-fare');
+  await pageA.evaluate(() => {
+    const ui = window.__amperia.game.scene.getScene('ui');
+    ui.worldMapPanel.clearFare();
+    ui.worldMapPanel.showBoardHint();
+  });
+  await capture('map-hint');
+  await teardown('map-states');
+
   // 4 — how-to-play (no direct key; open it as the ? button would).
   await pageA.evaluate(() => {
     window.__amperia.game.scene.getScene('ui').howToPlayPanel.setVisible(true);

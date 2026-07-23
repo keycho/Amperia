@@ -13,6 +13,7 @@ import { tramToll } from '@shared/travel';
 import { send } from '../net/NetClient';
 import { sound } from '../audio/sound';
 import { session, SessionEvents } from '../net/session';
+import { markLit, unlitVisited, visitedDistricts } from '../systems/visited';
 import {
   bakeDistrictIsland,
   ensureMapMarkers,
@@ -23,17 +24,18 @@ import {
 } from '../render/mapBake';
 import { kitHeader, kitPlate, kitText, type TypeLevel, kitPanelPop } from './kit';
 
+/** M4: the frame sized to its content — islands + info dock + footer. */
 const W = 780;
-const H = 470;
+const H = 446;
 /** Baked island diamond width (px) — the miniature render's footprint. */
 const ISLAND_W = 150;
 
 /** Screen-space island anchors (centers), in tram-line order. */
 const ISLAND_AT: Record<DistrictId, { x: number; y: number }> = {
-  filament: { x: 138, y: 218 },
-  stacks: { x: 312, y: 158 },
-  terrarium: { x: 486, y: 218 },
-  tangle: { x: 644, y: 292 },
+  filament: { x: 138, y: 204 },
+  stacks: { x: 312, y: 144 },
+  terrarium: { x: 486, y: 204 },
+  tangle: { x: 644, y: 278 },
 };
 
 /** Each district's one-line character (M3) — the city's voice, comms-clean. */
@@ -78,6 +80,32 @@ export class WorldMapPanel {
     this.container.setVisible(false);
 
     this.container.add(kitPlate(scene, W, H));
+    // M4: the void between islands — deep ink with drifting ember motes
+    // (the title screen's air), built once and clipped inside the frame.
+    const voidBg = scene.add.graphics();
+    voidBg.fillStyle(PALETTE_INT.ink, 0.45);
+    voidBg.fillRoundedRect(8, 34, W - 16, H - 44, 8);
+    this.container.add(voidBg);
+    for (let i = 0; i < 16; i++) {
+      const hx = Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1;
+      const hy = Math.abs(Math.sin(i * 311.7) * 27183.7717) % 1;
+      const mote = scene.add.image(24 + hx * (W - 48), 48 + hy * (H - 76), 'fx-spark');
+      mote.setTint(i % 3 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.warmGlow);
+      mote.setBlendMode(Phaser.BlendModes.ADD);
+      mote.setScale(0.03 + hx * 0.03);
+      mote.setAlpha(0.12 + hy * 0.14);
+      this.container.add(mote);
+      scene.tweens.add({
+        targets: mote,
+        y: mote.y - 8 - hx * 10,
+        alpha: 0.05,
+        duration: 2600 + hy * 2400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inout',
+        delay: hx * 1800,
+      });
+    }
     kitHeader(scene, this.container, W, 'AMPERIA — THE CITY', () => this.setVisible(false));
 
     session.events.on(SessionEvents.identity, (e: IdentityEvent) => {
@@ -208,7 +236,7 @@ export class WorldMapPanel {
       const my = (a.y + b.y) / 2;
       const zone = this.scene.add.zone(mx - 30, my - 16, 60, 32).setOrigin(0, 0);
       zone.setInteractive();
-      zone.on('pointerover', () => this.showFare(da, db, mx, my - 14));
+      zone.on('pointerover', () => this.showFare(da, db));
       zone.on('pointerout', () => this.clearFare());
       this.container.add(zone);
       this.dynamic.push(zone);
@@ -219,10 +247,15 @@ export class WorldMapPanel {
     // island answers the pointer (M3): hover = highlight + info plate,
     // click = ride the tram from the map when you stand at a gate.
     this.herePin = null;
+    const seen = visitedDistricts();
+    const unlit = unlitVisited();
     for (const d of line) {
       const at = ISLAND_AT[d];
       const key = bakeDistrictIsland(this.scene, d, ISLAND_W);
       const tex = islandTextureSize(d, ISLAND_W);
+      // M4: quarters you haven't walked sit dimmed until the first visit.
+      const isVisited = seen.has(d);
+      const baseAlpha = d === here ? 1 : isVisited ? 0.85 : 0.5;
       // Hover glow sits UNDER the island render, lit only on hover.
       const glow = this.scene.add.image(at.x, at.y, 'fx-glow');
       glow.setTint(PALETTE_INT.warmGlow);
@@ -235,7 +268,7 @@ export class WorldMapPanel {
       // Anchor so the bake's projection centre lands exactly on ISLAND_AT —
       // gate markers and the you-dot then sit true on the render.
       island.setOrigin(0.5, (30 + ISLAND_W / 4) / tex.h);
-      island.setAlpha(d === here ? 1 : 0.85);
+      island.setAlpha(baseAlpha);
       island.setInteractive({ useHandCursor: d !== here });
       island.on('pointerover', () => {
         glow.setAlpha(0.3);
@@ -244,9 +277,28 @@ export class WorldMapPanel {
       });
       island.on('pointerout', () => {
         glow.setAlpha(0);
-        island.setAlpha(d === here ? 1 : 0.85);
+        island.setAlpha(baseAlpha);
         this.clearIslandInfo();
       });
+      // The first-visit moment: the island lights up ONCE, then stays lit.
+      if (unlit.includes(d)) {
+        markLit(d);
+        island.setAlpha(0.5);
+        this.scene.tweens.add({
+          targets: island,
+          alpha: baseAlpha,
+          duration: 700,
+          ease: 'quad.out',
+        });
+        this.scene.tweens.add({
+          targets: glow,
+          alpha: { from: 0, to: 0.5 },
+          duration: 450,
+          yoyo: true,
+          ease: 'sine.inout',
+          onComplete: () => glow.setAlpha(0),
+        });
+      }
       island.on(
         'pointerdown',
         (_p: unknown, _lx: unknown, _ly: unknown, ev: Phaser.Types.Input.EventData) => {
@@ -274,8 +326,12 @@ export class WorldMapPanel {
       const name = this.text(
         at.x,
         at.y + ISLAND_W / 4 + 18,
-        d === here ? `▸ ${DISTRICT_NAMES[d]}` : DISTRICT_NAMES[d],
-        d === here ? PALETTE.neonAmber : UI_TEXT_WARM,
+        d === here
+          ? `▸ ${DISTRICT_NAMES[d]}`
+          : isVisited
+            ? DISTRICT_NAMES[d]
+            : `${DISTRICT_NAMES[d]} · unvisited`,
+        d === here ? PALETTE.neonAmber : isVisited ? UI_TEXT_WARM : PALETTE.groundAccent,
         'body',
         d === here,
       );
@@ -314,11 +370,13 @@ export class WorldMapPanel {
     }
   }
 
-  /** The hovered tram leg's fare, on a small ink pill above the leg. Fares
-   *  are direction-aware (a free stop rides free INBOUND only), so unequal
-   *  directions show both. */
-  private showFare(a: DistrictId, b: DistrictId, x: number, y: number): void {
+  /** The hovered tram leg's fare, in the same reserved dock the island
+   *  plate uses (never floating over labels — the overlap tour's law).
+   *  Fares are direction-aware (a free stop rides free INBOUND only), so
+   *  unequal directions show both. */
+  private showFare(a: DistrictId, b: DistrictId): void {
     this.clearFare();
+    this.clearIslandInfo();
     const fmt = (t: number): string => (t === 0 ? 'free' : `${t} Bolts`);
     const ab = tramToll(a, b);
     const ba = tramToll(b, a);
@@ -326,7 +384,7 @@ export class WorldMapPanel {
       ab === ba
         ? `${DISTRICT_NAMES[a]} ↔ ${DISTRICT_NAMES[b]} — ${fmt(ab)}`
         : `→ ${DISTRICT_NAMES[b]} ${fmt(ab)} · → ${DISTRICT_NAMES[a]} ${fmt(ba)}`;
-    this.fareLabel.push(...this.pill(x, y, [body]));
+    this.fareLabel.push(...this.pill(186, H - 104, ['the tram line', body], true));
   }
 
   private clearFare(): void {
@@ -387,7 +445,7 @@ export class WorldMapPanel {
   private showBoardHint(): void {
     for (const o of this.hintItems) o.destroy();
     this.hintItems.length = 0;
-    this.hintItems.push(...this.pill(W / 2, H - 40, ['board at a Tramgate — the gate is marked ◆']));
+    this.hintItems.push(...this.pill(W / 2, H - 64, ['board at a Tramgate — the gate is marked ◆']));
     if (this.herePin !== null) {
       const pin = this.herePin;
       this.scene.tweens.add({

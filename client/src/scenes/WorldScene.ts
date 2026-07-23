@@ -76,6 +76,7 @@ import {
 import { Spark } from '../entities/Spark';
 import { InteractionMarkers, INTERACTABLE_STYLES } from '../systems/InteractionMarkers';
 import { firstLoop, type TutorialModel } from '../systems/firstLoop';
+import { markVisited } from '../systems/visited';
 import {
   DEPTH_FLOOR,
   DEPTH_SHADOW,
@@ -629,6 +630,9 @@ export class WorldScene extends Phaser.Scene {
         ? await joinDistrictSpectate(this.district)
         : await joinDistrict(this.token, this.district);
       this.bindRoom(room);
+      // Map M4: an arrival marks the district visited — the world map's
+      // first-visit light-up keys off this (spectators leave no memory).
+      if (!this.spectate) markVisited(this.district);
       this.connectingText?.destroy();
       this.connectingText = null;
       if (this.spectate) this.showSpectateBanner();
