@@ -9,7 +9,7 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
 import { sound } from '../audio/sound';
-import { HEADER_H, kitButton, kitClampLines, kitHeader, kitPlate, kitText, SPACE, UIK } from './kit';
+import { HEADER_H, kitButton, kitClampLines, kitHeader, kitPlate, kitText, SPACE, UIK, kitPanelPop } from './kit';
 
 const PANEL_W = 560;
 /** Master–detail lanes (F3): recipe list | the result showcase. */
@@ -69,8 +69,12 @@ export class BenchPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) this.refresh();
+    if (v) {
+      this.container.setVisible(true);
+      this.refresh();
+    }
+    // F5: open/close through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, { w: PANEL_W, h: this.lastH }, v);
   }
 
   refresh(): void {

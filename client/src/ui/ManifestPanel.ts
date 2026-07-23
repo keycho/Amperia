@@ -13,7 +13,7 @@ import type { ManifestFoundEvent, ManifestSync } from '@shared/protocol';
 import { session, SessionEvents } from '../net/session';
 import { cosmeticThumbKey, itemThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
-import { kitClampLines, kitHeader, kitPlate, kitTabRow, kitText, UIK, type TypeLevel } from './kit';
+import { kitClampLines, kitHeader, kitPlate, kitTabRow, kitText, UIK, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 560;
 /** Minimum plate height — the flow layout grows it when a page needs more. */
@@ -87,8 +87,12 @@ export class ManifestPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) this.refresh(); // refresh() recentres with the flowed height
+    if (v) {
+      this.container.setVisible(true);
+      this.refresh();
+    }
+    // F5: open/close through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, { w: W, h: this.plateH }, v); // refresh() recentres with the flowed height
   }
 
   private recentre(): void {

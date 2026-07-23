@@ -6,7 +6,7 @@ import type { TradeAskEvent, TradeEndEvent, TradeSyncEvent } from '@shared/proto
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
-import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE } from './kit';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, kitPanelPop } from './kit';
 
 const PANEL_W = 560;
 const PANEL_H = 420;
@@ -83,8 +83,12 @@ export class TradePanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) this.refresh();
+    if (v) {
+      this.container.setVisible(true);
+      this.refresh();
+    }
+    // F5: every panel opens/closes through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, this.pixelSize(), v);
   }
 
   private sendStage(): void {

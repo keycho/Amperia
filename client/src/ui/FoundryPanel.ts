@@ -15,7 +15,7 @@ import { bakeSparkAppearance, equipKey } from '../render/sparkModel';
 import { voxelSprite } from '../render/voxel';
 import { cosmeticThumbKey } from '../render/itemThumbs';
 import { sound } from '../audio/sound';
-import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
+import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 812;
 const H = 528;
@@ -93,8 +93,15 @@ export class FoundryPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      this.turntable?.remove();
+      this.turntable = undefined;
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(Math.round((cam.width - W) / 2), Math.round((cam.height - H) / 2));
       this.refresh();
@@ -107,10 +114,9 @@ export class FoundryPanel {
           this.drawFeaturedSprite();
         },
       });
-    } else {
-      this.turntable?.remove();
-      this.turntable = undefined;
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private hex(key: string): string {

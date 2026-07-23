@@ -5,7 +5,7 @@ import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { gameState } from '../state/GameState';
 import { sound } from '../audio/sound';
-import { kitButton, kitClampLines, kitHeader, kitPlate, kitText, SPACE } from './kit';
+import { kitButton, kitClampLines, kitHeader, kitPlate, kitText, SPACE, kitPanelPop } from './kit';
 
 const PANEL_W = 440;
 const PANEL_H_MIN = 380;
@@ -47,8 +47,12 @@ export class ChargePanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) this.refresh();
+    if (v) {
+      this.container.setVisible(true);
+      this.refresh();
+    }
+    // F5: open/close through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, { w: PANEL_W, h: this.lastH }, v);
   }
 
   /**

@@ -162,6 +162,9 @@ export interface ButtonOpts {
   primary?: boolean;
   /** Rose gradient — DESTRUCTIVE / irreversible (drop, abandon, leave). */
   danger?: boolean;
+  /** F5: visibly inert — dimmed, no hover, no hand cursor, no click. A
+   *  button that LOOKS clickable but does nothing is a dead button. */
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -233,6 +236,11 @@ export function kitButton(
   paint('idle');
 
   c.setSize(w, h);
+  if (opts.disabled === true) {
+    // Inert read: dimmed, non-interactive — never a dead-looking live button.
+    c.setAlpha(0.45);
+    return c;
+  }
   c.setInteractive({
     hitArea: new Phaser.Geom.Rectangle(0, 0, w, h),
     hitAreaCallback: Phaser.Geom.Rectangle.Contains,
@@ -247,6 +255,59 @@ export function kitButton(
   });
   c.on('pointerup', () => paint('hover'));
   return c;
+}
+
+/**
+ * F5 — THE panel pop: every panel opens and closes through this one tween
+ * (~120ms scale+fade, centre-anchored), so the whole UI breathes the same
+ * way. Call AFTER the panel has positioned/refreshed itself. The caller
+ * flips its own `visible` flag immediately (Escape chain + the wheel gate
+ * read it); this only animates the container.
+ */
+export function kitPanelPop(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  size: { w: number; h: number },
+  show: boolean,
+  onHidden?: () => void,
+): void {
+  scene.tweens.killTweensOf(container);
+  // A re-toggle mid-tween would capture a scale-offset position as the new
+  // base and creep the panel — restore the stored base first in that case.
+  const stored = container.getData('popBase') as { x: number; y: number } | undefined;
+  if (container.getData('popActive') === true && stored !== undefined) {
+    container.setPosition(stored.x, stored.y);
+  }
+  const bx = container.x;
+  const by = container.y;
+  container.setData('popBase', { x: bx, y: by });
+  container.setData('popActive', true);
+  const state = { t: show ? 0 : 1 };
+  const apply = (): void => {
+    const s = 0.96 + 0.04 * state.t;
+    container.setScale(s);
+    container.setPosition(bx + ((1 - s) * size.w) / 2, by + ((1 - s) * size.h) / 2);
+    container.setAlpha(state.t);
+  };
+  if (show) container.setVisible(true);
+  apply();
+  scene.tweens.add({
+    targets: state,
+    t: show ? 1 : 0,
+    duration: 120,
+    ease: show ? 'quad.out' : 'quad.in',
+    onUpdate: apply,
+    onComplete: () => {
+      container.setScale(1);
+      container.setPosition(bx, by);
+      container.setAlpha(1);
+      container.setData('popActive', false);
+      if (!show) {
+        container.setVisible(false);
+        onHidden?.();
+      }
+    },
+  });
 }
 
 /**
@@ -354,11 +415,17 @@ export function kitTabRow(
       container.add(bg);
       objects.push(bg);
     }
+    const restColor = on ? PALETTE.ink : it.accent === true ? PALETTE.neonAmber : UI_TEXT_WARM;
     const t = kitText(scene, tx, ty, it.label, level, {
-      color: on ? PALETTE.ink : it.accent === true ? PALETTE.neonAmber : UI_TEXT_WARM,
+      color: restColor,
       bold: on,
     });
     t.setInteractive({ useHandCursor: true });
+    // F5: hover state on every clickable tab (the active one stays put).
+    if (!on) {
+      t.on('pointerover', () => t.setColor(PALETTE.warmGlow));
+      t.on('pointerout', () => t.setColor(restColor));
+    }
     t.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
       ev.stopPropagation();
       opts.onPick(it.id);

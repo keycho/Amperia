@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { levelForXp, levelProgress, nextUnlock, SKILLS, type SkillId } from '@shared/mastery';
 import { mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { gameState } from '../state/GameState';
-import { HEADER_H, kitHeader, kitPlate, kitText, SPACE } from './kit';
+import { HEADER_H, kitHeader, kitPlate, kitText, SPACE, kitPanelPop } from './kit';
 
 const ROW_H = 46;
 const PANEL_W = 380;
@@ -21,6 +21,7 @@ const SKILL_LABELS: Record<SkillId, string> = {
 /** Mastery panel (K): level, XP bar, and the next breadth unlock per skill. */
 export class SkillsPanel {
   readonly container: Phaser.GameObjects.Container;
+  private readonly scene: Phaser.Scene;
   private readonly bg: Phaser.GameObjects.Graphics;
   private readonly rows: Array<{
     name: Phaser.GameObjects.Text;
@@ -29,6 +30,7 @@ export class SkillsPanel {
   }> = [];
 
   constructor(scene: Phaser.Scene) {
+    this.scene = scene;
     this.container = scene.add.container(0, 0);
     this.container.setDepth(1100);
 
@@ -64,8 +66,12 @@ export class SkillsPanel {
   }
 
   setVisible(v: boolean): void {
-    this.container.setVisible(v);
-    if (v) this.refresh();
+    if (v) {
+      this.container.setVisible(true);
+      this.refresh();
+    }
+    // F5: open/close through the one 120ms kit pop.
+    kitPanelPop(this.scene, this.container, this.pixelSize(), v);
   }
 
   setPosition(x: number, y: number): void {

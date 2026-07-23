@@ -6,7 +6,7 @@ import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { GoalsSync } from '@shared/protocol';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
-import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel } from './kit';
+import { HEADER_H, kitButton, kitHeader, kitPlate, kitText, SPACE, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 520;
 const H = 420;
@@ -71,8 +71,13 @@ export class GoalPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(
         Math.round((cam.width - W) / 2),
@@ -80,6 +85,8 @@ export class GoalPanel {
       );
       this.refresh();
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {

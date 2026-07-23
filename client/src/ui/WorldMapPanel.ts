@@ -8,7 +8,7 @@ import {
 } from '@shared/map';
 import { blendInt, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { session } from '../net/session';
-import { kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
+import { kitHeader, kitPlate, kitText, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 780;
 const H = 470;
@@ -59,18 +59,26 @@ export class WorldMapPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      if (this.pulse !== null) {
+        this.pulse.stop();
+        this.pulse = null;
+      }
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(
         Math.round((cam.width - W) / 2),
         Math.round((cam.height - H) / 2),
       );
       this.refresh();
-    } else if (this.pulse !== null) {
-      this.pulse.stop();
-      this.pulse = null;
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private mapFor(d: DistrictId): WorldMap {

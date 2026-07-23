@@ -6,7 +6,7 @@ import { gameState } from '../state/GameState';
 import { send, SERVER_URL } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { itemThumbKey } from '../render/itemThumbs';
-import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel } from './kit';
+import { kitButton, kitHeader, kitPlate, kitText, type TypeLevel, kitPanelPop } from './kit';
 
 const W = 620;
 const H = 470;
@@ -64,8 +64,13 @@ export class BankPanel {
 
   setVisible(v: boolean): void {
     this.visible = v;
-    this.container.setVisible(v);
-    if (v) {
+    if (!v) {
+      // F5: close through the one 120ms kit pop.
+      kitPanelPop(this.scene, this.container, { w: W, h: H }, false);
+      return;
+    }
+    this.container.setVisible(true);
+    {
       const cam = this.scene.cameras.main;
       this.container.setPosition(
         Math.round((cam.width - W) / 2),
@@ -73,6 +78,8 @@ export class BankPanel {
       );
       this.refresh();
     }
+    // F5: open through the one 120ms kit pop (after positioning + refresh).
+    kitPanelPop(this.scene, this.container, { w: W, h: H }, true);
   }
 
   private text(x: number, y: number, body: string, color: string, size = 12, bold = false) {
