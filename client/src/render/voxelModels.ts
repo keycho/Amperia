@@ -133,12 +133,15 @@ function stallModel(variant: number): Voxel[] {
   // stripes barely lean grey — the face ramp supplies the shading.
   // v3 color budget: teal left the fabric — awnings are rose/amber/ochre
   // (teal belongs to interactables, lenses, and water only).
+  // N4c color budget v2: five VENDOR HUES, assigned by stall sequence —
+  // deterministic, and consecutive stalls can never share a hue.
   const stripeHot = [
     mixPalette('neonRose', 'structureMid', 0.1),
-    mixPalette('neonAmber', 'structureMid', 0.08),
+    blendInt(MATERIAL_INT.paintCyanDeep, PALETTE_INT.warmGlow, 0.12),
     blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.warmGlow, 0.3),
-    mixPalette('neonRose', 'structureMid', 0.1),
-  ][variant % 4] as number;
+    blendInt(MATERIAL_INT.paintMoss, PALETTE_INT.warmGlow, 0.12),
+    blendInt(MATERIAL_INT.paintPlum, PALETTE_INT.warmGlow, 0.12),
+  ][variant % 5] as number;
   const stripePale = mixPalette('warmGlow', 'groundAccent', 0.2);
   const v: Voxel[] = [];
   // Timber counter with a lighter worn top.
@@ -201,6 +204,8 @@ export function bakeCoreVoxelModels(scene: Phaser.Scene): void {
   for (let i = 0; i < 4; i++) {
     bakeVoxelModel(scene, { name: `crate-${i}`, voxels: crateModel(i) });
     bakeVoxelModel(scene, { name: `planter-${i}`, voxels: planterModel(i) });
+  }
+  for (let i = 0; i < 5; i++) {
     bakeVoxelModel(scene, { name: `stall-${i}`, voxels: stallModel(i) });
   }
   // The Spark itself is baked in sparkModel.ts (bakeSparkModels).

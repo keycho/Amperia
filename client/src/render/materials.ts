@@ -63,6 +63,11 @@ export const MATERIALS = {
   paintTeal: def(MATERIAL_INT.paintTeal, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
   paintOchre: def(MATERIAL_INT.paintOchre, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
   paintRose: def(MATERIAL_INT.paintRose, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  /** N4c object colors — same weathered-paint surface behavior. */
+  paintCyanDeep: def(MATERIAL_INT.paintCyanDeep, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  paintMoss: def(MATERIAL_INT.paintMoss, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  paintPlum: def(MATERIAL_INT.paintPlum, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
+  paintCream: def(MATERIAL_INT.paintCream, 0.06, 0.12, 0.1, 0.5, 0.045, 0.6),
   /** Neutral grey-mauve pavement and curbs. */
   concrete: def(MATERIAL_INT.concrete, 0.045, 0.09, 0.13, 0.05, 0.11, 1.2, 'low'),
   concreteDeep: def(MATERIAL_INT.concreteDeep, 0.045, 0.08, 0.13, 0.05, 0.11, 1.2, 'low'),

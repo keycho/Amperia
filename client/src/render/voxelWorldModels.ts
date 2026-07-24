@@ -1294,12 +1294,14 @@ function toolrackModel(): Voxel[] {
 
 /** FABRIC: a sloped market canopy on timber posts, stash huddled beneath. */
 function canopyModel(variant: number): Voxel[] {
-  // v3 color budget: teal left the fabric — canopy cloth runs rose/ochre/amber.
+  // N4c color budget v2: canopies share the five vendor hues.
   const hot = [
     mixPalette('neonRose', 'structureMid', 0.12),
+    blendInt(MATERIAL_INT.paintCyanDeep, PALETTE_INT.warmGlow, 0.12),
     blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.warmGlow, 0.3),
-    mixPalette('neonAmber', 'structureMid', 0.1),
-  ][variant % 3] as number;
+    blendInt(MATERIAL_INT.paintMoss, PALETTE_INT.warmGlow, 0.12),
+    blendInt(MATERIAL_INT.paintPlum, PALETTE_INT.warmGlow, 0.12),
+  ][variant % 5] as number;
   const pale = mixPalette('warmGlow', 'groundAccent', 0.25);
   const v: Voxel[] = [];
   // Timber posts: tall front pair, short back pair — the cloth slopes.
@@ -1331,9 +1333,13 @@ function canopyModel(variant: number): Voxel[] {
 
 /** FABRIC + TALL/THIN: a vertical banner hanging from a mast crossarm. */
 function bannerModel(variant: number): Voxel[] {
-  const cloth = [MATERIALS.paintRose, MATERIALS.paintTeal, MATERIALS.paintOchre][
-    variant % 3
-  ] as (typeof MATERIALS)['paintRose'];
+  const cloth = [
+    MATERIALS.paintRose,
+    MATERIALS.paintTeal,
+    MATERIALS.paintOchre,
+    MATERIALS.paintMoss,
+    MATERIALS.paintPlum,
+  ][variant % 5] as (typeof MATERIALS)['paintRose'];
   const emblem = [PALETTE_INT.neonAmber, PALETTE_INT.neonRose, PALETTE_INT.neonTeal][
     variant % 3
   ] as number;
@@ -2608,9 +2614,11 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   bakeVoxelModel(scene, { name: 'ventbox', voxels: ventboxModel() });
   // V2 shape vocabulary: fabric / organic / tall-thin / round-ish pools.
   for (const i of [0, 1, 2]) {
+    bakeVoxelModel(scene, { name: `wildbush-${i}`, voxels: wildbushModel(i) });
+  }
+  for (const i of [0, 1, 2, 3, 4]) {
     bakeVoxelModel(scene, { name: `canopy-${i}`, voxels: canopyModel(i) });
     bakeVoxelModel(scene, { name: `banner-${i}`, voxels: bannerModel(i) });
-    bakeVoxelModel(scene, { name: `wildbush-${i}`, voxels: wildbushModel(i) });
   }
   for (const i of [0, 1]) {
     bakeVoxelModel(scene, { name: `laundry-${i}`, voxels: laundryModel(i) });

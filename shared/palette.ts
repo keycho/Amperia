@@ -106,6 +106,17 @@ export const MATERIAL_COLORS = {
   paintTeal: '#5E7A74',
   paintOchre: '#96793F',
   paintRose: '#96626E',
+  /** N4c OBJECT COLORS (v4) — material identity on the warm base. Gold is
+   *  the LIGHT, not the paint: these are saturated but brightness-capped
+   *  (every luma below the warm glow) so nothing competes with the Dynamo. */
+  paintCyanDeep: '#2E6E78',
+  paintMoss: '#5C6E42',
+  paintPlum: '#6A4A78',
+  paintCream: '#A8A296',
+  /** N4c water — the coldest thing on screen: deep blue-teal with a faint
+   *  purple sheen; warm glints land sparsely where city light hits it. */
+  waterDeep: '#1C3648',
+  waterSheen: '#4A5E88',
   /** Concrete / pavement — neutral grey-mauve ground and curbs. */
   concrete: '#6D5D49',
   concreteDeep: '#544837',

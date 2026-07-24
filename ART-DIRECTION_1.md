@@ -1,4 +1,4 @@
-# ART DIRECTION — "Cozy Salvage-Punk" *(v3 FINAL — THE GOLDEN DARK. Part III supersedes Part I §2 values; canonical key art: `docs/brand/key-art-banner.webp`)*
+# ART DIRECTION — "Cozy Salvage-Punk" *(v4 — GOLDEN DARK, SHARP & VARIED. Parts III–IV supersede Part I §2 values; canonical key art: `docs/brand/key-art-banner.webp`)*
 
 *The look for the game. Warm, lived-in, neon-lit future night-market. Punk by attitude (DIY junk-tech, patched chrome, graffiti, string lights), cozy by mood. Built to be pleasant to look at and play every day, and to read cleanly in flat isometric. Name-agnostic — this holds whatever the game ends up being called.*
 
@@ -277,6 +277,30 @@ The banner is the grade: a single blazing Dynamo, warm gold on near-black. The l
 **Notch 2 — EMBER SATURATION (v3 n2).** The banner's light is saturated amber-orange, not cream. Three moves: (1) the warm light family re-valued — `warmGlow` is now `#FFA033`; every layered glow runs the **ember ramp** (white core → saturated mid → deep burnt skirt; brightness falls faster than saturation, so the falloff gets MORE orange as it dims — hue-preserving, so teal tells deepen to deep teal). (2) The ground pulled to true umber — brown with red-orange in it (`#6C5843` base, materials warmed to match); pools tint the pavement firelit via the ramp's mid band. (3) Lit-area saturation up ~20% (split-tone strength 0.14→0.17, floor desat eased). Cream/white survives ONLY in innermost emissive cores.
 
 **Notch 3 — THE DARKNESS BETWEEN THE LIGHT (v3 n3).** The hue is right; contrast comes from coverage. (1) Light pools ~30% tighter (pool radius 2.5 → 1.75 tiles, footprint 2.8 → 2.0) — adjacent pools no longer merge. (2) The grade is S-curved (midGamma 0.6): the mid-brightness wash falls hard toward the dark bands while band 0 and every hot core stay exactly as they were — the middle drops out, the lights never dim. (3) The deepest ambient band a step darker (0.55 → 0.62) and darkness arrives sooner (far radius 6), so real dark pockets open INSIDE districts. (4) Away faces model harder: the face ramp's dark side deepens (−35% → −48%). Target held: 50%+ of a wide frame at or near the dark bands (measured 65% below luma 60), light living in islands. Never pure black — the floor under the deepest band stays warm umber.
+
+---
+
+## PART IV — NOTCH 4: SHARP & VARIED (v4)
+
+**Ruling: gold is the LIGHT, not the paint.** Objects keep their own material colors; the warm grade sits on top as illumination.
+
+**N4a — pixel integrity.** Light-pool falloff is QUANTIZED (5 bands, checker-dithered edges — `POOL_BANDS`); the plaza haze rides the banded texture; the post bloom is thresholded (0.8) and full-resolution. No smooth radial wash may sit over the ground plane.
+
+**N4b — contrast without mush.** Mid-crush released (midGamma 0.72); extra darkness comes from the DEEP end (maxAlpha 0.68, 5 darkness bands); floor micro-contrast raised across every kind (noise, quadrant, grout/edge/seam steps). Measured on the wide anchor: dark<60 65.3% → 66.5%, local micro-contrast 6.203 → 6.315.
+
+**N4c — the v4 object-color set** (all in `shared/palette.ts` MATERIAL_COLORS; saturated but brightness-capped — every luma below the warm glow):
+
+| Object color | Hex | Job |
+|---|---|---|
+| paintRose | `#96626E` | awnings, banners, cosmetics (kept) |
+| paintCyanDeep | `#2E6E78` | vendor hue — deep teal-cyan fabric |
+| paintMoss | `#5C6E42` | vendor hue — moss/olive fabric |
+| paintPlum | `#6A4A78` | vendor hue — plum/violet fabric |
+| paintCream | `#A8A296` | cool off-white — clothing, trim |
+| waterDeep | `#1C3648` | WATER base — the coldest thing on screen |
+| waterSheen | `#4A5E88` | water ripple sheen (faint purple) |
+
+Rules: five vendor hues assigned deterministically by stall sequence (adjacent stalls never share); water reads blue-purple with sparse warm glints; ground/architecture stays warm-neutral so the colors pop; characters draw from the same set. **Teal's interactable job is carried by the GLOW/outline treatment, not hue alone** — a teal awning never glows; an interactable always does.
 
 **AU2 — the gold hierarchy.** Light pools amber, window lights gold, brass warm. Luminance ladder, strictly: **the Dynamo is the apex** (~2× emissive, a tall subtle shaft, visible from everywhere in the Filament) → lamps + garlands clearly below → ambient one darkness band lower than v2. Zones far from any light desaturate ~25% toward warm monochrome, so wide shots read as the banner.
 

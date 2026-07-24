@@ -240,17 +240,27 @@ function specFor(kind: FloorKind, v: number): KindSpec {
       };
     }
     case 'coolant':
-      // The one zone that stays plum-dark — it's shadowed water.
+      // N4c WATER: the coldest thing on screen — deep blue-teal with a
+      // faint purple sheen and SPARSE warm glints where city light lands.
+      // Instantly readable as water against the warm-neutral deck.
       return {
-        base: night(PALETTE_INT.ink, 0.4),
-        noise: 0.03,
+        base: blendInt(MATERIAL_INT.waterDeep, PALETTE_INT.ink, 0.25),
+        noise: 0.035,
         post: (g, vv, span) => {
-          const ripple = shade(PALETTE_INT.neonCyan, -0.25);
-          g.fillStyle(ripple, 0.12);
-          for (const y of [14, 30, 46]) {
+          const sheen = blendInt(MATERIAL_INT.waterSheen, MATERIAL_INT.paintPlum, 0.3);
+          g.fillStyle(sheen, 0.22);
+          for (const y of [10, 22, 38, 52]) {
             const yy = (y + vv * 5) % 60 + 2;
             const [xl, xr] = span(yy);
             g.fillRect(xl + 6, PAD + yy, Math.max(0, xr - xl - 12), 2);
+          }
+          // Sparse warm glints — the city's light finding the water.
+          g.fillStyle(PALETTE_INT.warmGlow, 0.5);
+          for (const [gx, gy] of [
+            [CX - 24, 18 + vv * 7],
+            [CX + 18, 40 - vv * 5],
+          ] as const) {
+            g.fillRect(gx, PAD + (gy % 60) + 2, 2, 1);
           }
         },
       };

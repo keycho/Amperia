@@ -3323,7 +3323,7 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'stall': {
           if (this.stallsWorld.x === 0) this.stallsWorld = { x, y };
-          const img = this.propSprite(`stall-${p.variant % 4}`, x, y);
+          const img = this.propSprite(`stall-${p.variant % 5}`, x, y);
           // Every lane stall is a rentable player pitch: click to browse
           // (the server answers with the stall's detail panel).
           const stallId = stallSeq++;
@@ -3386,10 +3386,14 @@ export class WorldScene extends Phaser.Scene {
           break;
         }
         // V2 shape vocabulary — fabric / organic families (picker-pooled).
-        case 'canopy':
-        case 'banner':
         case 'wildbush': {
           this.propSprite(`${p.kind}-${looks.pick(p.kind, p.x, p.y, 3)}`, x, y);
+          break;
+        }
+        // N4c: fabric families draw from the five vendor hues.
+        case 'canopy':
+        case 'banner': {
+          this.propSprite(`${p.kind}-${looks.pick(p.kind, p.x, p.y, 5)}`, x, y);
           break;
         }
         case 'laundry':

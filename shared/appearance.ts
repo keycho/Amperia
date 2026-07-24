@@ -71,6 +71,11 @@ export const JACKET_COLORS: readonly number[] = [
   blendInt(MATERIAL_INT.gunmetal, PALETTE_INT.structureMid, 0.15),
   PALETTE_INT.solarGreen,
   PALETTE_INT.emberOrange,
+  // N4c object colors: visitors wear the city's expanded set too.
+  MATERIAL_INT.paintCyanDeep,
+  MATERIAL_INT.paintMoss,
+  MATERIAL_INT.paintPlum,
+  MATERIAL_INT.paintCream,
 ];
 
 export interface AccessoryDef {
