@@ -1123,7 +1123,6 @@ function fortunecoilModel(): Voxel[] {
 function ampedbarModel(): Voxel[] {
   const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
   const hair = mixPalette('structureMid', 'ink', 0.45);
-  const inkBoard = mixPalette('ink', 'structureMid', 0.2);
   const v: Voxel[] = [];
   // Floor slab: warm wood underfoot, wall to wall.
   v.push(...mbox(0, 0, 0, 48, 32, 1, MATERIALS.wood));
@@ -1136,19 +1135,11 @@ function ampedbarModel(): Voxel[] {
       vox.z < 3 && vox.y > 20 ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox,
     );
   }
-  // South wall segments flanking the door gap (voxels x16-31 = tiles 2-3).
-  v.push(...mbox(4, 28, 1, 12, 4, 9, MATERIALS.paintOchre));
-  v.push(...mbox(32, 28, 1, 12, 4, 9, MATERIALS.paintOchre));
-  // Lintel over the door + the sign board (client adds the name shingle).
-  v.push(...mbox(16, 28, 7, 16, 4, 3, MATERIALS.paintOchre));
-  v.push(...box(15, 31, 10, 18, 1, 4, inkBoard));
-  for (let i = 0; i < 6; i++) {
-    v.push({ x: 17 + i * 3, y: 31, z: 11 + (i % 2), c: i % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose });
-  }
-  // Roof over the back half only — the hall row sits under the open dusk
-  // so seated Sparks stay visible; parapet lip on the roof edge.
-  v.push(...mbox(-1, -1, 13, 50, 17, 1, MATERIALS.gunmetalDeep));
-  v.push(...mbox(-1, 15, 12, 50, 1, 1, MATERIALS.gunmetal));
+  // Roof over the BACK ROWS only (backbar + shelf) — Vessa, the counter
+  // and the seated Sparks all stand in the open dusk, so the camera sees
+  // them; parapet lip on the roof's south edge.
+  v.push(...mbox(-1, -1, 13, 50, 9, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(-1, 7, 12, 50, 1, 1, MATERIALS.gunmetal));
   // The counter across the hall, lighter worn top.
   v.push(...mbox(6, 12, 1, 36, 3, 4, MATERIALS.wood));
   for (const vox of mbox(6, 12, 5, 36, 3, 1, MATERIALS.wood)) {
@@ -1185,8 +1176,43 @@ function ampedbarModel(): Voxel[] {
     v.push({ x: nx, y: 18, z: 5, c: mixPalette('warmGlow', 'groundAccent', 0.15) });
   }
   // Hanging lamps under the roof edge (the client adds the soft glows).
-  v.push({ x: 12, y: 14, z: 11, c: PALETTE_INT.warmGlow });
-  v.push({ x: 36, y: 14, z: 11, c: PALETTE_INT.warmGlow });
+  v.push({ x: 12, y: 6, z: 11, c: PALETTE_INT.warmGlow });
+  v.push({ x: 36, y: 6, z: 11, c: PALETTE_INT.warmGlow });
+  return v;
+}
+
+/**
+ * The Amped Bar's FRONT layer — baked separately so it can draw at the
+ * true south-edge depth while the hall behind anchors below the stool
+ * row. Seated Sparks render between the two, visible at the counter.
+ * Open façade: corner posts carrying a signed header beam, plus chunky
+ * furniture on the two blocked door-flank tiles so the walk block reads.
+ */
+function ampedbarFrontModel(): Voxel[] {
+  const inkBoard = mixPalette('ink', 'structureMid', 0.2);
+  const v: Voxel[] = [];
+  // Corner posts (on the blocked corner tiles) up to the header. Tall:
+  // in iso a south-edge beam sits ~4 rows of parallax LOWER on screen
+  // than the side-wall rims, so the header must clear the wall tops to
+  // read as a header and not a curb.
+  v.push(...mbox(4, 28, 1, 3, 3, 10, MATERIALS.woodDeep));
+  v.push(...mbox(41, 28, 1, 3, 3, 10, MATERIALS.woodDeep));
+  // Header beam across the whole front + the sign board riding high.
+  v.push(...mbox(3, 28, 11, 42, 4, 2, MATERIALS.paintOchre));
+  v.push(...box(15, 31, 13, 18, 1, 4, inkBoard));
+  for (let i = 0; i < 6; i++) {
+    v.push({ x: 17 + i * 3, y: 31, z: 14 + (i % 2), c: i % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose });
+  }
+  // West flank (tile 1 of the front row): a barrel table, mug out.
+  v.push(...mbox(10, 25, 1, 4, 4, 3, MATERIALS.wood));
+  for (const vox of mbox(10, 25, 4, 4, 4, 1, MATERIALS.woodDeep)) {
+    v.push({ ...vox, c: shade(MATERIALS.woodDeep.base, 0.1) });
+  }
+  v.push({ x: 11, y: 26, z: 5, c: mixPalette('warmGlow', 'groundAccent', 0.15) });
+  // East flank: a routing crate with a lantern set on it.
+  v.push(...mbox(33, 25, 1, 4, 4, 3, MATERIALS.rust));
+  v.push({ x: 34, y: 26, z: 4, c: PALETTE_INT.warmGlow });
+  v.push({ x: 36, y: 25, z: 3, c: PALETTE_INT.neonTeal });
   return v;
 }
 
@@ -2510,7 +2536,16 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   }
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
-  bakeVoxelModel(scene, { name: 'ampedbar', voxels: ampedbarModel() });
+  // The bar bakes in two depth layers; a shared anchor keeps them aligned
+  // when placed at the same world point (front has no floor to center on).
+  const barAnchor = { x: 23.5, y: 15 };
+  bakeVoxelModel(scene, { name: 'ampedbar', voxels: ampedbarModel(), anchor: barAnchor });
+  bakeVoxelModel(scene, {
+    name: 'ampedbar-front',
+    voxels: ampedbarFrontModel(),
+    anchor: barAnchor,
+    shadow: false,
+  });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
   // G6b world edges: rim segments per orientation/look, trusses, trestles,

@@ -503,8 +503,11 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   const idlePose = idleSit || idleLean || idleWarm;
   // Stride: left leg forward on A, right on B; legs together on P/idle.
   const stride = b.frame === 'walkA' ? 1 : b.frame === 'walkB' ? -1 : 0;
-  const lift = !posed && b.frame === 'walkP' ? 1 : idleSit ? -2 : 0;
-  const lean = (walking ? 1 : posed ? 1 : 0) * fwd * (idleLean ? 2 : 1);
+  // Sit drops the torso HARD (-3) and hunches it forward (+2) — under the
+  // oversized head a subtle fold reads as standing; lean slouches one (-1)
+  // with a three-voxel tip into the wall.
+  const lift = !posed && b.frame === 'walkP' ? 1 : idleSit ? -3 : idleLean ? -1 : 0;
+  const lean = idleSit ? 2 * fwd : (walking ? 1 : posed ? 1 : 0) * fwd * (idleLean ? 3 : 1);
 
   // Legs (boots z0-1, trousers z2-3): two 2×3 columns.
   const leg = (x0: number, dy: number) => {
@@ -512,9 +515,10 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
     v.push(...cbox(x0, dy, 2, 2, 3, 2, BODY_COLORS.trousers));
   };
   if (idleSit) {
-    // Folded: knees forward, boots ahead — the stool / deck-edge read.
-    v.push(...cbox(1, 1 * fwd, 0, 4, 2, 2, BODY_COLORS.trousers));
-    v.push(...cbox(1, 3 * fwd, 0, 4, 1, 1, BODY_COLORS.boots, MATERIALS.gunmetal));
+    // Folded: knees THRUST forward past the hunched torso, boots ahead —
+    // the read must survive the mascot head at street zoom.
+    v.push(...cbox(1, 2 * fwd, 0, 4, 3, 2, BODY_COLORS.trousers));
+    v.push(...cbox(1, 5 * fwd, 0, 4, 2, 1, BODY_COLORS.boots, MATERIALS.gunmetal));
   } else if (idleLean) {
     leg(1, 0);
     leg(3, 1 * fwd); // crossed ankle

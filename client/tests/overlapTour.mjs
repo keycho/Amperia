@@ -242,7 +242,7 @@ async function runTour(viewport) {
       if (!window.__amperia.session.panelOpen) return null;
       const ui = window.__amperia.game.scene.getScene('ui');
       const names = [];
-      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','inventoryPanel']) {
+      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','barPanel','inventoryPanel']) {
         if (ui[k]?.visible === true) {
           names.push(k);
           ui[k].setVisible(false); // force-close so later states stay honest
@@ -329,6 +329,7 @@ async function runTour(viewport) {
   // 6 — event-opened panels.
   for (const [state, ev] of [
     ['merchant', 'openMerchant'],
+    ['bar', 'openBar'],
     ['bench', 'openBench'],
     ['quests', 'openQuests'],
     ['foundry', 'openFoundry'],

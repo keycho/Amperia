@@ -88,6 +88,7 @@ import {
   TILE_H,
   TILE_W,
   tileToWorld,
+  tileToWorldBase,
   worldToTile,
   worldToTileFloor,
 } from '../iso/project';
@@ -847,7 +848,17 @@ export class WorldScene extends Phaser.Scene {
       }
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
-        if (s === undefined || s.isMoving) return;
+        if (s === undefined) return;
+        if (s.isMoving) {
+          // A healthy walk animation tracks the server within a tile or
+          // two. Further than that means the queue is stale — a tab that
+          // was backgrounded plays its frozen path in slow motion for
+          // minutes otherwise. Snap to truth and let the next walk start
+          // clean.
+          const far = Math.abs(s.tile.x - p.tileX) + Math.abs(s.tile.y - p.tileY) > 3;
+          if (far) s.snapTo({ x: p.tileX, y: p.tileY });
+          return;
+        }
         if (s.tile.x !== p.tileX || s.tile.y !== p.tileY) {
           s.snapTo({ x: p.tileX, y: p.tileY });
         }
@@ -3437,6 +3448,15 @@ export class WorldScene extends Phaser.Scene {
         }
         case 'ampedbar': {
           const img = this.propSprite('ampedbar', x, y);
+          // Two-layer venue: the hall (counter, backbar, Vessa) anchors
+          // just BELOW the stool row so seated Sparks draw over it; the
+          // open façade (posts, signed header, flank furniture) bakes
+          // separately and keeps the true south-edge depth in front.
+          img.setDepth(depthForWorldY(tileToWorldBase(p.x + 1, p.y + 2).y) - 2);
+          const front = addVoxelSprite(this, 'ampedbar-front', x, y);
+          const frontTint = worldSpriteTint();
+          if (frontTint !== null) front.setTint(frontTint);
+          front.setDepth(depthForWorldY(y));
           hoverTip(img, () => ({
             title: 'The Amped Bar',
             sub: 'drinks · company · a stool with your name on it',
@@ -3444,8 +3464,10 @@ export class WorldScene extends Phaser.Scene {
           }));
           // The glowing name shingle over the door — emissive language,
           // same voice as the stall shingles.
+          // Same lift as the stall shingles (−96): world name-texts share
+          // one altitude band, clear of the bare HUD texts at the bottom.
           const doorW = tileToWorld(p.x + 2, p.y + Math.max(0, p.h - 1));
-          const shingle = this.add.text(doorW.x + TILE_W / 2, doorW.y - 74, 'THE AMPED BAR', {
+          const shingle = this.add.text(doorW.x + TILE_W / 2, doorW.y - 96, 'THE AMPED BAR', {
             fontFamily: 'monospace',
             fontSize: '11px',
             color: PALETTE.neonAmber,

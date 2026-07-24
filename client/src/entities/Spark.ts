@@ -52,7 +52,7 @@ export class Spark {
   private mugTween: Phaser.Tweens.Tween | null = null;
   private hiccupTimer: Phaser.Time.TimerEvent | null = null;
   /** L3: the coilroll's thin smoke curl while leaning. */
-  private coilrollTimer: Phaser.Time.TimerEvent | null = null;
+  private coilPuffs: Phaser.GameObjects.Image[] = [];
 
   constructor(scene: Phaser.Scene, tile: TilePoint, name?: string) {
     this.scene = scene;
@@ -147,6 +147,7 @@ export class Spark {
     const tintKey = CONFIG.bar.drinks.find((d) => d.id === id)?.tint ?? 'warmGlow';
     const tint = PALETTE_INT[tintKey as keyof typeof PALETTE_INT] ?? PALETTE_INT.warmGlow;
     this.mug = this.scene.add.image(this.image.x + 11, this.image.y - 16, 'fx-mug');
+    this.mug.setScale(1.3);
     this.mug.setTint(tint);
     this.mug.setDepth(this.image.depth + 2);
     // The sip: the mug rises toward the head and settles back, unhurried.
@@ -191,43 +192,70 @@ export class Spark {
   }
 
   /** L3: while leaning, the coilroll's tip breathes a thin smoke curl —
-   *  stylized, two soft motes at a time, nothing more. */
+   *  stylized, three soft motes on a staggered loop, nothing more. The
+   *  loop lives as long as the lean does; standing up snuffs it. */
   private syncCoilroll(): void {
     if (this.pose !== 'lean') {
-      this.coilrollTimer?.remove();
-      this.coilrollTimer = null;
+      for (const p of this.coilPuffs) {
+        this.scene.tweens.killTweensOf(p);
+        p.destroy();
+      }
+      this.coilPuffs = [];
       return;
     }
-    if (this.coilrollTimer !== null) return;
-    this.coilrollTimer = this.scene.time.addEvent({
-      delay: 1500,
-      loop: true,
-      callback: () => {
-        if (this.pose !== 'lean') return;
-        const hx = this.image.x - 8;
-        const hy = this.image.y - 14;
-        for (const d of [0, 350]) {
-          this.scene.time.delayedCall(d, () => {
-            if (this.pose !== 'lean') return;
-            const puff = this.scene.add.image(hx + (Math.random() - 0.5) * 3, hy, 'fx-glow');
-            puff.setTint(PALETTE_INT.structureMid);
-            puff.setAlpha(0.16);
-            puff.setScale(0.014);
-            puff.setDepth(this.image.depth + 2);
-            this.scene.tweens.add({
-              targets: puff,
-              y: hy - 15 - Math.random() * 7,
-              x: puff.x + 3 + Math.random() * 3,
-              alpha: 0,
-              scale: 0.03,
-              duration: 1700,
-              ease: 'sine.out',
-              onComplete: () => puff.destroy(),
-            });
-          });
-        }
-      },
-    });
+    if (this.coilPuffs.length > 0) return;
+    // The curl rises from hand height past the shoulder — centered, so
+    // every facing's bake reads the same thin breath. Three puffs ride
+    // one breath a third of a phase apart: each starts mid-life (a
+    // partial first rise), then settles into the endless loop.
+    const drift = this.dir === 'se' || this.dir === 'ne' ? 1 : -1;
+    // Start at the hand's edge and drift OUTWARD while rising — the curl
+    // has to clear the silhouette to read against the sky, not the hair.
+    const hx = this.image.x + 12 * drift;
+    const hy = this.image.y - 14;
+    const RISE = 34;
+    const DRIFT = 12 * drift;
+    for (let i = 0; i < 3; i++) {
+      const phase = i / 3;
+      const x0 = hx + (Math.random() - 0.5) * 3;
+      const puff = this.scene.add.image(x0 + DRIFT * phase, hy - RISE * phase, 'fx-glow');
+      puff.setTint(PALETTE_INT.warmGlow);
+      puff.setDepth(this.image.depth + 2);
+      puff.setAlpha(0.5 * (1 - phase));
+      puff.setScale(0.022 + 0.028 * phase);
+      const loop = (): void => {
+        if (!puff.active) return;
+        puff.setPosition(x0, hy);
+        puff.setAlpha(0.5);
+        puff.setScale(0.022);
+        this.scene.tweens.add({
+          targets: puff,
+          x: x0 + DRIFT,
+          y: hy - RISE,
+          alpha: 0,
+          scale: 0.05,
+          duration: 2400,
+          repeat: -1,
+          ease: 'sine.out',
+          onRepeat: () => {
+            puff.setPosition(x0, hy);
+            puff.setAlpha(0.5);
+            puff.setScale(0.022);
+          },
+        });
+      };
+      this.scene.tweens.add({
+        targets: puff,
+        x: x0 + DRIFT,
+        y: hy - RISE,
+        alpha: 0,
+        scale: 0.05,
+        duration: 2400 * (1 - phase),
+        ease: 'sine.out',
+        onComplete: loop,
+      });
+      this.coilPuffs.push(puff);
+    }
   }
 
   /** L4: scenery mode — the dimmed nameplate with the resting tag. */
@@ -623,12 +651,25 @@ export class Spark {
     this.image.setPosition(x, y);
     this.image.setDepth(depthForWorldY(y));
     this.syncLabel();
+    // The coilroll curl is pinned where it was lit — a teleport (drift
+    // correction) must relight it at the hand's new spot.
+    if (this.coilPuffs.length > 0) {
+      for (const p of this.coilPuffs) {
+        this.scene.tweens.killTweensOf(p);
+        p.destroy();
+      }
+      this.coilPuffs = [];
+      this.syncCoilroll();
+    }
   }
 
   destroy(): void {
     this.mugTween?.stop();
     this.hiccupTimer?.remove();
-    this.coilrollTimer?.remove();
+    for (const p of this.coilPuffs) {
+      this.scene.tweens.killTweensOf(p);
+      p.destroy();
+    }
     this.mug?.destroy();
     if (this.bulbGlow !== null) {
       this.bulbGlow.core.destroy();
