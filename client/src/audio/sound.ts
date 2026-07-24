@@ -10,12 +10,20 @@
  */
 
 const VOLUME_KEY = 'amperia.volume';
+const AMBIENT_KEY = 'amperia.volume.ambient';
+const SFX_KEY = 'amperia.volume.sfx';
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** S1: split buses under the master — ambience (loops/beds) vs effects
+   *  (every one-shot), each with its own persisted slider. */
+  private ambientBus: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private volumeValue: number;
+  private ambientValue: number;
+  private sfxValue: number;
 
   private humGain: GainNode | null = null;
   private murmurGain: GainNode | null = null;
@@ -33,13 +41,50 @@ class SoundEngine {
   private stepFlip = false;
 
   constructor() {
-    const raw = localStorage.getItem(VOLUME_KEY);
-    const stored = raw === null ? NaN : Number(raw);
-    this.volumeValue = Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.5;
+    const load = (key: string, fallback: number): number => {
+      const raw = localStorage.getItem(key);
+      const stored = raw === null ? NaN : Number(raw);
+      return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : fallback;
+    };
+    this.volumeValue = load(VOLUME_KEY, 0.5);
+    this.ambientValue = load(AMBIENT_KEY, 1);
+    this.sfxValue = load(SFX_KEY, 1);
   }
 
   get volume(): number {
     return this.volumeValue;
+  }
+
+  get ambientVolume(): number {
+    return this.ambientValue;
+  }
+
+  get sfxVolume(): number {
+    return this.sfxValue;
+  }
+
+  setAmbientVolume(v: number): void {
+    this.ambientValue = Math.max(0, Math.min(1, v));
+    localStorage.setItem(AMBIENT_KEY, String(this.ambientValue));
+    if (this.ambientBus !== null && this.ctx !== null) {
+      this.ambientBus.gain.setTargetAtTime(
+        this.ambientValue * this.ambientValue,
+        this.ctx.currentTime,
+        0.05,
+      );
+    }
+  }
+
+  setSfxVolume(v: number): void {
+    this.sfxValue = Math.max(0, Math.min(1, v));
+    localStorage.setItem(SFX_KEY, String(this.sfxValue));
+    if (this.sfxBus !== null && this.ctx !== null) {
+      this.sfxBus.gain.setTargetAtTime(
+        this.sfxValue * this.sfxValue,
+        this.ctx.currentTime,
+        0.05,
+      );
+    }
   }
 
   get ready(): boolean {
@@ -60,6 +105,12 @@ class SoundEngine {
     this.master = this.ctx.createGain();
     this.master.gain.value = this.volumeValue * this.volumeValue; // perceptual-ish taper
     this.master.connect(this.ctx.destination);
+    this.ambientBus = this.ctx.createGain();
+    this.ambientBus.gain.value = this.ambientValue * this.ambientValue;
+    this.ambientBus.connect(this.master);
+    this.sfxBus = this.ctx.createGain();
+    this.sfxBus.gain.value = this.sfxValue * this.sfxValue;
+    this.sfxBus.connect(this.master);
     // Shared 1s white-noise loop source material.
     this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
     const data = this.noiseBuffer.getChannelData(0);
@@ -85,7 +136,7 @@ class SoundEngine {
 
   private startLoops(): void {
     const ctx = this.ctx as AudioContext;
-    const master = this.master as GainNode;
+    const master = this.ambientBus as GainNode;
 
     // Dynamo hum: two detuned lows + a slow shimmer LFO on the upper one.
     this.humGain = ctx.createGain();
@@ -177,7 +228,7 @@ class SoundEngine {
     const ctx = this.ctx;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    gain.connect(this.master);
+    gain.connect(this.ambientBus as GainNode);
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
     src.loop = true;
@@ -296,7 +347,7 @@ class SoundEngine {
     g.gain.linearRampToValueAtTime(peak, t0 + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + seconds);
     osc.connect(g);
-    g.connect(this.master);
+    g.connect(this.sfxBus as GainNode);
     osc.start(t0);
     osc.stop(t0 + seconds + 0.02);
     osc.onended = () => {
@@ -362,7 +413,7 @@ class SoundEngine {
     }
     src.connect(f);
     f.connect(g);
-    g.connect(this.master);
+    g.connect(this.sfxBus as GainNode);
     src.start(t0, Math.random(), 0.06);
     src.onended = () => {
       src.disconnect();
@@ -409,7 +460,7 @@ class SoundEngine {
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
     src.connect(f);
     f.connect(g);
-    g.connect(this.master);
+    g.connect(this.sfxBus as GainNode);
     src.start(t0, Math.random(), 0.3);
     src.onended = () => {
       src.disconnect();
@@ -417,6 +468,48 @@ class SoundEngine {
       g.disconnect();
     };
     this.blip('sine', 880, 1318, 0.14, 0.05, 0.16);
+  }
+
+  /** L2/S1 — a drink hits the counter: a low glug sliding down, then the
+   *  faintest fizz. Warmth only, like the drink itself. */
+  barPour(): void {
+    if (this.ctx === null || this.master === null || this.noiseBuffer === null) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(900, t0);
+    f.frequency.exponentialRampToValueAtTime(280, t0 + 0.3);
+    f.Q.value = 3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.001, t0);
+    g.gain.linearRampToValueAtTime(0.09, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.36);
+    src.connect(f);
+    f.connect(g);
+    g.connect(this.sfxBus as GainNode);
+    src.start(t0, Math.random(), 0.4);
+    src.onended = () => {
+      src.disconnect();
+      f.disconnect();
+      g.disconnect();
+    };
+    this.blip('sine', 340, 210, 0.1, 0.05);
+    this.blip('sine', 300, 180, 0.09, 0.04, 0.13);
+  }
+
+  /** S1 — mugs meet across the bar (the round landing). */
+  mugClink(): void {
+    this.blip('triangle', 1980, 1760, 0.05, 0.06);
+    this.blip('sine', 2960, 2400, 0.09, 0.03, 0.012);
+  }
+
+  /** S1 — the tram's two-tone departure chime. */
+  tramChime(): void {
+    this.blip('sine', 784, 784, 0.16, 0.08);
+    this.blip('sine', 988, 988, 0.22, 0.07, 0.18);
   }
 
   uiClick(): void {
@@ -446,7 +539,7 @@ class SoundEngine {
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
     src.connect(f);
     f.connect(g);
-    g.connect(this.master);
+    g.connect(this.sfxBus as GainNode);
     src.start(t0, Math.random(), 0.1);
     src.onended = () => {
       src.disconnect();
@@ -472,7 +565,7 @@ class SoundEngine {
     noiseGain.gain.value = 0.11;
     noiseSrc.connect(filter);
     filter.connect(noiseGain);
-    noiseGain.connect(this.master);
+    noiseGain.connect(this.sfxBus as GainNode);
     noiseSrc.start();
 
     const tone = ctx.createOscillator();
@@ -481,7 +574,7 @@ class SoundEngine {
     const toneGain = ctx.createGain();
     toneGain.gain.value = 0;
     tone.connect(toneGain);
-    toneGain.connect(this.master);
+    toneGain.connect(this.sfxBus as GainNode);
     tone.start();
 
     this.tuner = { noiseGain, noiseSrc, filter, tone, toneGain };

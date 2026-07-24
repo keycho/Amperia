@@ -801,43 +801,57 @@ export class UIScene extends Phaser.Scene {
     panel.setDepth(950);
     panel.setVisible(false);
     const W = 250;
-    const H = 322;
+    const H = 374;
     const bg = kitPlate(this, W, H);
     const label = kitText(this, SPACE.md, SPACE.sm, 'settings · sound', 'caption', {
       color: PALETTE.neonAmber,
       bold: true,
     });
-    const track = this.add.graphics();
-    const drawTrack = (v: number) => {
-      track.clear();
-      track.fillStyle(PALETTE_INT.structureMid, 1);
-      track.fillRoundedRect(12, 34, W - 24, 6, 3);
-      track.fillStyle(PALETTE_INT.neonAmber, 1);
-      track.fillRoundedRect(12, 34, Math.max(6, (W - 24) * v), 6, 3);
-      track.fillStyle(PALETTE_INT.warmGlow, 1);
-      track.fillCircle(12 + (W - 24) * v, 37, 7);
-    };
-    drawTrack(sound.volume);
-    // A generous invisible hit strip over the slider.
-    const hit = this.add.rectangle(W / 2, 37, W - 12, 26, 0, 0);
-    hit.setInteractive({ useHandCursor: true });
-    const setFromPointer = (pointer: Phaser.Input.Pointer) => {
-      const local = pointer.x - panel.x - 12;
-      const v = Math.max(0, Math.min(1, local / (W - 24)));
-      sound.unlock();
-      sound.setVolume(v);
-      drawTrack(v);
-    };
-    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      setFromPointer(pointer);
-      const onMove = (p2: Phaser.Input.Pointer) => {
-        if (p2.isDown) setFromPointer(p2);
-      };
-      this.input.on('pointermove', onMove);
-      this.input.once('pointerup', () => this.input.off('pointermove', onMove));
-    });
-    // Toggle rows + the grit pick + keybind reference (U3b).
     const extras: Phaser.GameObjects.GameObject[] = [];
+    // S1: THREE volume rails — master, ambience (loops + district beds),
+    // effects (every one-shot). Each persists on its own key.
+    const sliderRow = (
+      y: number,
+      name: string,
+      get: () => number,
+      set: (v: number) => void,
+    ) => {
+      const cap = kitText(this, 12, y, name, 'caption', { color: PALETTE.groundAccent });
+      const track = this.add.graphics();
+      const draw = (v: number) => {
+        track.clear();
+        track.fillStyle(PALETTE_INT.structureMid, 1);
+        track.fillRoundedRect(12, y + 14, W - 24, 6, 3);
+        track.fillStyle(PALETTE_INT.neonAmber, 1);
+        track.fillRoundedRect(12, y + 14, Math.max(6, (W - 24) * v), 6, 3);
+        track.fillStyle(PALETTE_INT.warmGlow, 1);
+        track.fillCircle(12 + (W - 24) * v, y + 17, 7);
+      };
+      draw(get());
+      // A generous invisible hit strip over the rail.
+      const hit = this.add.rectangle(W / 2, y + 17, W - 12, 24, 0, 0);
+      hit.setInteractive({ useHandCursor: true });
+      const setFromPointer = (pointer: Phaser.Input.Pointer) => {
+        const local = pointer.x - panel.x - 12;
+        const v = Math.max(0, Math.min(1, local / (W - 24)));
+        sound.unlock();
+        set(v);
+        draw(v);
+      };
+      hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        setFromPointer(pointer);
+        const onMove = (p2: Phaser.Input.Pointer) => {
+          if (p2.isDown) setFromPointer(p2);
+        };
+        this.input.on('pointermove', onMove);
+        this.input.once('pointerup', () => this.input.off('pointermove', onMove));
+      });
+      extras.push(cap, track, hit);
+    };
+    sliderRow(26, 'master', () => sound.volume, (v) => sound.setVolume(v));
+    sliderRow(52, 'ambience', () => sound.ambientVolume, (v) => sound.setAmbientVolume(v));
+    sliderRow(78, 'effects', () => sound.sfxVolume, (v) => sound.setSfxVolume(v));
+    // Toggle rows + the grit pick + keybind reference (U3b).
     const toggleRow = (
       y: number,
       text: string,
@@ -858,20 +872,20 @@ export class UIScene extends Phaser.Scene {
       extras.push(t);
     };
     toggleRow(
-      58,
+      110,
       'nameplates',
       () => settings().nameplates,
       (v) => setSetting('nameplates', v),
     );
     toggleRow(
-      80,
+      132,
       'screen shake',
       () => settings().shake,
       (v) => setSetting('shake', v),
     );
     // PP3: the post pipeline toggle — applies live to the world camera.
     toggleRow(
-      102,
+      154,
       'post effects',
       () => settings().postfx,
       (v) => {
@@ -879,7 +893,7 @@ export class UIScene extends Phaser.Scene {
         applyWorldPostFX(this.scene.get('world'), v);
       },
     );
-    const gritLabel = kitText(this, 12, 128, '', 'body', { color: UI_TEXT_WARM });
+    const gritLabel = kitText(this, 12, 180, '', 'body', { color: UI_TEXT_WARM });
     const GRIT_OPTS: Array<'6' | '8' | 'none'> = ['6', '8', 'none'];
     const gritName = (g: string) => (g === 'none' ? 'smooth' : `${g}px grit`);
     const refreshGrit = () =>
@@ -895,11 +909,11 @@ export class UIScene extends Phaser.Scene {
       refreshGrit();
     });
     extras.push(gritLabel);
-    const keysHead = kitText(this, 12, 158, 'keys', 'caption', { color: PALETTE.groundAccent });
+    const keysHead = kitText(this, 12, 210, 'keys', 'caption', { color: PALETTE.groundAccent });
     const keys = kitText(
       this,
       12,
-      174,
+      226,
       [
         'click · walk / work / talk',
         '1-6 · tool belt',
@@ -916,7 +930,7 @@ export class UIScene extends Phaser.Scene {
     keys.setLineSpacing(6);
     keys.setAlpha(0.85);
     extras.push(keysHead, keys);
-    panel.add([bg, label, track, hit, ...extras]);
+    panel.add([bg, label, ...extras]);
     const placePanel = () => panel.setPosition(this.scale.width - W - 12, 58);
     placePanel();
     this.scale.on('resize', placePanel);

@@ -936,7 +936,24 @@ export class WorldScene extends Phaser.Scene {
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
       // L2: the drink in hand — mug overlay + sip loop, purely visual.
-      proxy(p).listen('drink', (v: string) => spark.setDrink(v === '' ? null : v));
+      proxy(p).listen('drink', (v: string) => {
+        spark.setDrink(v === '' ? null : v);
+        // S1: the pour lands in the ear too — your own glass pours; a
+        // nearby Spark's fresh glass clinks (the round hitting the bar).
+        if (v !== '') {
+          if (sessionId === room.sessionId) {
+            sound.barPour();
+          } else {
+            const me = this.sparks.get(room.sessionId);
+            if (
+              me !== undefined &&
+              Math.abs(me.tile.x - spark.tile.x) + Math.abs(me.tile.y - spark.tile.y) <= 7
+            ) {
+              sound.mugClink();
+            }
+          }
+        }
+      });
       spark.setDrink(p.drink === '' ? null : p.drink);
       // Working pose while gathering (server-set, presentation only).
       proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
@@ -1142,6 +1159,7 @@ export class WorldScene extends Phaser.Scene {
       };
       session.events.emit(SessionEvents.notice, lines[to]);
       // U5b: the tram beat — vignette + name card riding over the rebuild.
+      sound.tramChime(); // S1: the two-tone departure
       playTramTransition(to);
       this.expectLeave = true;
       void room.leave().finally(() => {
