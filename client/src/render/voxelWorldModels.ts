@@ -1111,6 +1111,40 @@ function fortunecoilModel(): Voxel[] {
 }
 
 /**
+ * THE CITY BOARD (billboard T2): the plaza ticker on a 4×2 footprint —
+ * a broad ink screen on two gunmetal masts, rain hood over the pane,
+ * junction box + cable run + a maintenance ladder for the salvage-punk
+ * read. The pane bakes BLANK: the client mounts the live dot-matrix
+ * face (figures + title) over it, the placeCoilFace pattern.
+ */
+function billboardModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Masts on concrete feet.
+  for (const mx of [3, 26]) {
+    v.push(...mbox(mx, 6, 0, 3, 3, 2, MATERIALS.concreteDeep));
+    v.push(...mbox(mx + 1, 7, 2, 2, 2, 7, MATERIALS.gunmetal));
+  }
+  // Housing: the board box riding the masts; ink pane proud of the south
+  // face (the screen), gunmetal sill under it, hood on top.
+  v.push(...mbox(1, 7, 8, 30, 4, 10, MATERIALS.gunmetalDeep));
+  v.push(...mbox(2, 11, 8, 28, 1, 1, MATERIALS.gunmetal));
+  v.push(...box(2, 11, 9, 28, 1, 8, PALETTE_INT.ink));
+  v.push(...mbox(0, 6, 18, 32, 7, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(0, 12, 17, 32, 1, 1, MATERIALS.gunmetal));
+  // Corner status lamps (the client adds the soft glows).
+  v.push({ x: 2, y: 11, z: 17, c: PALETTE_INT.warmGlow });
+  v.push({ x: 29, y: 11, z: 17, c: PALETTE_INT.warmGlow });
+  // Junction box + cable run up the west mast; rust bites the base.
+  v.push(...mbox(1, 9, 0, 2, 2, 2, MATERIALS.rust));
+  v.push(...mbox(3, 9, 2, 1, 1, 6, MATERIALS.rustDeep));
+  // Maintenance ladder rungs on the east mast.
+  for (const z of [3, 5, 7]) {
+    v.push({ x: 29, y: 8, z, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+  }
+  return v;
+}
+
+/**
  * THE AMPED BAR (city-life L1): the Filament's watering hole on a 6×4
  * footprint. South-facing so the camera gets the lit face: door gap +
  * carved windows on the south wall, counter running the width of the
@@ -2535,6 +2569,7 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     }
   }
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
+  bakeVoxelModel(scene, { name: 'billboard', voxels: billboardModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
   // The bar bakes in two depth layers; a shared anchor keeps them aligned
   // when placed at the same world point (front has no floor to center on).

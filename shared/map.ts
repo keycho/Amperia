@@ -86,7 +86,9 @@ export type PropKind =
   | 'toolshed'
   /** L1 THE AMPED BAR — the Filament's watering hole (6×4, walls block,
    *  the hall + south door stay walkable like the Ledgerhouse). */
-  | 'ampedbar';
+  | 'ampedbar'
+  /** T2 — the City Board: the plaza ticker (billboard + inspect). */
+  | 'billboard';
 
 export interface Prop {
   kind: PropKind;
@@ -405,6 +407,14 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     const wdn: Prop = { kind: 'warden', x: 26, y: 30, w: 1, h: 1, variant: 0 };
     props.push(wdn);
     blockFootprint(walkable, wdn);
+  }
+
+  // T2 — the City Board: the plaza ticker on the south walk to the market,
+  // Dynamo at its back. Fully blocked footprint (no interior).
+  {
+    const board: Prop = { kind: 'billboard', x: 27, y: 34, w: 4, h: 2, variant: 0 };
+    props.push(board);
+    blockFootprint(walkable, board);
   }
 
   // The return Tramgate on the east edge; arrivals step onto the spine.

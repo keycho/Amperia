@@ -6,6 +6,7 @@ import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type Worl
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
 import { hoverTip } from '../ui/Tooltip';
+import { buildBoardPanels, type BoardPanel } from '../ui/boardFormat';
 import { kitPlate, kitText, SPACE } from '../ui/kit';
 import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
@@ -44,6 +45,7 @@ import type {
   InventorySync,
   CityPresenceEvent,
   LootEvent,
+  MarketSyncEvent,
   MoveAcceptedEvent,
   PricesSync,
   QuestsSync,
@@ -176,6 +178,17 @@ export class WorldScene extends Phaser.Scene {
   private coilWheel: Phaser.GameObjects.Image | null = null;
   private coilSpinning = false;
   private coilSpunToday = false;
+  /** T2 — the City Board's live face: rotating dot-matrix rows. */
+  private boardFace: {
+    caption: Phaser.GameObjects.Text;
+    value: Phaser.GameObjects.Text;
+    sub: Phaser.GameObjects.Text;
+  } | null = null;
+  private boardIndex = 0;
+  /** Latest market snapshot (T1 seed + slow-sweep relays); null pre-seed. */
+  private market: MarketSyncEvent | null = null;
+  private boardSparks: number | null = null;
+  private boardCharge: { tier: number; tierMax: number } | null = null;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
@@ -392,6 +405,66 @@ export class WorldScene extends Phaser.Scene {
       .setDepth(1e9);
 
     void this.connect();
+  }
+
+  /**
+   * T2 — the City Board's live face: three monospace rows (caption, figure,
+   * sub) mounted over the baked ink pane, rotating through the panel deck
+   * every {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain
+   * swap; a negative 24h dims to rose, everything else stays amber.
+   */
+  private placeBoardFace(p: Prop, frame: Phaser.GameObjects.Image): void {
+    const c = tileToWorld(p.x + 2, p.y + 1);
+    const mk = (dy: number, size: number, color: string): Phaser.GameObjects.Text => {
+      const t = this.add.text(c.x, c.y - 18 + dy, '', {
+        fontFamily: 'monospace',
+        fontSize: `${size}px`,
+        color,
+        fontStyle: 'bold',
+      });
+      t.setOrigin(0.5, 0.5);
+      t.setDepth(frame.depth + 1);
+      t.setLetterSpacing(2);
+      return t;
+    };
+    this.boardFace = {
+      caption: mk(-14, 9, PALETTE.warmGlow),
+      value: mk(0, 13, PALETTE.neonAmber),
+      sub: mk(13, 10, PALETTE.neonAmber),
+    };
+    this.boardFace.caption.setAlpha(0.85);
+    // The rotation: advance the deck, plainly. (Game-clock timer — the
+    // board is presentation; a slow tab just holds a panel longer.)
+    this.time.addEvent({
+      delay: CONFIG.billboard.rotateSeconds * 1000,
+      loop: true,
+      callback: () => {
+        this.boardIndex += 1;
+        this.renderBoardFace();
+      },
+    });
+    this.renderBoardFace();
+  }
+
+  /** Repaint the Board's current panel from the cached city + market state. */
+  private renderBoardFace(): void {
+    const f = this.boardFace;
+    if (f === null) return;
+    const panels = buildBoardPanels(this.market, this.boardSparks, this.boardCharge);
+    if (panels.length === 0) {
+      f.caption.setText('THE CITY BOARD');
+      f.value.setText('');
+      f.sub.setText('');
+      return;
+    }
+    const panel = panels[this.boardIndex % panels.length] as BoardPanel;
+    const tone = panel.tone === 'dimRose' ? PALETTE.neonRose : PALETTE.neonAmber;
+    f.caption.setText(panel.caption);
+    f.value.setText(panel.value);
+    f.value.setColor(PALETTE.neonAmber);
+    f.sub.setText(panel.sub ?? '');
+    f.sub.setColor(tone);
+    f.sub.setAlpha(panel.tone === 'dimRose' ? 0.8 : 1);
   }
 
   /**
@@ -969,16 +1042,26 @@ export class WorldScene extends Phaser.Scene {
     $state.loftpods.onRemove((_p2: LoftpodStateShape, id: string) => this.removeLoftpod(id));
 
     // The Citywide Charge: lighting density tracks the meter's tier, and
-    // the UI scene shows the weekend-buff banner.
+    // the UI scene shows the weekend-buff banner. The City Board reads the
+    // same mirror — one truth for the tier everywhere (T2).
     const chargeState = (room.state as { charge?: ChargeStateShape }).charge;
     if (chargeState !== undefined) {
       const apply = () => {
         this.applyChargeLighting(chargeState.tier);
+        this.boardCharge = { tier: chargeState.tier, tierMax: 3 };
+        this.renderBoardFace();
         session.events.emit(SessionEvents.charge, { ...chargeState });
       };
       apply();
       (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
     }
+
+    // T1/T2: the City Board's market snapshot — cache for the face + panel.
+    room.onMessage(MSG.marketSync, (e: MarketSyncEvent) => {
+      this.market = e;
+      this.renderBoardFace();
+      session.events.emit(SessionEvents.marketSync, e);
+    });
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
     // U1a: your parcel run — marker at the landing, cleared on delivery.
@@ -1147,8 +1230,13 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
-    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) =>
-      session.events.emit(SessionEvents.cityPresence, ev),
+    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) => {
+      // T2: the Board's SPARKS IN THE CITY = the city-wide seated total —
+      // the same honest counts the world map shows (resters never counted).
+      this.boardSparks = Object.values(ev.counts).reduce((a, b) => a + (b ?? 0), 0);
+      this.renderBoardFace();
+      session.events.emit(SessionEvents.cityPresence, ev);
+    },
     );
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
@@ -3495,6 +3583,29 @@ export class WorldScene extends Phaser.Scene {
               session.events.emit(SessionEvents.openBar);
             },
             { hint: 'the door is on the south side' },
+          );
+          break;
+        }
+        case 'billboard': {
+          const img = this.propSprite('billboard', x, y);
+          hoverTip(img, () => ({
+            title: 'The City Board',
+            sub: 'the city, in figures',
+            lines: ['Reports only — what happened, never a pitch.'],
+          }));
+          this.placeBoardFace(p, img);
+          // Corner status lamps + a soft pool at the masts' feet.
+          const face = tileToWorld(p.x + 2, p.y + 1);
+          addLayeredGlow(this, face.x - 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
+          addLayeredGlow(this, face.x + 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
+          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.4);
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x + 2, y: p.y + 1 },
+            CONFIG.billboard.reachTiles,
+            'Inspect',
+            () => session.events.emit(SessionEvents.openBoard),
           );
           break;
         }
