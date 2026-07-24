@@ -49,6 +49,10 @@ export interface StyleConfig {
  * with a checker-dither transition instead of a smooth ramp — the pixel
  * grammar's idea of falloff. One set for all modes, like shadows.
  */
+/** N4a: light-pool falloff quantization — discrete banded steps with a
+ *  dithered edge (the voxel language's falloff). Tune here, never inline. */
+export const POOL_BANDS = 5;
+
 export const DARKNESS = {
   /** Ink alpha over the floor at full distance (floor minimum guard).
    *  v3 n3: the deepest band is a step darker still — light lives in

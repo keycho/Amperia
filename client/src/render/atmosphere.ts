@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { emberMid, PALETTE_INT } from '@shared/palette';
 import { FILM_GRAIN_ALPHA } from './grit';
-import { bloom } from './styleConfig';
+import { bloom, POOL_BANDS } from './styleConfig';
 
 /**
  * Atmosphere & light theatre (R5): god-rays, lamp cones, warm haze,
@@ -26,16 +26,31 @@ export function makeAtmosphereTextures(scene: Phaser.Scene): void {
     g.destroy();
   }
   if (!scene.textures.exists('fx-pool')) {
-    // CLARITY: the ground light pool — a much steeper falloff than the
-    // soft fx-glow so pool EDGES read and texels inside stay countable.
+    // N4a PIXEL INTEGRITY: the pool falloff is QUANTIZED into discrete
+    // bands with a checker-dithered edge between each — the smooth
+    // 20-step gradient was soft-washing tile edges under it. Banded
+    // falloff speaks the voxel language and ADDS crispness. Tunables:
+    const BANDS = POOL_BANDS; // discrete alpha steps (styleConfig)
     const R = 64;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    for (let i = 20; i >= 1; i--) {
-      const t = i / 20; // 1 at rim → 0 at center
-      const a = Math.pow(1 - t, 1.8) * 0.12;
-      if (a <= 0) continue;
+    const CELL = 4; // dither cell in texture px (2 world px at 0.5 draw)
+    for (let band = BANDS; band >= 1; band--) {
+      const t = band / BANDS; // 1 at rim → 1/BANDS innermost ring
+      const a = Math.pow(1 - t + 1 / BANDS, 1.6) * 0.13;
+      const rOuter = R * t;
+      const rInner = R * (t - 1 / BANDS);
+      const rMid = (rOuter + rInner) / 2;
+      // Solid inside the band's midline…
       g.fillStyle(0xffffff, a);
-      g.fillCircle(R, R, R * t);
+      g.fillCircle(R, R, rMid);
+      // …checker dither between midline and the outer rim.
+      for (let py = 0; py < R * 2; py += CELL) {
+        for (let px = 0; px < R * 2; px += CELL) {
+          if (((px + py) / CELL) % 2 !== 0) continue;
+          const d = Math.hypot(px + CELL / 2 - R, py + CELL / 2 - R);
+          if (d > rMid && d <= rOuter) g.fillRect(px, py, CELL, CELL);
+        }
+      }
     }
     g.generateTexture('fx-pool', R * 2, R * 2);
     g.destroy();
@@ -110,7 +125,8 @@ export function addLampCone(
   cone.setDepth(depth);
 }
 
-/** Big soft warm haze around a dense light cluster. */
+/** Warm field around a dense light cluster. N4a: rides the BANDED pool
+ *  texture, not the soft glow — a quantized field, never a blur wash. */
 export function addHaze(
   scene: Phaser.Scene,
   x: number,
@@ -118,11 +134,11 @@ export function addHaze(
   tint: number,
   scale: number,
 ): void {
-  const haze = scene.add.image(x, y, 'fx-glow');
+  const haze = scene.add.image(x, y, 'fx-pool');
   haze.setTint(tint);
   haze.setBlendMode(Phaser.BlendModes.ADD);
   haze.setScale(scale, scale * 0.6);
-  haze.setAlpha(bloom(0.06));
+  haze.setAlpha(bloom(0.3));
   haze.setDepth(1e5 + 2);
 }
 
