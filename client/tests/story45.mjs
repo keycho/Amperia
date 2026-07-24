@@ -183,6 +183,8 @@ const koi = await page.evaluate(() => {
 let ch4Done = false;
 if (koi !== null) {
   await walkTo(page, koi.x, koi.y);
+  // The Skimnet must be IN HAND (hotbar slot 2) — gather validates it.
+  await page.evaluate(() => window.__amperia.session.room.send('selectSlot', { slot: 2 }));
   for (let i = 0; i < 10 && !ch4Done; i++) {
     await page.evaluate(([id]) => {
       window.__amperia.session.room.send('gather', { nodeId: id });
@@ -261,6 +263,8 @@ const seam = await page.evaluate(() => {
 });
 if (seam === null) throw new Error('no brass seam');
 await walkTo(page, seam.x, seam.y);
+// The Drillhammer must be IN HAND (hotbar slot 1) for seams.
+await page.evaluate(() => window.__amperia.session.room.send('selectSlot', { slot: 1 }));
 const ch5Progress = () =>
   page.evaluate(
     () => window.__amperia.game.scene.getScene('world').storyState?.chapters?.ch5?.progress ?? 0,
