@@ -420,9 +420,9 @@ async function runTour(viewport) {
     await b.keyboard.press('Escape');
   }
 
-  // 10b — the City Board's world face (billboard T2): live dot-matrix rows
-  // + the marker label + a nameplate in the same frame.
-  await walkTo(pageA, 29, 37);
+  // 10b — the City Board's world face (billboard T2, deck-edge pole): live
+  // dot-matrix rows + the marker label + a nameplate in the same frame.
+  await walkTo(pageA, 34, 58);
   await capture('cityboard');
   await teardown('cityboard');
 

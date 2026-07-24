@@ -1111,36 +1111,58 @@ function fortunecoilModel(): Voxel[] {
 }
 
 /**
- * THE CITY BOARD (billboard T2): the plaza ticker on a 4×2 footprint —
- * a broad ink screen on two gunmetal masts, rain hood over the pane,
- * junction box + cable run + a maintenance ladder for the salvage-punk
- * read. The pane bakes BLANK: the client mounts the live dot-matrix
- * face (figures + title) over it, the placeCoilFace pattern.
+ * THE CITY BOARD (billboard T2, deck-edge form): a TALL riveted gunmetal
+ * pole — two-plus storeys with a slight lean — carrying a broad dot-matrix
+ * sign at the top, sited at the deck edge so the sign silhouettes against
+ * the void and reads from across the district. Guy-wires to deck anchors,
+ * maintenance ladder up the shaft, work-lamp arm over the face's top edge
+ * (the client adds the spill glow), junction box at the base. The pane
+ * bakes BLANK: the client mounts the live face over it.
  */
 function billboardModel(): Voxel[] {
   const v: Voxel[] = [];
-  // Masts on concrete feet.
-  for (const mx of [3, 26]) {
-    v.push(...mbox(mx, 6, 0, 3, 3, 2, MATERIALS.concreteDeep));
-    v.push(...mbox(mx + 1, 7, 2, 2, 2, 7, MATERIALS.gunmetal));
+  // Riveted plinth + junction box; rust bites the feet.
+  v.push(...mbox(5, 6, 0, 6, 6, 2, MATERIALS.concreteDeep));
+  v.push(...mbox(6, 7, 2, 4, 4, 2, MATERIALS.gunmetalDeep));
+  v.push(...mbox(10, 10, 0, 3, 2, 3, MATERIALS.rust));
+  v.push({ x: 11, y: 11, z: 3, c: PALETTE_INT.neonTeal });
+  // The pole: a 4×4 riveted shaft climbing z4..31, leaning one voxel
+  // west every six courses (the whole mast tips gently toward the plaza).
+  const leanAt = (z: number): number => 6 - Math.floor((z - 4) / 6);
+  for (let z = 4; z < 32; z++) {
+    const px = leanAt(z);
+    v.push(...mbox(px, 7, z, 4, 4, 1, z % 8 === 0 ? MATERIALS.gunmetalDeep : MATERIALS.gunmetal));
+    // Rivet studs on the camera faces, every third course.
+    if (z % 4 === 1) {
+      v.push({ x: px + 2, y: 11, z, c: shade(MATERIALS.gunmetalDeep.base, -0.14) });
+    }
   }
-  // Housing: the board box riding the masts; ink pane proud of the south
-  // face (the screen), gunmetal sill under it, hood on top.
-  v.push(...mbox(1, 7, 8, 30, 4, 10, MATERIALS.gunmetalDeep));
-  v.push(...mbox(2, 11, 8, 28, 1, 1, MATERIALS.gunmetal));
-  v.push(...box(2, 11, 9, 28, 1, 8, PALETTE_INT.ink));
-  v.push(...mbox(0, 6, 18, 32, 7, 1, MATERIALS.gunmetalDeep));
-  v.push(...mbox(0, 12, 17, 32, 1, 1, MATERIALS.gunmetal));
-  // Corner status lamps (the client adds the soft glows).
-  v.push({ x: 2, y: 11, z: 17, c: PALETTE_INT.warmGlow });
-  v.push({ x: 29, y: 11, z: 17, c: PALETTE_INT.warmGlow });
-  // Junction box + cable run up the west mast; rust bites the base.
-  v.push(...mbox(1, 9, 0, 2, 2, 2, MATERIALS.rust));
-  v.push(...mbox(3, 9, 2, 1, 1, 6, MATERIALS.rustDeep));
-  // Maintenance ladder rungs on the east mast.
-  for (const z of [3, 5, 7]) {
-    v.push({ x: 29, y: 8, z, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+  // The maintenance ladder: one slim continuous rail up the east face,
+  // tonally quiet (gunmetal-dark, not rust) so the silhouette stays clean.
+  for (let z = 3; z < 30; z++) {
+    const px = leanAt(Math.max(4, z));
+    v.push({ x: px + 4, y: 9, z, c: shade(MATERIALS.gunmetalDeep.base, -0.08) });
   }
+  // Guy-wire deck anchors (the wires themselves are client-drawn lines —
+  // voxel diagonals crumble at this scale).
+  v.push(...mbox(1, 12, 0, 2, 2, 2, MATERIALS.concreteDeep));
+  v.push(...mbox(13, 12, 0, 2, 2, 2, MATERIALS.concreteDeep));
+  // The sign's BACK STRUCTURE only — the readable face is a CAMERA-FACING
+  // quad the client mounts over this (the Fortune Coil precedent: a flat
+  // face reads cleaner than voxels; every readable surface in the game
+  // faces the viewer). What the camera sees around the quad's edges is
+  // this dark riveted backboard + the mount, hood and lamp arm.
+  const H = 32; // backboard base z
+  v.push(...mbox(-2, 8, H - 1, 20, 2, 1, MATERIALS.gunmetalDeep)); // mount beam
+  v.push(...mbox(-2, 8, H, 20, 2, 10, MATERIALS.gunmetalDeep)); // backboard
+  // Rivet line up the backboard's visible edge.
+  for (let z = H + 1; z < H + 10; z += 3) {
+    v.push({ x: 18, y: 9, z, c: shade(MATERIALS.gunmetalDeep.base, -0.14) });
+  }
+  // Work-lamp arm over the face's top edge + the lamp heads.
+  v.push(...mbox(-1, 8, H + 10, 18, 1, 1, MATERIALS.rustDeep));
+  v.push({ x: 1, y: 9, z: H + 10, c: PALETTE_INT.warmGlow });
+  v.push({ x: 14, y: 9, z: H + 10, c: PALETTE_INT.warmGlow });
   return v;
 }
 

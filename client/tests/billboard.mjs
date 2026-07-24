@@ -1,9 +1,8 @@
 /**
- * CITY TICKER BILLBOARD checkpoint — four shots:
- *   1 pretoken-board   THE TICKER / WAKES AT LAUNCH on the plaza board
- *   2 price-panel      the mock-fed $AMP price panel (24h dim rose)
- *   3 city-panel       SPARKS IN THE CITY — the live city count
- *   4 inspect-panel    E — Inspect: the City Board kit panel, open
+ * CITY TICKER BILLBOARD checkpoint (deck-edge pole form) — three shots:
+ *   1 wide-price-void  wide from the plaza: the price panel up, void behind
+ *   2 pole-construction close: rivets, lean, guy-wires, ladder, work-lamp
+ *   3 pretoken-board   THE TICKER / WAKES AT LAUNCH
  *
  * This driver OWNS the game server lifecycle: it restarts it without the
  * feed env (pre-token), then with MARKET_DATA_URL pointed at a local mock
@@ -154,8 +153,8 @@ await startServer({ MARKET_DATA_URL: '', AMP_TOKEN_ADDRESS: '' });
   const page = await openWorld(browser, auth.token, `Gauge${Math.floor(Math.random() * 900) + 100}`);
   const v = await showPanel(page, 'THE TICKER');
   console.log(`  pre-token panel: ${v}`);
-  await photo(page, { x: 29, y: 36 }, 2, false);
-  await shoot(page, '1-pretoken-board');
+  await photo(page, { x: 36, y: 54 }, 2, false);
+  await shoot(page, '3-pretoken-board');
   await photoExit(page);
   await page.close();
 }
@@ -182,28 +181,15 @@ await startServer({
 
   const price = await showPanel(page, '$AMP');
   console.log(`  price panel: ${price}`);
-  await photo(page, { x: 29, y: 36 }, 2, false);
-  await shoot(page, '2-price-panel');
+  await photo(page, { x: 34, y: 49 }, 1, false);
+  await shoot(page, '1-wide-price-void');
   await photoExit(page);
   await page.waitForTimeout(300);
 
-  const sparks = await showPanel(page, 'SPARKS IN THE CITY');
-  console.log(`  city panel: ${sparks}`);
-  await photo(page, { x: 29, y: 36 }, 2, false);
-  await shoot(page, '3-city-panel');
+  await showPanel(page, 'SPARKS IN THE CITY');
+  await photo(page, { x: 36, y: 54 }, 3, false);
+  await shoot(page, '2-pole-construction');
   await photoExit(page);
-  await page.waitForTimeout(300);
-
-  // E — Inspect: open the kit panel over the plaza (the same event chain
-  // the world interact fires: current state first, then the open).
-  await page.evaluate(() => {
-    const scene = window.__amperia.game.scene.getScene('world');
-    const ev = window.__amperia.session.events;
-    if (scene.lastCharge != null) ev.emit('charge', { ...scene.lastCharge });
-    if (scene.market != null) ev.emit('marketSync', scene.market);
-    ev.emit('openBoard');
-  });
-  await shoot(page, '4-inspect-panel');
   await page.close();
 }
 

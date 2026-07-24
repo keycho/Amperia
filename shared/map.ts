@@ -409,10 +409,12 @@ export function buildWorldMap(seed: number = CONFIG.map.seed): WorldMap {
     blockFootprint(walkable, wdn);
   }
 
-  // T2 — the City Board: the plaza ticker on the south walk to the market,
-  // Dynamo at its back. Fully blocked footprint (no interior).
+  // T2 (form per art direction) — the City Board: a TALL pole billboard at
+  // the deck edge south of the Nightstalls, the void at its back. The sign
+  // rides two-plus storeys up so it reads from across the district; the
+  // E — Inspect lives at the pole's base. Fully blocked 2×2 footprint.
   {
-    const board: Prop = { kind: 'billboard', x: 27, y: 34, w: 4, h: 2, variant: 0 };
+    const board: Prop = { kind: 'billboard', x: 35, y: 56, w: 2, h: 2, variant: 0 };
     props.push(board);
     blockFootprint(walkable, board);
   }

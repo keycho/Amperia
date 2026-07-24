@@ -185,6 +185,8 @@ export class WorldScene extends Phaser.Scene {
     sub: Phaser.GameObjects.Text;
   } | null = null;
   private boardIndex = 0;
+  /** Inner width of the face quad — text rows scale to stay inside it. */
+  private boardInnerW = 114;
   /** Latest market snapshot (T1 seed + slow-sweep relays); null pre-seed. */
   private market: MarketSyncEvent | null = null;
   private boardSparks: number | null = null;
@@ -411,31 +413,62 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * T2 — the City Board's live face: three monospace rows (caption, figure,
-   * sub) mounted over the baked ink pane, rotating through the panel deck
-   * every {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain
-   * swap; a negative 24h dims to rose, everything else stays amber.
+   * T2 — the City Board's live face: a CAMERA-FACING framed panel (the
+   * Fortune Coil precedent — every readable surface faces the viewer; the
+   * voxel bake supplies only the dark riveted back). Three monospace rows
+   * live INSIDE the panel's quad with padding — clamped to its width,
+   * never past its edges — rotating through the deck every
+   * {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain swap;
+   * a negative 24h dims to rose, everything else stays amber.
    */
   private placeBoardFace(p: Prop, frame: Phaser.GameObjects.Image): void {
-    const c = tileToWorld(p.x + 2, p.y + 1);
+    // The framed face texture: gunmetal frame, ink screen, scanline rows.
+    const key = 'board-face';
+    const FW = 128;
+    const FH = 52;
+    if (!this.textures.exists(key)) {
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      g.fillStyle(MATERIAL_INT.gunmetalDeep, 1);
+      g.fillRoundedRect(0, 0, FW, FH, 5);
+      g.fillStyle(MATERIAL_INT.gunmetal, 1);
+      g.fillRoundedRect(2, 2, FW - 4, FH - 4, 4);
+      g.fillStyle(PALETTE_INT.ink, 1);
+      g.fillRoundedRect(4, 4, FW - 8, FH - 8, 3);
+      // Faint scanlines — the dot-matrix tell.
+      g.fillStyle(blendInt(PALETTE_INT.ink, PALETTE_INT.structureMid, 0.18), 1);
+      for (let sy = 7; sy < FH - 6; sy += 4) g.fillRect(5, sy, FW - 10, 1);
+      // Corner service lamps.
+      g.fillStyle(PALETTE_INT.neonAmber, 0.9);
+      g.fillRect(6, FH - 8, 3, 3);
+      g.fillRect(FW - 9, FH - 8, 3, 3);
+      g.generateTexture(key, FW, FH);
+      g.destroy();
+    }
+    // The pane rides the pole top (deck-edge form): two-plus storeys up.
+    const c = tileToWorld(p.x + 1, p.y + 1);
+    const cx = c.x + 2;
+    const cy = c.y - 128;
+    const panel = this.add.image(cx, cy, key);
+    panel.setDepth(frame.depth + 1);
     const mk = (dy: number, size: number, color: string): Phaser.GameObjects.Text => {
-      const t = this.add.text(c.x, c.y - 18 + dy, '', {
+      const t = this.add.text(cx, cy + dy, '', {
         fontFamily: 'monospace',
         fontSize: `${size}px`,
         color,
         fontStyle: 'bold',
       });
       t.setOrigin(0.5, 0.5);
-      t.setDepth(frame.depth + 1);
+      t.setDepth(frame.depth + 2);
       t.setLetterSpacing(2);
       return t;
     };
     this.boardFace = {
-      caption: mk(-14, 9, PALETTE.warmGlow),
-      value: mk(0, 13, PALETTE.neonAmber),
-      sub: mk(13, 10, PALETTE.neonAmber),
+      caption: mk(-15, 8, PALETTE.warmGlow),
+      value: mk(-1, 12, PALETTE.neonAmber),
+      sub: mk(12, 9, PALETTE.neonAmber),
     };
     this.boardFace.caption.setAlpha(0.85);
+    this.boardInnerW = FW - 14;
     // The rotation: advance the deck, plainly. (Game-clock timer — the
     // board is presentation; a slow tab just holds a panel longer.)
     this.time.addEvent({
@@ -462,10 +495,18 @@ export class WorldScene extends Phaser.Scene {
     }
     const panel = panels[this.boardIndex % panels.length] as BoardPanel;
     const tone = panel.tone === 'dimRose' ? PALETTE.neonRose : PALETTE.neonAmber;
+    // Bound to the face: any row wider than the panel's inner width scales
+    // down uniformly — whole glyphs, never past the frame.
+    const fit = (t: Phaser.GameObjects.Text): void => {
+      t.setScale(t.width > this.boardInnerW ? this.boardInnerW / t.width : 1);
+    };
     f.caption.setText(panel.caption);
+    fit(f.caption);
     f.value.setText(panel.value);
     f.value.setColor(PALETTE.neonAmber);
+    fit(f.value);
     f.sub.setText(panel.sub ?? '');
+    fit(f.sub);
     f.sub.setColor(tone);
     f.sub.setAlpha(panel.tone === 'dimRose' ? 0.8 : 1);
   }
@@ -3603,15 +3644,41 @@ export class WorldScene extends Phaser.Scene {
             lines: ['Reports only — what happened, never a pitch.'],
           }));
           this.placeBoardFace(p, img);
-          // Corner status lamps + a soft pool at the masts' feet.
-          const face = tileToWorld(p.x + 2, p.y + 1);
-          addLayeredGlow(this, face.x - 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
-          addLayeredGlow(this, face.x + 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
-          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.4);
+          // Work-lamp spill over the face's top edge + a pool at the base.
+          const face = tileToWorld(p.x + 1, p.y + 1);
+          addLayeredGlow(this, face.x - 34, face.y - 172, PALETTE_INT.warmGlow, 0.3, img.depth + 2, 0.5);
+          addLayeredGlow(this, face.x + 30, face.y - 168, PALETTE_INT.warmGlow, 0.24, img.depth + 2, 0.4);
+          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.35);
+          {
+            const g = this.add.graphics();
+            g.setDepth(img.depth - 1);
+            // Taut guy-wires from the shaft to the deck anchor blocks.
+            g.lineStyle(1.5, mixPalette('structureMid', 'ink', 0.55), 0.9);
+            g.lineBetween(face.x - 8, face.y - 96, face.x - 46, face.y + 4);
+            g.lineBetween(face.x + 2, face.y - 96, face.x + 40, face.y - 2);
+            // Power cables sagging away to the Nightstalls roofline (NW) —
+            // the Dynamo-cable technique, hung high, landing on stall tops.
+            const roofA = tileToWorld(p.x + 1, 44);
+            const roofB = tileToWorld(p.x + 4, 43);
+            const topX = face.x - 2;
+            const topY = face.y - 150;
+            for (const [ax, ay] of [
+              [roofA.x, roofA.y - 46],
+              [roofB.x + TILE_W / 2, roofB.y - 42],
+            ] as const) {
+              const curve = new Phaser.Curves.QuadraticBezier(
+                new Phaser.Math.Vector2(topX, topY),
+                new Phaser.Math.Vector2((topX + ax) / 2, Math.max(topY, ay) + 40),
+                new Phaser.Math.Vector2(ax, ay),
+              );
+              g.lineStyle(2, mixPalette('duskSky', 'ink', 0.35), 0.9);
+              curve.draw(g, 24);
+            }
+          }
           img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
           this.registerInteract(
             img,
-            { x: p.x + 2, y: p.y + 1 },
+            { x: p.x, y: p.y + 1 },
             CONFIG.billboard.reachTiles,
             'Inspect',
             () => {
