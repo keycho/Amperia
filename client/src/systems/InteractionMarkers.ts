@@ -328,7 +328,7 @@ export class InteractionMarkers {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: LABEL_COLOR,
-        stroke: '#1E1930',
+        stroke: PALETTE.ink,
         strokeThickness: 3,
       })
       .setOrigin(0.5, 0)

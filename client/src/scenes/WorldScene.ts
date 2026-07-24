@@ -4257,7 +4257,7 @@ export class WorldScene extends Phaser.Scene {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: PALETTE.neonAmber,
-      backgroundColor: '#1E1930CC',
+      backgroundColor: `${PALETTE.ink}CC`,
       padding: { x: 4, y: 2 },
     });
     label.setOrigin(0.5, 1);
@@ -4412,7 +4412,7 @@ export class WorldScene extends Phaser.Scene {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: UI_TEXT_WARM,
-      backgroundColor: '#1E1930CC',
+      backgroundColor: `${PALETTE.ink}CC`,
       padding: { x: 4, y: 2 },
     });
     shingle.setOrigin(0.5, 1);

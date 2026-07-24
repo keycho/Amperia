@@ -1,4 +1,4 @@
-# ART DIRECTION — "Cozy Salvage-Punk" *(LOCKED — Part I unchanged; Part II addendum added in v2)*
+# ART DIRECTION — "Cozy Salvage-Punk" *(v3 FINAL — THE GOLDEN DARK. Part III supersedes Part I §2 values; canonical key art: `docs/brand/key-art-banner.webp`)*
 
 *The look for the game. Warm, lived-in, neon-lit future night-market. Punk by attitude (DIY junk-tech, patched chrome, graffiti, string lights), cozy by mood. Built to be pleasant to look at and play every day, and to read cleanly in flat isometric. Name-agnostic — this holds whatever the game ends up being called.*
 
