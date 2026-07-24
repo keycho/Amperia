@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { hexToInt, mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { MATERIALS } from './materials';
 import { bakeVoxelModel, box, mbox, shade, type Voxel } from './voxel';
 
@@ -131,10 +131,12 @@ function planterModel(variant: number): Voxel[] {
 function stallModel(variant: number): Voxel[] {
   // Awnings run VIVID (addendum c): the market's color lives here, so the
   // stripes barely lean grey — the face ramp supplies the shading.
+  // v3 color budget: teal left the fabric — awnings are rose/amber/ochre
+  // (teal belongs to interactables, lenses, and water only).
   const stripeHot = [
     mixPalette('neonRose', 'structureMid', 0.1),
     mixPalette('neonAmber', 'structureMid', 0.08),
-    mixPalette('neonTeal', 'structureMid', 0.16),
+    blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.warmGlow, 0.3),
     mixPalette('neonRose', 'structureMid', 0.1),
   ][variant % 4] as number;
   const stripePale = mixPalette('warmGlow', 'groundAccent', 0.2);

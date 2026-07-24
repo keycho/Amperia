@@ -12,7 +12,7 @@ import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
 import { applyWorldPostFX } from '../render/postfx';
 import { playTramTransition } from '../ui/tramTransition';
-import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { blendInt, garlandTint, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
   CacheStateShape,
@@ -4581,13 +4581,14 @@ export class WorldScene extends Phaser.Scene {
 
     const g = this.add.graphics();
     g.setDepth(1e5);
-    // ~70% warm / 30% cool: amber, rose, amber, teal.
+    // v3 color budget: bulbs run muted warm-gold (garlandTint) — the string
+    // rhythm survives, but nothing on a wire competes with the Dynamo.
     const bulbTints = [
       PALETTE_INT.neonAmber,
       PALETTE_INT.neonRose,
       PALETTE_INT.neonAmber,
       PALETTE_INT.neonTeal,
-    ];
+    ].map(garlandTint);
     let bulbIdx = 0;
     for (const [a, b] of lines) {
       const sag = Math.min(60, Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y) * 0.12);
@@ -4677,7 +4678,13 @@ export class WorldScene extends Phaser.Scene {
     );
     g.lineStyle(1.5, mixPalette('ink', 'structureMid', 0.5), 0.85);
     curve.draw(g, 40);
-    const tints = [PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, PALETTE_INT.neonAmber, PALETTE_INT.neonRose];
+    // v3 color budget: same garland mute as every other string in the city.
+    const tints = [
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.warmGlow,
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.neonRose,
+    ].map(garlandTint);
     const bulbs = Math.max(6, Math.floor(curve.getLength() / 30));
     for (let i = 1; i < bulbs; i++) {
       const p = curve.getPoint(i / bulbs);

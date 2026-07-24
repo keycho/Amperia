@@ -1294,9 +1294,10 @@ function toolrackModel(): Voxel[] {
 
 /** FABRIC: a sloped market canopy on timber posts, stash huddled beneath. */
 function canopyModel(variant: number): Voxel[] {
+  // v3 color budget: teal left the fabric — canopy cloth runs rose/ochre/amber.
   const hot = [
     mixPalette('neonRose', 'structureMid', 0.12),
-    mixPalette('neonTeal', 'structureMid', 0.18),
+    blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.warmGlow, 0.3),
     mixPalette('neonAmber', 'structureMid', 0.1),
   ][variant % 3] as number;
   const pale = mixPalette('warmGlow', 'groundAccent', 0.25);
@@ -2110,7 +2111,8 @@ function treeplanterModel(): Voxel[] {
 
 /** A rooftop tarp shanty — somebody lives up here too. */
 function shantyModel(): Voxel[] {
-  const cloth = mixPalette('neonTeal', 'structureMid', 0.35);
+  // v3 color budget: tarp fabric off teal — weathered ochre canvas.
+  const cloth = blendInt(MATERIAL_INT.paintOchre, PALETTE_INT.structureMid, 0.35);
   const v: Voxel[] = [];
   v.push(...mbox(1, 1, 0, 6, 5, 4, MATERIALS.rust)); // crate wall
   v.push(...mbox(9, 2, 0, 4, 3, 2, MATERIALS.wood)); // the bedroll base

@@ -7,7 +7,7 @@
  * derived from the locked table.
  */
 export const PALETTE = {
-  /** Sky, deepest shadows — a warm plum, never pure black. */
+  /** Sky, deepest shadows — a warm near-black umber, never pure black. */
   duskSky: '#2A211A',
   /** Sprite outlines and fine linework only — not large fills. */
   ink: '#1A1512',
@@ -166,7 +166,8 @@ export function sat(color: number, k: number): number {
   return (adj((color >> 16) & 0xff) << 16) | (adj((color >> 8) & 0xff) << 8) | adj(color & 0xff);
 }
 
-/** Split-tone poles: shadows pull cool teal-blue, lit areas pull amber. */
+/** Split-tone poles (v3): shadows sink into warm umber dark, lit areas
+ *  pull amber — the whole curve lives on the gold axis now. */
 const SPLIT_SHADOW = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.ink, 0.82);
 const SPLIT_LIT = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, 0.45);
 
@@ -180,4 +181,14 @@ export function splitTone(color: number, strength = 0.14): number {
   const wShadow = Math.pow(1 - t, 2.2) * strength;
   const wLit = Math.pow(t, 1.9) * strength;
   return mixInt(mixInt(color, SPLIT_SHADOW, wShadow), SPLIT_LIT, wLit);
+}
+
+/**
+ * v3 color budget — garland bulbs: mute ~40% toward warm gold with a touch
+ * of desaturation. Strings festoon the streets; they must never compete
+ * with the Dynamo or read as a second neon system. One audit point for
+ * every bulb tint the scene hangs.
+ */
+export function garlandTint(color: number): number {
+  return blendInt(sat(color, -0.2), PALETTE_INT.warmGlow, 0.4);
 }
