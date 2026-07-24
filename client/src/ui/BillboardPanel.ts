@@ -92,8 +92,14 @@ export class BillboardPanel {
       if (m.marketCapUsd !== null) row('Market cap', fmtCompactUsd(m.marketCapUsd));
       if (m.burnedAmp !== null) row('Burned to date', `${fmtCount(m.burnedAmp)} $AMP`);
       const asOf = new Date(m.asOfMs).toISOString().slice(11, 16);
-      line(SPACE.md, y, `as of ${asOf} UTC — figures rest when the feed does`, PALETTE.groundAccent);
-      y += 22;
+      const honesty = line(
+        SPACE.md,
+        y,
+        `as of ${asOf} UTC — figures rest when the feed does`,
+        PALETTE.groundAccent,
+      );
+      honesty.setWordWrapWidth(W - SPACE.md * 2);
+      y += Math.ceil(honesty.height) + 6;
     } else if (m !== null && !m.configured) {
       row('The ticker', 'wakes at launch', PALETTE.warmGlow);
     } else {

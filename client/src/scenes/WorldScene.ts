@@ -189,6 +189,9 @@ export class WorldScene extends Phaser.Scene {
   private market: MarketSyncEvent | null = null;
   private boardSparks: number | null = null;
   private boardCharge: { tier: number; tierMax: number } | null = null;
+  /** Last Charge mirror — re-emitted when the Board opens, so a panel
+   *  constructed after the join-time sync still gets the tier. */
+  private lastCharge: ChargeStateShape | null = null;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
@@ -1043,18 +1046,24 @@ export class WorldScene extends Phaser.Scene {
 
     // The Citywide Charge: lighting density tracks the meter's tier, and
     // the UI scene shows the weekend-buff banner. The City Board reads the
-    // same mirror — one truth for the tier everywhere (T2).
-    const chargeState = (room.state as { charge?: ChargeStateShape }).charge;
-    if (chargeState !== undefined) {
+    // same mirror — one truth for the tier everywhere (T2). Bound via the
+    // root proxy's listen: the join promise can resolve BEFORE the first
+    // state decode, so a synchronous read here may see undefined and would
+    // silently skip the binding (the old latent bug).
+    (proxy(room.state) as unknown as {
+      listen(prop: 'charge', cb: (cs: ChargeStateShape) => void): void;
+    }).listen('charge', (chargeState) => {
+      if (chargeState === undefined) return;
       const apply = () => {
         this.applyChargeLighting(chargeState.tier);
         this.boardCharge = { tier: chargeState.tier, tierMax: 3 };
+        this.lastCharge = { ...chargeState };
         this.renderBoardFace();
         session.events.emit(SessionEvents.charge, { ...chargeState });
       };
       apply();
       (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
-    }
+    });
 
     // T1/T2: the City Board's market snapshot — cache for the face + panel.
     room.onMessage(MSG.marketSync, (e: MarketSyncEvent) => {
@@ -3605,7 +3614,15 @@ export class WorldScene extends Phaser.Scene {
             { x: p.x + 2, y: p.y + 1 },
             CONFIG.billboard.reachTiles,
             'Inspect',
-            () => session.events.emit(SessionEvents.openBoard),
+            () => {
+              if (this.lastCharge !== null) {
+                session.events.emit(SessionEvents.charge, { ...this.lastCharge });
+              }
+              if (this.market !== null) {
+                session.events.emit(SessionEvents.marketSync, this.market);
+              }
+              session.events.emit(SessionEvents.openBoard);
+            },
           );
           break;
         }

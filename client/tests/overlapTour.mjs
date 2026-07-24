@@ -242,7 +242,7 @@ async function runTour(viewport) {
       if (!window.__amperia.session.panelOpen) return null;
       const ui = window.__amperia.game.scene.getScene('ui');
       const names = [];
-      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','barPanel','inventoryPanel']) {
+      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','barPanel','billboardPanel','inventoryPanel']) {
         if (ui[k]?.visible === true) {
           names.push(k);
           ui[k].setVisible(false); // force-close so later states stay honest
@@ -330,6 +330,7 @@ async function runTour(viewport) {
   for (const [state, ev] of [
     ['merchant', 'openMerchant'],
     ['bar', 'openBar'],
+    ['board', 'openBoard'],
     ['bench', 'openBench'],
     ['quests', 'openQuests'],
     ['foundry', 'openFoundry'],
@@ -418,6 +419,12 @@ async function runTour(viewport) {
     await teardown('trade');
     await b.keyboard.press('Escape');
   }
+
+  // 10b — the City Board's world face (billboard T2): live dot-matrix rows
+  // + the marker label + a nameplate in the same frame.
+  await walkTo(pageA, 29, 37);
+  await capture('cityboard');
+  await teardown('cityboard');
 
   // 11 — the Ledgerhouse bank, LAST (deep walk; nothing runs after it).
   const bankTile = await pageA.evaluate(() => {
