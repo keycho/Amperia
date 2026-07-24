@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMPERIA — keep the city lit</title>
+<meta name="description" content="An isometric salvage-punk city. Connect your wallet and play. $AMP on Robinhood Chain — fixed supply, mint renounced.">
+<meta property="og:title" content="AMPERIA — keep the city lit">
+<meta property="og:description" content="The Great Dynamo turns. The city is open.">
+<meta property="og:image" content="img/plaza-sparks.webp">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{
+    --void:#0A0814; --ink:#141024; --line:#3A2F58;
+    --amber:#FFB84D; --amber-hi:#FFE9C4; --amber-lo:#E89A3C;
+    --purple:#9A8AB8; --purple2:#B9A8D6; --dim:#8E7FAE; --teal:#2FD3B8; --cyan:#5BC0FF;
+    --mono:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:var(--mono); color:var(--amber-hi); background:var(--void);
+    min-height:100vh; overflow:hidden; display:flex; flex-direction:column;
+    background-image:
+      radial-gradient(ellipse 800px 600px at 50% 46%, rgba(255,184,77,.07), transparent 65%),
+      radial-gradient(ellipse 1400px 1000px at 50% 50%, #141024, var(--void) 78%);
+  }
+  #embers{position:fixed; inset:0; z-index:1; pointer-events:none}
+
+  .topbar{position:relative; z-index:5; display:flex; align-items:center; gap:14px; padding:16px 24px}
+  .live{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--teal)}
+  .live .dot{width:6px;height:6px;border-radius:50%;background:var(--teal);
+    box-shadow:0 0 8px var(--teal); animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .counts{margin-left:auto; font-size:12px; color:var(--dim)}
+  .counts b{color:var(--amber-hi)}
+
+  .stage{position:relative; z-index:2; flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:0; padding:0 20px}
+  #dyn{image-rendering:pixelated; width:min(46vh,420px); height:auto;
+    filter:drop-shadow(0 30px 60px rgba(0,0,0,.55))}
+  .kicker{font-size:12px; letter-spacing:6px; color:var(--purple); text-transform:uppercase; margin-top:6px}
+  .wordmark{font-size:clamp(44px,8vw,84px); font-weight:700; letter-spacing:.1em; line-height:1;
+    margin-top:10px;
+    background:linear-gradient(180deg,var(--amber-hi) 15%,var(--amber) 85%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 30px rgba(255,184,77,.4)) drop-shadow(0 2px 8px rgba(255,184,77,.2))}
+  .tagline{font-style:italic; font-size:15px; color:var(--amber-hi); opacity:.85; margin-top:10px}
+  .ctas{display:flex; gap:12px; margin-top:26px; flex-wrap:wrap; justify-content:center}
+  .btn{font-family:var(--mono); font-weight:700; font-size:14px; letter-spacing:.5px;
+    padding:13px 26px; border-radius:11px; text-decoration:none; transition:.15s}
+  .btn-p{background:linear-gradient(180deg,var(--amber),var(--amber-lo)); color:#1A1426;
+    box-shadow:0 0 24px rgba(255,184,77,.35)}
+  .btn-p:hover{transform:translateY(-1px); box-shadow:0 0 38px rgba(255,184,77,.55)}
+  .btn-g{background:rgba(20,16,36,.7); color:var(--amber-hi); border:1px solid var(--line)}
+  .btn-g:hover{border-color:var(--amber); color:var(--amber)}
+
+  .foot{position:relative; z-index:5; text-align:center; padding:14px 20px 18px;
+    font-size:11.5px; color:var(--dim)}
+  .foot a{color:var(--purple2); text-decoration:none}
+  .foot a:hover{color:var(--amber)}
+  .foot .sep{margin:0 7px; opacity:.5}
+  .foot b{color:var(--amber-hi)}
+  .vtag{position:fixed; right:14px; bottom:12px; z-index:5; font-size:10.5px; color:var(--dim); opacity:.6}
+  @media(max-height:700px){ #dyn{width:min(38vh,320px)} .wordmark{margin-top:4px} }
+</style>
+</head>
+<body>
+
+<canvas id="embers"></canvas>
+
+<div class="topbar">
+  <div class="live"><span class="dot"></span> the city is open</div>
+  <div class="counts"><b id="st-today">—</b> in the city today · <b id="st-all">—</b> Sparks all time</div>
+</div>
+
+<div class="stage">
+  <canvas id="dyn" width="260" height="300"></canvas>
+  <div class="kicker">An isometric salvage-punk city</div>
+  <div class="wordmark">AMPERIA</div>
+  <div class="tagline">keep the city lit.</div>
+  <div class="ctas">
+    <a class="btn btn-p" href="https://amperia-ashy.vercel.app">connect wallet</a>
+    <a class="btn btn-g" href="https://amperia-ashy.vercel.app">spectate the city</a>
+  </div>
+</div>
+
+<div class="foot">
+  <a href="https://x.com/YOUR_HANDLE">x</a><span class="sep">·</span>
+  <a href="https://hood.fun">$amp</a><span class="sep">·</span>
+  <a href="docs.html">field guide</a><span class="sep">·</span>
+  <a href="https://amperia-ashy.vercel.app/ledger">city ledger</a><span class="sep">·</span>
+  <a href="about.html">about</a>
+  <span class="sep">—</span>
+  fixed supply · mint renounced · never a wage · holding <b>1,000 $AMP</b> becomes your key soon
+</div>
+<div class="vtag">v0.9 · doors-open</div>
+
+<script>
+/* ============ THE GREAT DYNAMO — live voxel turntable ============ */
+var cv = document.getElementById('dyn'), g = cv.getContext('2d');
+var CW = cv.width, CH = cv.height;
+
+/* voxel model: base slab, four corner piers, three coil rings, top beam ring, floating spark */
+var cubes = [];
+var B = 12;
+function add(x,y,z,c,e){ cubes.push({x:x,y:y,z:z,c:c,e:e||0}); }
+var GUN=[52,56,74], GUND=[38,41,56], BASE=[44,38,62], COIL=[255,196,105], HOT=[255,226,170], SPARK=[91,192,255];
+for (var x=-1;x<=B;x++) for (var y=-1;y<=B;y++) add(x,y,0,BASE);
+for (var x=0;x<B;x++) for (var y=0;y<B;y++) add(x,y,1,GUND);
+var piers=[];
+[[0,0],[B-2,0],[0,B-2],[B-2,B-2]].forEach(function(p){
+  for(var dx=0;dx<2;dx++)for(var dy=0;dy<2;dy++){piers.push((p[0]+dx)+','+(p[1]+dy));}
+});
+for (var z=2;z<15;z++) piers.forEach(function(k){var q=k.split(',');add(+q[0],+q[1],z,GUN);});
+var ringZ=[4,7,10];
+ringZ.forEach(function(zr){
+  for (var x=1;x<B-1;x++) for (var y=1;y<B-1;y++){
+    if (piers.indexOf(x+','+y)>=0) continue;
+    var edge = (x===1||x===B-2||y===1||y===B-2);
+    if (!edge) continue;                 /* hollow hoop, not a slab */
+    add(x,y,zr, COIL, 1);
+  }
+  /* hot inner corners for depth */
+  add(2,2,zr,HOT,2); add(B-3,2,zr,HOT,2); add(2,B-3,zr,HOT,2); add(B-3,B-3,zr,HOT,2);
+});
+for (var x=-1;x<=B;x++) for (var y=-1;y<=B;y++)
+  if (x<=0||x>=B-1||y<=0||y>=B-1) add(x,y,15,GUN);
+/* spark cubes added dynamically (bobs) */
+
+var cx = (B-1)/2 + 0.5;
+function render(t){
+  g.clearRect(0,0,CW,CH);
+  var th = t*0.00035;                      /* slow turn */
+  var c = Math.cos(th), s = Math.sin(th);
+  var S = 8.6;                              /* scale */
+  var ox = CW/2, oy = CH*0.74;
+  /* projected basis vectors */
+  function P(x,y,z){
+    var rx = (x-cx)*c - (y-cx)*s, ry = (x-cx)*s + (y-cx)*c;
+    return [ox + (rx-ry)*S*0.94, oy + (rx+ry)*S*0.47 - z*S*0.98];
+  }
+  /* charge pulse: climbs rings every ~5.5s */
+  var cyc = (t % 5500)/5500;
+  var hotRing = cyc<0.18?0 : cyc<0.36?1 : cyc<0.54?2 : -1;
+  var sparkFlare = (cyc>=0.54 && cyc<0.75) ? 1-(cyc-0.54)/0.21 : 0;
+
+  /* spark position (bob) */
+  var sz = 17 + Math.sin(t*0.002)*0.5;
+  var dyn = cubes.slice();
+  [[0,0],[1,0],[0,1],[1,1]].forEach(function(d){
+    dyn.push({x:cx-1+d[0]+0.0,y:cx-1+d[1],z:sz,c:SPARK,e:3});
+    dyn.push({x:cx-0.5,y:cx-0.5,z:sz+1,c:[205,235,255],e:3});
+  });
+
+  /* depth sort */
+  dyn.sort(function(a,b){
+    var ra=(a.x-cx)*c-(a.y-cx)*s+(a.x-cx)*s+(a.y-cx)*c+a.z*0.001;
+    var da=((a.x-cx)*c-(a.y-cx)*s)+((a.x-cx)*s+(a.y-cx)*c)+a.z*1.6;
+    var db=((b.x-cx)*c-(b.y-cx)*s)+((b.x-cx)*s+(b.y-cx)*c)+b.z*1.6;
+    return da-db;
+  });
+
+  var glow=[];
+  for (var i=0;i<dyn.length;i++){
+    var q=dyn[i], col=q.c, pulse=1;
+    if (q.e===1||q.e===2){
+      var ri = ringZ.indexOf(q.z);
+      pulse = 0.82+0.18*Math.sin(t*0.003+q.z);
+      if (ri===hotRing) pulse = 1.45;
+    }
+    if (q.e===3) pulse = 1+sparkFlare*0.8+0.15*Math.sin(t*0.004);
+    var p0=P(q.x,q.y,q.z+1),p1=P(q.x+1,q.y,q.z+1),p2=P(q.x+1,q.y+1,q.z+1),p3=P(q.x,q.y+1,q.z+1);
+    var p4=P(q.x+1,q.y,q.z),p5=P(q.x+1,q.y+1,q.z),p6=P(q.x,q.y+1,q.z),p7=P(q.x,q.y,q.z);
+    function quad(a,b,cc,d,f){
+      /* backface: signed area */
+      var ar=(b[0]-a[0])*(cc[1]-a[1])-(cc[0]-a[0])*(b[1]-a[1]);
+      if (ar<=0) return;
+      g.fillStyle='rgb('+Math.min(255,col[0]*f*pulse|0)+','+Math.min(255,col[1]*f*pulse|0)+','+Math.min(255,col[2]*f*pulse|0)+')';
+      g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.lineTo(cc[0],cc[1]);g.lineTo(d[0],d[1]);g.closePath();g.fill();
+    }
+    quad(p0,p1,p2,p3, q.e?1.14:1.34);            /* top */
+    quad(p1,p4,p5,p2, q.e?0.96:(0.5+0.3*Math.abs(Math.sin(th))));    /* +x side */
+    quad(p3,p2,p5,p6, q.e?0.96:(0.5+0.3*Math.abs(Math.cos(th))));    /* +y side */
+    quad(p7,p0,p3,p6, q.e?0.9:(0.44+0.26*Math.abs(Math.cos(th))));   /* -x side */
+    quad(p4,p1,p0,p7, q.e?0.9:(0.44+0.26*Math.abs(Math.sin(th))));   /* -y side */
+    /* crisp top edge highlight */
+    (function(){
+      var ar=(p1[0]-p0[0])*(p2[1]-p0[1])-(p2[0]-p0[0])*(p1[1]-p0[1]);
+      if (ar>0 && (q.z+1===2||q.z===0||q.e||q.z===14||q.z===15)){
+        g.strokeStyle='rgba(255,255,255,'+(q.e?0.35:0.14)+')'; g.lineWidth=1;
+        g.beginPath(); g.moveTo(p0[0],p0[1]); g.lineTo(p1[0],p1[1]); g.stroke();
+      }
+    })();
+    if (q.e){ var pc=P(q.x+0.5,q.y+0.5,q.z+0.5); glow.push([pc[0],pc[1],q.e,pulse]); }
+  }
+  /* glow pass */
+  g.globalCompositeOperation='lighter';
+  for (var i=0;i<glow.length;i++){
+    var G=glow[i], r=G[2]===3?26:10, a=G[2]===3?0.10:0.028;
+    var col=G[2]===3?'91,192,255':'255,196,105';
+    var rg=g.createRadialGradient(G[0],G[1],0,G[0],G[1],r*G[3]);
+    rg.addColorStop(0,'rgba('+col+','+(a*G[3])+')'); rg.addColorStop(1,'rgba('+col+',0)');
+    g.fillStyle=rg; g.fillRect(G[0]-r*2,G[1]-r*2,r*4,r*4);
+  }
+  g.globalCompositeOperation='source-over';
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+/* ============ embers ============ */
+(function(){
+  var c=document.getElementById('embers'), x=c.getContext('2d'), W,H,P;
+  function size(){W=c.width=innerWidth;H=c.height=innerHeight;seed();}
+  function seed(){P=[];for(var i=0;i<30;i++)P.push({x:Math.random()*W,y:Math.random()*H,
+    r:1+Math.random()*2,s:.1+Math.random()*.35,a:.08+Math.random()*.4,t:Math.random()*6.28});}
+  function tick(){x.clearRect(0,0,W,H);
+    for(var i=0;i<P.length;i++){var p=P[i];p.y-=p.s;p.t+=.015;p.x+=Math.sin(p.t)*.2;
+      if(p.y<-5){p.y=H+5;p.x=Math.random()*W;}
+      x.fillStyle='rgba(255,184,77,'+(p.a*(.6+.4*Math.sin(p.t)))+')';
+      x.shadowBlur=6;x.shadowColor='rgba(255,184,77,.7)';
+      x.fillRect(p.x,p.y,p.r*2,p.r*2);}
+    requestAnimationFrame(tick);}
+  size();addEventListener('resize',size);tick();
+})();
+
+/* live counts */
+fetch('https://amperia-production.up.railway.app/api/public-stats')
+  .then(function(r){return r.json()}).then(function(d){
+    var t=document.getElementById('st-today'), a=document.getElementById('st-all');
+    var today=d.activeToday!=null?d.activeToday:d.active_today;
+    var all=d.sparksRegistered!=null?d.sparksRegistered:d.accounts;
+    if(today!=null)t.textContent=today;
+    if(all!=null)a.textContent=all;
+  }).catch(function(){});
+</script>
+</body>
+</html>
