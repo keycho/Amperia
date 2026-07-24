@@ -45,7 +45,7 @@ Production notes, called out for review:
 - **Vessa:** Fat ones. Good. The pot forgives a lot but it doesn't forgive stingy. Right — the stool.
 - **Vessa:** This bar was my aunt's pitch during the Dark. No power for the taps, so she poured what poured cold, and on the worst nights she poured what she called the dark rounds — free, no questions, chalk mark on the wall behind. Fourteen months of chalk. Nobody ever came back to square a mark, because she never once looked at the wall while she made it.
 - **Vessa:** The end stool was for the Conductor. Every night that tram ran past our lamps, out into all that black, and every night my aunt set a cup at the end stool for when the loop came home. Never once got sat on. The loop always ran late and the Conductor always waved through the window and rang on. Fourteen months, one full cup a night.
-- **Vessa:** When it ended, my aunt kept setting the cup. Habit, she said. Same as Sable's wicks. This city runs on habits it refuses to explain. Here — you've earned a real answer and I've given you a stool. Take the chalk too. It's down to a stub, same as everything that mattered back then.
+- **Vessa:** When it ended, my aunt kept setting the cup. Habit, she said. Same as Sable's wicks. This city runs on habits it refuses to explain. Here — you came for a story and you got a true one, and I've given you a stool. Take the chalk too. It's down to a stub, same as everything that mattered back then.
 
 **Keepsake:** `barChalk` — *A STUB OF BAR CHALK — fourteen months of marks nobody collected.*
 
