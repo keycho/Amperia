@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG, type NodeKind } from './config';
-import { buildStacksMap, buildTangleMap, buildTerrariumMap, buildWorldMap, reachableTiles } from './map';
+import { buildStacksMap, buildTangleMap, buildTerrariumMap, buildWorldMap, reachableTiles , buildUnderworksMap } from './map';
 
 describe('buildTerrariumMap', () => {
   const t = buildTerrariumMap();
@@ -351,5 +351,46 @@ describe('buildWorldMap', () => {
     let walkableCount = 0;
     for (const row of map.walkable) for (const w of row) if (w) walkableCount++;
     expect(reached.size).toBe(walkableCount);
+  });
+});
+
+describe('buildUnderworksMap', () => {
+  const u = buildUnderworksMap();
+
+  it('is deterministic and marked as the underworks', () => {
+    expect(buildUnderworksMap().props).toEqual(u.props);
+    expect(u.district).toBe('underworks');
+  });
+
+  it('every walkable tile is reachable from the lift landing (no-stranding)', () => {
+    const spawn = CONFIG.travel.underworksSpawn;
+    expect(u.walkable[spawn.y]?.[spawn.x]).toBe(true);
+    const reached = reachableTiles(u, spawn.x, spawn.y);
+    let walkableCount = 0;
+    for (const row of u.walkable) for (const w of row) if (w) walkableCount++;
+    expect(reached.size).toBe(walkableCount);
+  });
+
+  it('holds the lift, the Old Works, chasms, and the densest amperite', () => {
+    expect(u.props.filter((p) => p.kind === 'liftgate').length).toBe(1);
+    expect(u.props.filter((p) => p.kind === 'oldworks').length).toBe(1);
+    let chasm = 0;
+    for (const row of u.canal) for (const c of row) if (c) chasm++;
+    expect(chasm).toBeGreaterThan(40);
+    expect(u.nodes.filter((n) => n.kind === 'amperite').length).toBe(
+      CONFIG.underworks.amperiteNodes,
+    );
+    // Catwalk deck tiles stay walkable over the drops.
+    for (const f of u.footbridges) expect(u.walkable[f.y]?.[f.x]).toBe(true);
+  });
+
+  it('every prop footprint is non-walkable', () => {
+    for (const p of u.props) {
+      for (let dy = 0; dy < p.h; dy++) {
+        for (let dx = 0; dx < p.w; dx++) {
+          expect(u.walkable[p.y + dy]?.[p.x + dx]).toBe(false);
+        }
+      }
+    }
   });
 });

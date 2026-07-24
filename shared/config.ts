@@ -489,7 +489,7 @@ export const CONFIG = {
    */
   travel: {
     /** The tram line, in stop order (D3) — tolls are charged PER HOP. */
-    line: ['filament', 'stacks', 'terrarium', 'tangle'],
+    line: ['underworks', 'filament', 'stacks', 'terrarium', 'tangle'],
     /** Bolts per hop along the line (recurring sink). */
     tollBolts: 5,
     /**
@@ -509,6 +509,8 @@ export const CONFIG = {
     stacksSpawn: { x: 4, y: 29 },
     /** Terrarium gate + arrival tile (districts block D2). */
     terrariumSpawn: { x: 4, y: 20 },
+    /** U4: the freight-lift landing in the Underworks. */
+    underworksSpawn: { x: 4, y: 20 },
   },
 
   /**
@@ -595,6 +597,26 @@ export const CONFIG = {
     /** The Roofline: the +3 walkable rooftop terrace (W0: grown with the
      *  60×60 quarter — 11×8 over the fused towers east of the north street). */
     roofline: { x0: 25, y0: 8, x1: 35, y1: 15, level: 3 },
+  },
+  /** U-block — THE UNDERWORKS: the dark district, bring your own light. */
+  underworks: {
+    /** U4 node counts (the densest Amperite in the game). */
+    amperiteNodes: 10,
+    brassNodes: 4,
+    junkNodes: 3,
+    /** U3: vein richness over surface rates (server-side yield mult). */
+    nodeMult: { amperite: 2.2, brassSeam: 1.8, junkHeap: 1.2 },
+    /** U1 — the Wicklamp. All numbers live here, never in logic. */
+    lamp: {
+      /** Lit radius (chebyshev tiles): full warm grade inside. */
+      radiusTiles: 4.5,
+      /** One Cellwax burns this long. */
+      burnSecondsPerCellwax: 90,
+      /** Out of fuel: the radius shrinks to the ember over this long... */
+      emberSeconds: 30,
+      /** ...and holds at this dim radius — never zero, never stranded. */
+      emberRadiusTiles: 1.5,
+    },
   },
   tangle: {
     /** Node-count multipliers over the Filament config counts. */

@@ -242,6 +242,21 @@ class SoundEngine {
     let level = 0.05;
     let flourish: (() => void) | null = null;
     switch (district) {
+      case 'underworks': {
+        // The deep dark: a low sub-hum through a narrow band, slow swell,
+        // and the drip-echo of water finding its way down.
+        filter.type = 'lowpass';
+        filter.frequency.value = 220;
+        filter.Q.value = 0.8;
+        lfo.frequency.value = 0.05;
+        lfoGain.gain.value = 60;
+        level = 0.085;
+        flourish = () => {
+          if (Math.random() < 0.55) this.blip('sine', 1200 + Math.random() * 600, 90, 0.35, 0.012);
+          if (Math.random() < 0.15) this.blip('triangle', 70 + Math.random() * 20, 900, 0.8, 0.02);
+        };
+        break;
+      }
       case 'stacks': {
         // Rooftop wind + the occasional far-off metal creak.
         filter.type = 'bandpass';

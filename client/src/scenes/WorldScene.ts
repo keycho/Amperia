@@ -1170,6 +1170,7 @@ export class WorldScene extends Phaser.Scene {
         tangle: 'The tram rattles out into the Tangle…',
         stacks: 'Up-line to the Stacks — windows all the way up.',
         terrarium: 'The Terrarium stop — you can smell the green from here.',
+        underworks: 'Down the shaft — lamps lit, voices low.',
       };
       session.events.emit(SessionEvents.notice, lines[to]);
       // U5b: the tram beat — vignette + name card riding over the rebuild.
@@ -3911,6 +3912,34 @@ export class WorldScene extends Phaser.Scene {
           sign.setAlpha(bloom(0.55));
           sign.setDepth(depthForWorldY(y) + 1);
           addFlicker(this, sign, bloom(0.55), 0.1);
+          break;
+        }
+        case 'oldworks': {
+          const img = this.propSprite('oldworks', x, y);
+          hoverTip(img, () => ({
+            title: 'The Old Works',
+            sub: 'the hall that went dark',
+            lines: ['The boilers that ran the city before the Dynamo.', 'Cold since the Works Failure.'],
+          }));
+          break;
+        }
+        case 'liftgate': {
+          const img = this.propSprite('liftgate', x, y);
+          hoverTip(img, () => ({
+            title: 'Freight Lift',
+            sub: 'the way up and the way down',
+            lines: ['The shaft runs to the surface. Click for the stop board.'],
+          }));
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            4,
+            'Lift',
+            () => {
+              this.toggleTramBoard(img.x, img.y - 80);
+            },
+          );
           break;
         }
         case 'tramgate': {

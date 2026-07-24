@@ -67,6 +67,8 @@ const CITIZENS: Record<DistrictId, AmbientNpcDef[]> = {
     { code: '1:3:5:0:2:2', tile: [29, 20], dir: 'nw', turns: ['nw', 'ne'] }, // trellis keeper
     { code: '1:0:1:5:0:1', tile: [9, 19], dir: 'se', turns: ['se', 'sw'] }, // promenade stroller
   ],
+  // U4: nobody keeps a pitch in the dark. The Liftkeeper arrives with ch6.
+  underworks: [],
 };
 
 /** Bake + place the district's citizens. Call once from world setup. */

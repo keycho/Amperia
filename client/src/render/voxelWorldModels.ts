@@ -2485,6 +2485,67 @@ function rimlipModel(alongY: boolean): Voxel[] {
   return v;
 }
 
+/** U4 — the freight lift: winch tower + open cage. The way in and out. */
+function liftgateModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Landing plate.
+  v.push(...mbox(0, 0, 0, 16, 10, 1, MATERIALS.concreteDeep));
+  // The cage: an open gunmetal box on the plate, door face south.
+  v.push(...mbox(2, 2, 1, 8, 6, 1, MATERIALS.gunmetal)); // cage floor
+  for (const z of [2, 4, 6, 8]) {
+    v.push(...mbox(2, 2, z, 1, 6, 1, MATERIALS.gunmetalDeep)); // west bars
+    v.push(...mbox(9, 2, z, 1, 6, 1, MATERIALS.gunmetalDeep)); // east bars
+    v.push(...mbox(3, 7, z, 6, 1, 1, MATERIALS.gunmetalDeep)); // north bars
+  }
+  v.push(...mbox(2, 2, 9, 8, 6, 1, MATERIALS.gunmetal)); // cage roof
+  // Winch tower beside the cage: tall frame + drum + counterweight.
+  v.push(...mbox(12, 3, 0, 3, 3, 22, MATERIALS.gunmetalDeep));
+  v.push(...mbox(11, 4, 22, 5, 2, 2, MATERIALS.rustDeep)); // winch drum
+  v.push(...mbox(13, 8, 6, 1, 1, 10, MATERIALS.gunmetalDeep)); // counterweight rail
+  v.push(...mbox(12, 8, 10, 2, 1, 3, MATERIALS.rust)); // the weight
+  // Cable from drum to cage roof.
+  for (let z = 10; z <= 21; z++) v.push({ x: 6, y: 5, z, c: MATERIALS.gunmetalDeep.base });
+  // The landing work-lamp: ONE warm light — the arrival beacon.
+  v.push(...mbox(0, 8, 0, 1, 1, 7, MATERIALS.gunmetalDeep));
+  v.push({ x: 0, y: 8, z: 7, c: PALETTE_INT.warmGlow });
+  return v;
+}
+
+/** U4 — the Old Works: the dead boiler hall (canon B7a). Story-significant;
+ *  ch6 reads its chalkboard. Cold materials only — nothing in it glows. */
+function oldworksModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Cracked casing walls: a roofless shell, breach on the south face.
+  for (const vox of mbox(0, 0, 0, 36, 24, 10, MATERIALS.concreteDeep)) {
+    const inner = vox.x > 1 && vox.x < 34 && vox.y > 1 && vox.y < 22;
+    if (inner && vox.z > 0) continue; // hollow
+    const breach = vox.y > 16 && vox.x > 20 && vox.x < 30 && vox.z > 2; // collapsed corner
+    if (breach) continue;
+    const ragged = vox.z > 6 && (vox.x * 5 + vox.y * 3 + vox.z) % 7 < 2; // broken top course
+    if (ragged) continue;
+    v.push(vox);
+  }
+  // Twin boiler drums, fallen silent: stepped horizontal cylinders.
+  for (const [dy0, len] of [
+    [4, 26],
+    [13, 22],
+  ] as const) {
+    for (let dx = 4; dx < 4 + len; dx++) {
+      v.push(...mbox(dx, dy0, 1, 1, 6, 1, MATERIALS.rustDeep));
+      v.push(...mbox(dx, dy0 + 1, 2, 1, 4, 2, MATERIALS.gunmetalDeep));
+      v.push(...mbox(dx, dy0 + 2, 4, 1, 2, 1, MATERIALS.rustDeep));
+    }
+  }
+  // The cold chimney stub off the north-east corner.
+  v.push(...mbox(30, 2, 10, 4, 4, 6, MATERIALS.concreteDeep));
+  // Fallen roof beams across the drums.
+  v.push(...mbox(6, 8, 5, 1, 12, 1, MATERIALS.woodDeep));
+  v.push(...mbox(18, 3, 5, 1, 14, 1, MATERIALS.woodDeep));
+  // The chalkboard wall (ch6 reads it up close; baked as a dark slab).
+  v.push(...mbox(2, 2, 1, 6, 1, 5, MATERIALS.gunmetalDeep));
+  return v;
+}
+
 /** Bake the world-conversion set (call from BootScene after the core set). */
 export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
   // V1 repetition breaking: the common props each bake a pool of looks;
@@ -2516,6 +2577,8 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     bakeVoxelModel(scene, { name: `stack-${h}sb`, voxels: stackModel(h, true, true) });
   }
   bakeVoxelModel(scene, { name: 'cranehulk', voxels: craneHulkModel() });
+  bakeVoxelModel(scene, { name: 'liftgate', voxels: liftgateModel() });
+  bakeVoxelModel(scene, { name: 'oldworks', voxels: oldworksModel() });
   bakeVoxelModel(scene, { name: 'pylon', voxels: pylonModel() });
   bakeVoxelModel(scene, { name: 'drums-0', voxels: drumsModel(0) });
   bakeVoxelModel(scene, { name: 'drums-1', voxels: drumsModel(1) });

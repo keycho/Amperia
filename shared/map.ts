@@ -10,6 +10,8 @@ import { makeRng, randInt, type Rng } from './rng';
  */
 
 export type PropKind =
+  | 'liftgate'
+  | 'oldworks'
   | 'dynamo'
   | 'merchant'
   | 'tinkerbench'
@@ -109,7 +111,7 @@ export interface GatherNode {
   y: number;
 }
 
-export type DistrictId = 'filament' | 'tangle' | 'stacks' | 'terrarium';
+export type DistrictId = 'filament' | 'tangle' | 'stacks' | 'terrarium' | 'underworks';
 
 /** Display names — used by tram boards, notices, and the world map. */
 export const DISTRICT_NAMES: Record<DistrictId, string> = {
@@ -117,6 +119,7 @@ export const DISTRICT_NAMES: Record<DistrictId, string> = {
   tangle: 'The Tangle',
   stacks: 'The Stacks',
   terrarium: 'The Terrarium',
+  underworks: 'The Underworks',
 };
 
 export interface WorldMap {
@@ -1381,10 +1384,183 @@ export function buildTerrariumMap(seed: number = CONFIG.map.seed ^ 0x7e88): Worl
   return { district: 'terrarium', size, walkable, canal, roads: [], props, nodes, plaza, shopStalls: [], elevation, ramp, catwalks, bankInterior: [], barInterior: [], barSpots: [], footbridges: [], loftberths };
 }
 
+/**
+ * U4 — THE UNDERWORKS: the dark district, bring your own light. The ruins
+ * of the Old Works (canon B7a) under the north deck: collapsed machine
+ * halls, catwalks over black chasms, and the dead boiler hall itself.
+ * Smaller and denser than the surface — darkness makes small feel big.
+ * `canal` here means CHASM: a black drop, rendered as void, never water.
+ */
+export function buildUnderworksMap(seed: number = CONFIG.map.seed ^ 0x0dda): WorldMap {
+  const size = CONFIG.map.size;
+  const rng: Rng = makeRng(seed);
+  const walkable: boolean[][] = Array.from({ length: size }, () => Array(size).fill(true));
+  const canal: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const props: Prop[] = [];
+  const nodes: GatherNode[] = [];
+  // No plaza ring underground; radius -1 disables heal-zone logic.
+  const plaza = { cx: 4, cy: 20, radius: -1 };
+  const elevation: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const ramp: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const footbridges: TilePoint[] = [];
+
+  const place = (kind: PropKind, x: number, y: number, w = 1, h = 1, variant = 0) => {
+    const p: Prop = { kind, x, y, w, h, variant };
+    props.push(p);
+    blockFootprint(walkable, p);
+  };
+
+  // The freight lift on the west edge — the only way in or out. Arrivals
+  // step off at the guide-glow landing (underworksSpawn beside it).
+  place('liftgate', 1, 18, 2, 5);
+
+  // ── the chasms: black drops the deck fell into ─────────────────────────
+  const chasm = (x0: number, y0: number, w: number, h: number) => {
+    for (let ty = y0; ty < y0 + h; ty++) {
+      for (let tx = x0; tx < x0 + w; tx++) {
+        if (tx < 1 || ty < 1 || tx >= size - 1 || ty >= size - 1) continue;
+        // Ragged rim: deterministic nibble so the edge reads collapsed.
+        const rim = tx === x0 || ty === y0 || tx === x0 + w - 1 || ty === y0 + h - 1;
+        if (rim && (tx * 7 + ty * 13) % 4 === 0) continue;
+        (canal[ty] as boolean[])[tx] = true;
+        (walkable[ty] as boolean[])[tx] = false;
+      }
+    }
+  };
+  chasm(26, 6, 11, 12); // the east drop
+  chasm(6, 28, 15, 8); // the south drop
+
+  // Catwalks across the drops: 1-wide decked lanes, railed by the client.
+  const catwalkRun = (x0: number, y0: number, dx: number, dy: number, len: number) => {
+    for (let i = 0; i < len; i++) {
+      const x = x0 + dx * i;
+      const y = y0 + dy * i;
+      if (x < 1 || y < 1 || x >= size - 1 || y >= size - 1) continue;
+      (canal[y] as boolean[])[x] = false;
+      (walkable[y] as boolean[])[x] = true;
+      footbridges.push({ x, y });
+    }
+  };
+  catwalkRun(31, 5, 0, 1, 14); // north-south over the east drop
+  catwalkRun(25, 12, 1, 0, 13); // east-west over the east drop
+  catwalkRun(5, 31, 1, 0, 17); // across the south drop
+
+  // ── the Old Works hall (story landmark; ch6 reads its chalkboard) ──────
+  place('oldworks', 13, 3, 9, 6);
+  // The fallen smokestack: a run of drum sections west of the hall.
+  for (const [bx, by] of [
+    [9, 10],
+    [10, 11],
+    [12, 12],
+  ] as const) {
+    if (isAreaFree(walkable, bx, by, 2, 1)) place('block', bx, by, 2, 1, 3);
+  }
+
+  // ── collapsed halls: container/masonry wall runs carve the maze ────────
+  const onRamp = (_x: number, _y: number): boolean => false;
+  void onRamp;
+  const wallRun = (x0: number, y0: number, dx: number, dy: number, len: number, gapEvery: number) => {
+    for (let i = 0; i < len; i++) {
+      if (i % gapEvery === gapEvery - 1) continue;
+      const x = x0 + dx * i;
+      const y = y0 + dy * i;
+      if (walkable[y]?.[x] !== true) continue;
+      const h = 2 + ((i * 5 + x + y) % 2);
+      place('stack', x, y, 1, 1, h);
+    }
+  };
+  // Perimeter fragments — the ruin walls itself off from the far dark.
+  wallRun(2, 2, 1, 0, 10, 5);
+  wallRun(24, 1, 1, 0, 14, 6);
+  wallRun(1, 24, 0, 1, 12, 5); // west lower (lift approach stays open above)
+  wallRun(38, 20, 0, 1, 17, 6);
+  wallRun(23, 37, 1, 0, 14, 5);
+  // Interior corridor walls — tight, maze-ier than any surface district.
+  wallRun(6, 6, 0, 1, 9, 4);
+  wallRun(7, 15, 1, 0, 12, 5);
+  wallRun(22, 16, 0, 1, 9, 4);
+  wallRun(12, 22, 1, 0, 10, 4);
+  wallRun(4, 33, 1, 0, 1, 9);
+  wallRun(24, 27, 1, 0, 12, 6);
+  wallRun(30, 30, 0, 1, 6, 4);
+
+  // ── dead machines rust where the halls collapsed ───────────────────────
+  for (const [mx, my, v] of [
+    [5, 11, 0],
+    [17, 18, 1],
+    [34, 25, 2],
+    [10, 25, 0],
+    [28, 34, 1],
+  ] as const) {
+    if (isAreaFree(walkable, mx, my, 2, 2)) place('deadmachine', mx, my, 2, 2, v);
+  }
+  for (const [wx, wy] of [
+    [23, 8],
+    [3, 29],
+  ] as const) {
+    if (isAreaFree(walkable, wx, wy, 2, 2)) place('watertank', wx, wy, 2, 2, 1);
+  }
+
+  // ── the veins: the densest Amperite in the game (U3 rates in config) ───
+  const g = CONFIG.gathering;
+  const wholeMap = { x0: 2, y0: 2, x1: size - 3, y1: size - 3 };
+  scatterNodes(rng, walkable, nodes, 'amperite', CONFIG.underworks.amperiteNodes, g.amperite.minNodeSpacing, wholeMap);
+  scatterNodes(rng, walkable, nodes, 'brassSeam', CONFIG.underworks.brassNodes, g.brassSeam.minNodeSpacing, wholeMap);
+  scatterNodes(rng, walkable, nodes, 'junkHeap', CONFIG.underworks.junkNodes, g.junkHeap.minNodeSpacing, wholeMap);
+
+  // ── rubble clutter, hugging the walls (rust family only, never confetti)
+  const clutterTarget = Math.floor(size * size * 0.02);
+  let placed = 0;
+  let attempts = 0;
+  while (placed < clutterTarget && attempts < clutterTarget * 80) {
+    attempts++;
+    const x = randInt(rng, 2, size - 3);
+    const y = randInt(rng, 2, size - 3);
+    if (Math.abs(y - 20) <= 1 && x <= 7) continue; // lift approach stays open
+    const nearWall =
+      walkable[y - 1]?.[x] === false ||
+      walkable[y + 1]?.[x] === false ||
+      walkable[y]?.[x - 1] === false ||
+      walkable[y]?.[x + 1] === false;
+    if (!nearWall && rng() < 0.8) continue;
+    if (!isAreaFree(walkable, x, y, 1, 1)) continue;
+    if (wouldSealPocket(walkable, x, y, size)) continue;
+    const roll = rng();
+    if (roll < 0.4) place('crate', x, y, 1, 1, randInt(rng, 0, 1));
+    else if (roll < 0.6) place('block', x, y, 1, 1, 3);
+    else place('block', x, y, 1, 1, 4 + randInt(rng, 0, 2));
+    placed++;
+  }
+
+  // One pose pool at the lift landing — even down here, an entrance moment.
+  const catwalks: TilePoint[] = [{ x: 4, y: 20 }];
+
+  return {
+    district: 'underworks',
+    size,
+    walkable,
+    canal,
+    roads: [],
+    props,
+    nodes,
+    plaza,
+    shopStalls: [],
+    elevation,
+    ramp,
+    catwalks,
+    bankInterior: [],
+    barInterior: [],
+    barSpots: [],
+    footbridges,
+    loftberths: [],
+  };
+}
+
 export function buildDistrictMap(district: DistrictId): WorldMap {
   if (district === 'tangle') return buildTangleMap();
   if (district === 'stacks') return buildStacksMap();
   if (district === 'terrarium') return buildTerrariumMap();
+  if (district === 'underworks') return buildUnderworksMap();
   return buildWorldMap();
 }
 

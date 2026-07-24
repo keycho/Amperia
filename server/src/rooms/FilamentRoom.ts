@@ -555,8 +555,15 @@ export class FilamentRoom extends Room<FilamentState> {
     let bolts = character.bolts;
     if (character.district !== this.districtId) {
       const hops = Math.max(1, tramHops(character.district as DistrictId, this.districtId));
-      const toll = tramToll(character.district as DistrictId, this.districtId);
+      // U4: the first descent rides free — the lift's welcome (persisted
+      // on the story log, same bag as rodeTram).
+      const firstDescent =
+        this.districtId === 'underworks' && character.story.descended !== true;
+      const toll = firstDescent
+        ? 0
+        : tramToll(character.district as DistrictId, this.districtId);
       if (bolts < toll) throw new Error(`The tram toll is ${toll} Bolts.`);
+      if (this.districtId === 'underworks') character.story.descended = true;
       bolts -= toll;
       // PP6 (amended): a free leg (Filament ↔ Stacks) charges nothing → no sink log.
       if (toll > 0) {
@@ -3710,11 +3717,16 @@ export class FilamentRoom extends Room<FilamentState> {
     // Hop count doubles as validation: 0 = same stop or not on the line.
     const hops = tramHops(this.districtId, msg.to);
     if (hops === 0) return;
-    if (!this.nearProp(rt, 'tramgate', CONFIG.travel.gateRadiusTiles)) {
+    if (
+      !this.nearProp(rt, 'tramgate', CONFIG.travel.gateRadiusTiles) &&
+      !this.nearProp(rt, 'liftgate', CONFIG.travel.gateRadiusTiles)
+    ) {
       client.send(MSG.notice, { text: 'The tram leaves from the gate.' });
       return;
     }
-    const toll = tramToll(this.districtId, msg.to);
+    // U4: the first descent rides free (persisted with the story log).
+    const firstDescent = msg.to === 'underworks' && rt.story.descended !== true;
+    const toll = firstDescent ? 0 : tramToll(this.districtId, msg.to);
     if (rt.bolts < toll) {
       client.send(MSG.notice, { text: `The tram toll is ${toll} Bolts.` });
       return;
@@ -3857,6 +3869,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (district === 'tangle') return CONFIG.travel.tangleSpawn;
     if (district === 'stacks') return CONFIG.travel.stacksSpawn;
     if (district === 'terrarium') return CONFIG.travel.terrariumSpawn;
+    if (district === 'underworks') return CONFIG.travel.underworksSpawn;
     return fallback;
   }
 
@@ -4090,8 +4103,10 @@ export class FilamentRoom extends Room<FilamentState> {
     // The Terrarium is where people rest — no ferals in the gardens (D2).
     // The Stacks carries only Sparkwisps: an ambient hazard, not a hunt.
     if (this.districtId === 'terrarium') return;
+    // U3: the Underworks carries Sparkwisps too — the one thing visible
+    // OUTSIDE a lamp's radius, drifting in the black.
     const packs: Array<{ kind: MobKind; count: number; box: { x0: number; y0: number; x1: number; y1: number } }> =
-      this.districtId === 'stacks'
+      this.districtId === 'stacks' || this.districtId === 'underworks'
         ? [
             {
               kind: 'sparkwisp',

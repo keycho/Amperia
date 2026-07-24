@@ -51,6 +51,7 @@ function parseStory(raw: unknown): StoryLog {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return log;
   const rec = raw as Record<string, unknown>;
   if (rec['rodeTram'] === true) log.rodeTram = true;
+  if (rec['descended'] === true) log.descended = true;
   const ch = rec['chapters'];
   if (typeof ch === 'object' && ch !== null && !Array.isArray(ch)) {
     for (const [id, st] of Object.entries(ch as Record<string, unknown>)) {

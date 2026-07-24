@@ -21,6 +21,7 @@ import { prisma } from './services/db.js';
 import { FilamentRoom } from './rooms/FilamentRoom.js';
 import { StacksRoom } from './rooms/StacksRoom.js';
 import { TerrariumRoom } from './rooms/TerrariumRoom.js';
+import { UnderworksRoom } from './rooms/UnderworksRoom.js';
 import { TangleRoom } from './rooms/TangleRoom.js';
 
 const PORT = Number(process.env.PORT ?? 2567);
@@ -286,6 +287,7 @@ gameServer.define('filament', FilamentRoom);
 gameServer.define('tangle', TangleRoom);
 gameServer.define('stacks', StacksRoom);
 gameServer.define('terrarium', TerrariumRoom);
+gameServer.define('underworks', UnderworksRoom);
 
 // Railway (and most PaaS) assign PORT and route to all interfaces; binding
 // 0.0.0.0 explicitly keeps this from ever resolving to loopback-only.

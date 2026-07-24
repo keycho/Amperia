@@ -75,6 +75,9 @@ export interface StoryLog {
   chapters: Record<string, ChapterState>;
   /** Set the first time the Spark rides any tram (ch2's unlock). */
   rodeTram?: boolean;
+  /** Set the first time the Spark descends to the Underworks (U4:
+   *  the first descent rides free — the established free-leg spirit). */
+  descended?: boolean;
 }
 
 export const emptyStoryLog = (): StoryLog => ({ chapters: {} });
@@ -311,6 +314,7 @@ export type StoryEvent =
  */
 export function advanceStory(log: StoryLog, event: StoryEvent): boolean {
   if (event.type === 'travel') log.rodeTram = true;
+  if (event.type === 'travel' && event.to === 'underworks') log.descended = true;
   let advanced = false;
   for (const def of STORY_CHAPTERS) {
     const st = log.chapters[def.id];
