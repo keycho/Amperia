@@ -32,6 +32,22 @@ const BANNED: readonly RegExp[] = [
 const ALLOWANCES: readonly string[] = [
   'held, never spent',
   'holding 1,000 $AMP becomes your key soon',
+  // Founder-ruled 2026-07-24: disclaimers that use a banned word to
+  // NEGATE it are the rule working as intended.
+  'not an investment',
+  'Is $AMP an investment? No.',
+  'no promise about price or return, and it never will',
+  'explains mechanism, not markets, and makes no promise about price',
+  // Founder-ruled: in-game Bolts pricing is game-economy description,
+  // not token price talk — same sanctioned usage as the merchant panel.
+  'Merchant prices move with real supply',
+  'Their prices move with real supply and demand',
+  'Watching prices is itself part of the game',
+  'Set your prices, come back to a fuller coffer',
+  // Founder-ruled: a factual product statement.
+  'priced in $AMP',
+  // The ruled replacement for the old "token earns" line (item 3).
+  "the creator rewards paid on $AMP's trading volume on Robinhood Chain",
 ];
 
 /**
@@ -44,18 +60,7 @@ const ALLOWANCES: readonly string[] = [
  *  - in-game merchant Bolts pricing (the game's own UI says "prices
  *    move inside each published band" — likely sanctioned)
  */
-const PENDING_RULING: readonly string[] = [
-  'not an investment',
-  'fees the token earns',
-  'Merchant prices move with real supply',
-  'Their prices move with real supply and demand',
-  'priced in $AMP',
-  'Is $AMP an investment? No.',
-  'Watching prices is itself part of the game',
-  'Set your prices, come back to a fuller coffer',
-  'no promise about price or return, and it never will',
-  'explains mechanism, not markets, and makes no promise about price',
-];
+const PENDING_RULING: readonly string[] = [];
 
 /** Markup → visible text: strip tags/scripts/styles, decode basic entities. */
 function visibleText(html: string): string {
