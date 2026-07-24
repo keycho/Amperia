@@ -23,6 +23,8 @@ export class PlayerState extends Schema {
   equipped = '';
   /** Charge-regalia name-glow trim ('' = none) — never gameplay. */
   trim = '';
+  /** The drink riding in hand ('' = none) — presentation only (L2). */
+  drink = '';
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
@@ -35,6 +37,34 @@ defineTypes(PlayerState, {
   maxHp: 'int16',
   equipped: 'string',
   trim: 'string',
+  drink: 'string',
+});
+
+/**
+ * City-life L4: a Spark who logged out mid-idle-loop and STAYS in the
+ * world as scenery. Deliberately its own collection — every client
+ * consumer treats state.players membership as "a live player is here"
+ * (counts, blips, inspect targets, nameplate thresholds), so resters
+ * must never enter it. Keyed by characterId.
+ */
+export class ResterState extends Schema {
+  sparkName = '';
+  tileX = 0;
+  tileY = 0;
+  appearance = '';
+  equipped = '';
+  pose = '';
+  /** Epoch ms the rest expires (server sweeps; clients may ignore). */
+  untilMs = 0;
+}
+defineTypes(ResterState, {
+  sparkName: 'string',
+  tileX: 'int16',
+  tileY: 'int16',
+  appearance: 'string',
+  equipped: 'string',
+  pose: 'string',
+  untilMs: 'number',
 });
 
 export class MobState extends Schema {
@@ -136,6 +166,8 @@ defineTypes(BloomState, { untilMs: 'float64' });
 
 export class FilamentState extends Schema {
   players = new MapSchema<PlayerState>();
+  /** L4: resting Sparks — scenery, never counted as live. */
+  resters = new MapSchema<ResterState>();
   /** Keyed by node id (stringified). */
   nodes = new MapSchema<NodeState>();
   /** Keyed by mob id. */
@@ -155,6 +187,7 @@ export class FilamentState extends Schema {
 }
 defineTypes(FilamentState, {
   players: { map: PlayerState },
+  resters: { map: ResterState },
   nodes: { map: NodeState },
   mobs: { map: MobState },
   blooms: { map: BloomState },

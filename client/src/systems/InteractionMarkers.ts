@@ -47,7 +47,9 @@ type IconKey =
   | 'quest'
   | 'craft'
   | 'haul'
-  | 'tend';
+  | 'tend'
+  | 'mug'
+  | 'board';
 
 export const INTERACTABLE_STYLES: Record<string, KindStyle> = {
   // Gatherables — each skill its own glyph, but all clearly "work this".
@@ -69,6 +71,9 @@ export const INTERACTABLE_STYLES: Record<string, KindStyle> = {
   // Quest NPCs.
   dispatcher: { icon: 'quest', label: 'Dispatcher', lift: 58 },
   warden: { icon: 'quest', label: 'Charge Warden', lift: 58 },
+  // City life (L1): the watering hole.
+  ampedbar: { icon: 'mug', label: 'The Amped Bar', lift: 100 },
+  billboard: { icon: 'board', label: 'The City Board', lift: 110 },
 };
 
 interface Entry {
@@ -207,6 +212,26 @@ export class InteractionMarkers {
       }
       g.fillStyle(c, 1);
       g.fillCircle(C, C, 3);
+    });
+    // board — the City Board: a wide screen on posts, rows of figures.
+    draw('board', warm, (g, c) => {
+      g.lineStyle(3, c, 1);
+      g.strokeRect(C - 11, C - 9, 22, 13);
+      g.lineBetween(C - 6, C + 4, C - 6, C + 10);
+      g.lineBetween(C + 6, C + 4, C + 6, C + 10);
+      g.lineStyle(2, c, 1);
+      g.lineBetween(C - 7, C - 5, C + 7, C - 5);
+      g.lineBetween(C - 7, C - 1, C + 3, C - 1);
+    });
+    // mug — the Amped Bar tankard: body, handle, a line of foam.
+    draw('mug', warm, (g, c) => {
+      g.lineStyle(3, c, 1);
+      g.strokeRect(C - 9, C - 8, 13, 17);
+      g.beginPath();
+      g.arc(C + 7, C, 5, -Math.PI / 2, Math.PI / 2);
+      g.strokePath();
+      g.lineStyle(2, c, 1);
+      g.lineBetween(C - 6, C - 4, C + 1, C - 4);
     });
     // ledger — the bank ledger book.
     draw('ledger', warm, (g, c) => {

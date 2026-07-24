@@ -68,6 +68,11 @@ export const CHAIN_ENV = {
   /** W1 access gate mode: 'connect' | 'hold' ({@link resolveGateMode}); flip
    *  to 'hold' via env, never code. */
   gateMode: 'GATE_MODE',
+  /** T1 — the City Board's market feed: a public DEX-data endpoint
+   *  (DexScreener/GeckoTerminal-style) for the $AMP pair. Read server-side
+   *  only, on a cache; UNSET until launch — the ticker rests while empty.
+   *  A literal `{address}` in the URL is replaced with AMP_TOKEN_ADDRESS. */
+  marketDataUrl: 'MARKET_DATA_URL',
 } as const;
 
 /**

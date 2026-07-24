@@ -100,6 +100,10 @@ model Character {
   bankSlots      Int    @default(48)
   /// Which district the Spark was last in ('filament' | 'tangle').
   district       String @default("filament")
+  /// City-life L4: logged out mid-idle-loop — the Spark stays in the world
+  /// as scenery ('' = not resting) until return or restingUntil passes.
+  restingPose    String    @default("")
+  restingUntil   DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

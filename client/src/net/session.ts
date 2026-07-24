@@ -41,6 +41,14 @@ export const SessionEvents = {
   openFoundry: 'openFoundry',
   /** Open the Tinkerbench panel (world → UI scene). */
   openBench: 'openBench',
+  /** Open the Amped Bar menu (world → UI scene, city-life L2). */
+  openBar: 'openBar',
+  /** Open the City Board inspect panel (world → UI scene, billboard T2). */
+  openBoard: 'openBoard',
+  /** T1: the City Board market snapshot. Payload MarketSyncEvent. */
+  marketSync: 'marketSync',
+  /** L3: the menu's take-a-seat — WorldScene walks to a stool + sits. */
+  takeSeat: 'takeSeat',
   /** Open the Dispatcher's quest board (world → UI scene). */
   openQuests: 'openQuests',
   /** Personal quest log sync: payload QuestsSync. */

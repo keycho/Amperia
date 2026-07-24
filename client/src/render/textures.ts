@@ -28,6 +28,22 @@ export function makeShadowTextures(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/** L2: the bar mug — a tiny tankard, tinted per drink at placement. */
+export function makeMugTexture(scene: Phaser.Scene): void {
+  const g = g2(scene);
+  // Body (drawn white-ish so the drink tint colors it cleanly).
+  g.fillStyle(0xf0e6d8, 1);
+  g.fillRect(2, 3, 7, 8);
+  // Foam line.
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(2, 3, 7, 2);
+  // Handle.
+  g.lineStyle(1.5, 0xf0e6d8, 1);
+  g.strokeCircle(10, 7, 2.4);
+  g.generateTexture('fx-mug', 14, 12);
+  g.destroy();
+}
+
 /** Koi shadow (soft dark ellipse) + a small splash ring. */
 export function makeKoiTextures(scene: Phaser.Scene): void {
   let g = g2(scene);

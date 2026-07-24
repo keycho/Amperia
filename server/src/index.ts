@@ -14,6 +14,7 @@ import { redis, redisHealthy } from './services/redis.js';
 import { authenticateWallet } from './services/auth.js';
 import { issueNonce } from './services/siwe.js';
 import { computeTodayMetrics, scheduleNightlyRollup } from './services/metrics.js';
+import { marketData } from './services/marketdata.js';
 import { computePublicStatsResponse } from './services/publicStats.js';
 import { renderLedgerPage } from './services/ledgerPage.js';
 import { prisma } from './services/db.js';
@@ -295,6 +296,10 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 // The nightly economy rollup (E4b): one EconomySummary row per UTC day —
 // the data spine of the future City Ledger.
 scheduleNightlyRollup();
+
+// T1 — the City Board's market feed. A no-op while MARKET_DATA_URL is unset
+// (pre-launch: the ticker rests); unref'd timer, so shutdown never waits.
+marketData.start();
 
 /**
  * Graceful shutdown (D3). Railway sends SIGTERM on every redeploy; if we

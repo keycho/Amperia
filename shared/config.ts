@@ -84,6 +84,44 @@ export const CONFIG = {
     expansionCosts: [400, 1200, 3600, 9000, 20000, 45000],
   },
 
+  /**
+   * THE AMPED BAR (city-life L2/L3/L4): drinks are Bolts-priced pure
+   * sinks poured IN HAND — never inventory, never stats, ever (golden
+   * rule 3). The mug rides the Spark for drinkSeconds, then the glass
+   * comes back. Idle poses + resting Sparks tune here too.
+   */
+  bar: {
+    /** Chebyshev tiles from the venue footprint for bar actions. */
+    reachTiles: 2,
+    /** How long a poured drink rides in hand (visual only). */
+    drinkSeconds: 300,
+    /** The menu (ledger sink: barDrink / barRound). */
+    drinks: [
+      { id: 'filamentAle', name: 'Filament Ale', price: 9, tint: 'neonAmber' },
+      { id: 'glowkoiSour', name: 'Glowkoi Sour', price: 12, tint: 'neonTeal' },
+      { id: 'amperiteFizz', name: 'Amperite Fizz', price: 15, tint: 'neonCyan' },
+      { id: 'warmcup', name: 'Warmcup', price: 12, tint: 'warmGlow' },
+    ] as ReadonlyArray<{ id: string; name: string; price: number; tint: string }>,
+    /** L4 — Sparks who stay: logout in an idle loop leaves the Spark in
+     *  the world as scenery (never counted as live), until return or
+     *  timeout. Per-district cap so it can't be spammed. */
+    resting: { capPerDistrict: 10, hours: 8 },
+  },
+
+  /** T1/T2 — the City Board: the plaza ticker. Market figures ride a
+   *  server-side cache and FAIL SOFT — the ticker rests rather than show
+   *  a stale or zero number. The board reports; it never sells. */
+  billboard: {
+    /** Seconds each dot-matrix panel holds before the next (no flashing). */
+    rotateSeconds: 8,
+    /** Server-side market fetch cadence (also the broadcast cadence). */
+    refreshSeconds: 60,
+    /** A quote older than this is NOT shown — the ticker rests instead. */
+    staleAfterSeconds: 300,
+    /** Chebyshev tiles from the board footprint for E — Inspect. */
+    reachTiles: 3,
+  },
+
   /** Rested Charge (S3): the first N minutes of GATHERING each UTC day
    *  boost gather XP only — never resources, never combat XP; the faucet
    *  is untouched. Missing days never punishes; it just refills daily. */

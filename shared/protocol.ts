@@ -19,6 +19,8 @@ export const MSG = {
   trade: 'trade',
   prices: 'prices',
   useItem: 'useItem',
+  bar: 'bar',
+  idle: 'idle',
   craft: 'craft',
   repair: 'repair',
   quest: 'quest',
@@ -78,6 +80,7 @@ export const MSG = {
   coilShow: 'coilShow',
   coilState: 'coilState',
   bankSync: 'bankSync',
+  marketSync: 'marketSync',
 } as const;
 
 export interface MoveIntent {
@@ -219,6 +222,20 @@ export interface UseItemIntent {
   slot: number;
 }
 
+/** Player → server: the Amped Bar (city-life L2). 'buy' pours one drink
+ *  in hand; 'round' pours for every Spark at the bar (bigger sink, one
+ *  toast). Purely visual/social — drinks never touch stats or inventory. */
+export interface BarIntent {
+  action: 'buy' | 'round';
+  drinkId: string;
+}
+
+/** Player → server: start (or clear) a persistent idle loop (L3).
+ *  Presentation only — the pose replicates so everyone sees it. */
+export interface IdleIntent {
+  pose: 'sit' | 'lean' | 'warm' | '';
+}
+
 /** Server → own client (F3): a craft landed — drives the result-card moment. */
 export interface CraftedEvent {
   itemId: string;
@@ -266,6 +283,31 @@ export interface TravelGo {
  *  Presence facts only — no value, no identities. */
 export interface CityPresenceEvent {
   counts: Partial<Record<DistrictId, number>>;
+}
+
+/**
+ * T1 server → all: the City Board's market snapshot. REPORTING ONLY — plain
+ * backward-looking numbers, comms rules apply to every consumer (never
+ * "buy"/"earn"/APY/price talk in copy; the board shows figures, it never
+ * sells). Fail-soft: `live` is false whenever the feed is unconfigured,
+ * unreachable, or stale — a resting ticker, never stale-as-fresh.
+ */
+export interface MarketSyncEvent {
+  /** True only while a FRESH quote is in hand (configured + recent fetch). */
+  live: boolean;
+  /** False before launch (no feed/token address configured) — T3 state. */
+  configured: boolean;
+  /** Last trade price in USD, or null while not live. */
+  priceUsd: number | null;
+  /** 24h change in percent (may be negative), or null while not live. */
+  change24hPct: number | null;
+  /** Market capitalization in USD, or null while not live. */
+  marketCapUsd: number | null;
+  /** $AMP burned to date — null until the token ledger reports it; the
+   *  board hides the panel rather than show a guess. */
+  burnedAmp: number | null;
+  /** Server clock (ms) of the quote's fetch — display "as of" honesty. */
+  asOfMs: number;
 }
 
 /** U1a player → server: take a parcel at the post / drop it at the landing. */
@@ -666,6 +708,8 @@ export interface PlayerStateShape {
   gathering: boolean;
   /** Working-pose tool id while gathering ('' = none) — presentation only. */
   pose: string;
+  /** The drink riding in hand ('' = none) — presentation only (L2). */
+  drink: string;
   /** Creator appearance code (shared/appearance.ts) — presentation only. */
   appearance: string;
   hp: number;
@@ -674,6 +718,18 @@ export interface PlayerStateShape {
   equipped: string;
   /** Name-glow trim id ('' = none) — Charge regalia, never gameplay. */
   trim: string;
+}
+
+/** L4: a resting Spark — logged out mid-idle-loop, left as scenery.
+ *  Its own collection so no live-count consumer can miscount it. */
+export interface ResterStateShape {
+  sparkName: string;
+  tileX: number;
+  tileY: number;
+  appearance: string;
+  equipped: string;
+  pose: string;
+  untilMs: number;
 }
 
 export interface NodeStateShape {

@@ -112,6 +112,8 @@ import {
   type TradeIntent,
   type WardrobeIntent,
   type UseItemIntent,
+  type BarIntent,
+  type IdleIntent,
   type DeliveryIntent,
   type TendIntent,
   type EmoteId,
@@ -131,6 +133,7 @@ import {
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
 import { presence } from '../services/presence.js';
+import { marketData } from '../services/marketdata.js';
 import { merchant } from '../services/merchant.js';
 import { moderation } from '../services/moderation.js';
 import { shops, type StallView } from '../services/shops.js';
@@ -140,10 +143,18 @@ import { loftpods, type PodView } from '../services/loftpods.js';
 import { coilSpunToday, spinCoil } from '../services/coil.js';
 import { bumpGoals, claimGoal, loadGoals, saveGoalTokens } from '../services/goals.js';
 import { loadManifest, recordEntry, FULL_MANIFEST_TRIM } from '../services/manifest.js';
-import { loadCharacter, persistCharacter, saveIdentity } from '../services/persistence.js';
+import {
+  clearResting,
+  loadCharacter,
+  loadResters,
+  persistCharacter,
+  saveIdentity,
+  setResting,
+} from '../services/persistence.js';
 import {
   CacheState,
   FilamentState,
+  ResterState,
   LampState,
   MobState,
   NodeState,
@@ -251,6 +262,10 @@ interface PlayerRuntime {
   healAcc: number;
   lastAttackAtMs: number;
   gatherTargetNode: number | null;
+  /** L2: the drink in hand expires at this clock ('' state when null). */
+  drinkUntilMs: number | null;
+  /** L3: the persistent idle loop ('sit'|'lean'|'warm'), null = none. */
+  idlePose: string | null;
   session: Session | null;
   lastChatAtMs: number;
   /** H2 rate limit: timestamps of recent messages in the rolling window. */
@@ -386,6 +401,9 @@ export class FilamentRoom extends Room<FilamentState> {
       this.broadcast(MSG.cityPresence, { counts: presence.counts() });
     });
 
+    // L4: seed the district's resting Sparks (scenery, never counted live).
+    void this.loadRestingSparks();
+
     // W7 spectate: value-action handlers run through `guarded`, which refuses a
     // read-only visitor with ONE prompt before any value logic — impossible to
     // forget a handler. move / inspect / chargeInfo stay open (looking is free).
@@ -471,6 +489,8 @@ export class FilamentRoom extends Room<FilamentState> {
     }
     void this.refreshCharge(true);
     guarded<UseItemIntent>(MSG.useItem, (client, msg) => this.handleUseItem(client, msg));
+    guarded<BarIntent>(MSG.bar, (client, msg) => this.handleBar(client, msg));
+    guarded<IdleIntent>(MSG.idle, (client, msg) => this.handleIdle(client, msg));
     guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
@@ -511,6 +531,9 @@ export class FilamentRoom extends Room<FilamentState> {
       }
     }
     const character = await loadCharacter(auth.characterId);
+    // L4: the player is back — the resting body stands down everywhere.
+    if (this.state.resters.has(auth.characterId)) this.state.resters.delete(auth.characterId);
+    void clearResting(auth.characterId).catch(() => undefined);
     // Joining a district you're not persisted in IS a tram ride: the toll
     // is charged here too, so no client can dodge the sink by joining the
     // room directly. The honest path (handleTravel) persists the new
@@ -577,6 +600,8 @@ export class FilamentRoom extends Room<FilamentState> {
       lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
+      drinkUntilMs: null,
+      idlePose: null,
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -657,6 +682,29 @@ export class FilamentRoom extends Room<FilamentState> {
     // World map M3: report the new seated count + seed this client's tally.
     this.reportPresence();
     client.send(MSG.cityPresence, { counts: presence.counts() });
+    // T1: seed the City Board's market snapshot (fail-soft — may be resting).
+    client.send(MSG.marketSync, marketData.snapshot());
+  }
+
+  /** L4: seed resting Sparks from the DB (room create — survives room
+   *  recycling and server restarts; the cap bounds the query). */
+  private async loadRestingSparks(): Promise<void> {
+    try {
+      const rows = await loadResters(this.districtId, CONFIG.bar.resting.capPerDistrict);
+      for (const r of rows) {
+        const rest = new ResterState();
+        rest.sparkName = r.sparkName;
+        rest.tileX = r.tileX;
+        rest.tileY = r.tileY;
+        rest.appearance = r.appearance;
+        rest.equipped = r.equipped;
+        rest.pose = r.restingPose;
+        rest.untilMs = r.restingUntil.getTime();
+        this.state.resters.set(r.characterId, rest);
+      }
+    } catch {
+      /* a failed load just means an emptier street — never fatal */
+    }
   }
 
   /** Seated (non-spectator) Sparks in this room → the presence registry. */
@@ -707,6 +755,8 @@ export class FilamentRoom extends Room<FilamentState> {
       lastAttackAtMs: 0,
       gatherTargetNode: null,
       session: null,
+      drinkUntilMs: null,
+      idlePose: null,
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -755,6 +805,27 @@ export class FilamentRoom extends Room<FilamentState> {
     // before this or not at all (settleTrade commits synchronously).
     this.cancelTradeFor(client.sessionId, 'disconnected', 'The other Spark left mid-trade.');
     const rt = this.runtimes.get(client.sessionId);
+    // L4: logging out mid-idle-loop leaves the Spark resting in place —
+    // scenery in a SEPARATE collection, so no live count anywhere moves.
+    if (
+      rt !== undefined &&
+      !rt.spectator &&
+      rt.idlePose !== null &&
+      rt.hp > 0 &&
+      this.state.resters.size < CONFIG.bar.resting.capPerDistrict
+    ) {
+      const until = new Date(Date.now() + CONFIG.bar.resting.hours * 3_600_000);
+      const rest = new ResterState();
+      rest.sparkName = rt.sparkName;
+      rest.tileX = rt.move.tile.x;
+      rest.tileY = rt.move.tile.y;
+      rest.appearance = rt.appearance;
+      rest.equipped = encodeEquipped(rt.equipped);
+      rest.pose = rt.idlePose;
+      rest.untilMs = until.getTime();
+      this.state.resters.set(rt.characterId, rest);
+      void setResting(rt.characterId, rt.idlePose, until).catch(() => undefined);
+    }
     this.runtimes.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.reportPresence();
@@ -808,6 +879,7 @@ export class FilamentRoom extends Room<FilamentState> {
     if (path === null) return;
     this.cancelGather(client, rt);
     rt.gatherTargetNode = null;
+    this.clearIdle(client.sessionId, rt);
     rt.move = setPath(rt.move, path);
     this.broadcast(MSG.moveAccepted, { sessionId: client.sessionId, path });
   }
@@ -1474,6 +1546,14 @@ export class FilamentRoom extends Room<FilamentState> {
         from: rt.sparkName,
         emote: cmd.slice(1) as EmoteId,
       });
+      // L3: /sit is now a PERSISTENT idle loop, not just the flourish —
+      // late joiners see the sitter too (the old broadcast desynced them).
+      if (cmd === '/sit') this.handleIdle(client, { pose: 'sit' });
+    } else if (cmd === '/lean' || cmd === '/warm') {
+      // L3: the other idle loops, command-started anywhere.
+      this.handleIdle(client, { pose: cmd.slice(1) as 'lean' | 'warm' });
+    } else if (cmd === '/stand') {
+      this.handleIdle(client, { pose: '' });
     } else if (cmd === '/trade') {
       const name = text.slice(cmd.length).trim().toLowerCase();
       if (name === '') {
@@ -1694,6 +1774,27 @@ export class FilamentRoom extends Room<FilamentState> {
         if (c !== undefined) this.sendRested(c, rt);
       }
     }
+    // L2: finished drinks — the glass comes back (visual state only).
+    {
+      const now = Date.now();
+      for (const [sid, rt] of this.runtimes.entries()) {
+        if (rt.drinkUntilMs !== null && now >= rt.drinkUntilMs) {
+          rt.drinkUntilMs = null;
+          const ps = this.state.players.get(sid);
+          if (ps !== undefined) ps.drink = '';
+        }
+      }
+    }
+    // L4: expired rests fade out (the sweep also clears the DB row).
+    {
+      const now = Date.now();
+      for (const [cid, rest] of this.state.resters.entries()) {
+        if (now >= rest.untilMs) {
+          this.state.resters.delete(cid);
+          void clearResting(cid).catch(() => undefined);
+        }
+      }
+    }
     // Periodic persistence (~every 30s of ticks).
     this.persistTicker += dtMs;
     if (this.persistTicker >= 30_000) {
@@ -1715,6 +1816,9 @@ export class FilamentRoom extends Room<FilamentState> {
           .catch((err) => console.error('[shops] sweep failed', err));
       }
       void this.refreshCharge(true);
+      // T1: re-broadcast the City Board's market snapshot on the same slow
+      // sweep — the service refreshes on its own cadence; rooms just relay.
+      this.broadcast(MSG.marketSync, marketData.snapshot());
     }
   }
 
@@ -2942,6 +3046,99 @@ export class FilamentRoom extends Room<FilamentState> {
       client.send(MSG.inventory, this.inventorySync(rt));
       client.send(MSG.notice, { text: `Cellwax worked into the ${def.name}.` });
     }
+  }
+
+  /**
+   * THE AMPED BAR (city-life L2). Drinks are Bolts-priced PURE SINKS:
+   * poured straight into the hand (ps.drink drives the mug visual), never
+   * into the pack, never into stats — golden rule 3 has no bar exception.
+   * 'round' pours for every seated-or-standing Spark within reach of the
+   * venue and toasts the room; the buyer pays for every glass.
+   */
+  private handleBar(client: Client, msg: BarIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (!this.nearProp(rt, 'ampedbar', CONFIG.bar.reachTiles)) {
+      client.send(MSG.notice, { text: 'The Amped Bar is south of the stalls.' });
+      return;
+    }
+    const drink = CONFIG.bar.drinks.find((d) => d.id === msg.drinkId);
+    if (drink === undefined) return;
+
+    const pour = (target: PlayerRuntime, sid: string): void => {
+      target.drinkUntilMs = Date.now() + CONFIG.bar.drinkSeconds * 1000;
+      const ps = this.state.players.get(sid);
+      if (ps !== undefined) ps.drink = drink.id;
+    };
+
+    if (msg.action === 'buy') {
+      if (rt.bolts < drink.price) {
+        client.send(MSG.notice, { text: `That's ${drink.price} Bolts.` });
+        return;
+      }
+      rt.bolts -= drink.price;
+      pour(rt, client.sessionId);
+      ledger.log({
+        type: 'spend',
+        account: rt.accountId,
+        data: { sink: 'barDrink', drinkId: drink.id, bolts: drink.price },
+      });
+      client.send(MSG.inventory, this.inventorySync(rt));
+      client.send(MSG.notice, { text: 'Vessa slides it over.' });
+      return;
+    }
+
+    // 'round' — every non-spectator Spark within reach gets a glass.
+    const patrons: Array<{ sid: string; rt: PlayerRuntime }> = [];
+    for (const [sid, other] of this.runtimes.entries()) {
+      if (other.spectator || other.hp <= 0) continue;
+      if (this.nearProp(other, 'ampedbar', CONFIG.bar.reachTiles)) {
+        patrons.push({ sid, rt: other });
+      }
+    }
+    const total = drink.price * patrons.length;
+    if (patrons.length < 2) {
+      client.send(MSG.notice, { text: "It's just you at the bar — buy a glass instead." });
+      return;
+    }
+    if (rt.bolts < total) {
+      client.send(MSG.notice, { text: `A round here is ${total} Bolts.` });
+      return;
+    }
+    rt.bolts -= total;
+    for (const p of patrons) pour(p.rt, p.sid);
+    ledger.log({
+      type: 'spend',
+      account: rt.accountId,
+      data: { sink: 'barRound', drinkId: drink.id, sparks: patrons.length, bolts: total },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    this.broadcast(MSG.notice, { text: `${rt.sparkName} bought a round.` });
+  }
+
+  /**
+   * City-life L3: persistent idle loops. Presentation only — the pose
+   * replicates through ps.pose (the same wire the working pose uses) so
+   * everyone, including late joiners, sees a sitter sitting. Moving or
+   * gathering stands you up; the server stays the single pose authority.
+   */
+  private handleIdle(client: Client, msg: IdleIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.hp <= 0) return;
+    if (rt.session !== null) return; // mid-gather: the tool owns the pose
+    const pose = msg.pose;
+    if (pose !== 'sit' && pose !== 'lean' && pose !== 'warm' && pose !== '') return;
+    rt.idlePose = pose === '' ? null : pose;
+    const ps = this.state.players.get(client.sessionId);
+    if (ps !== undefined) ps.pose = pose;
+  }
+
+  /** Stand up out of an idle loop (movement, gathering, logout capture). */
+  private clearIdle(sessionId: string, rt: PlayerRuntime): void {
+    if (rt.idlePose === null) return;
+    rt.idlePose = null;
+    const ps = this.state.players.get(sessionId);
+    if (ps !== undefined && ps.gathering === false) ps.pose = '';
   }
 
   /** Decrement the active tool's durability; 0 = broken (kept, unusable). */
@@ -4417,9 +4614,15 @@ export class FilamentRoom extends Room<FilamentState> {
     if (ps === undefined) return;
     ps.gathering = gathering;
     // Working pose (presentation only): the tool the session's node needs.
-    const kind = this.runtimes.get(sessionId)?.session?.kind;
+    // L3: starting work stands you out of an idle loop; ending work falls
+    // back to the idle pose if one is somehow still set (belt + braces).
+    const rt = this.runtimes.get(sessionId);
+    if (gathering && rt !== undefined) rt.idlePose = null;
+    const kind = rt?.session?.kind;
     ps.pose =
-      gathering && kind !== undefined ? CONFIG.tools.requiredByNode[kind] : '';
+      gathering && kind !== undefined
+        ? CONFIG.tools.requiredByNode[kind]
+        : (rt?.idlePose ?? '');
   }
 
   private sendNodeEvent(client: Client, payload: NodeEventPayload): void {

@@ -6,6 +6,7 @@ import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type Worl
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
 import { hoverTip } from '../ui/Tooltip';
+import { buildBoardPanels, type BoardPanel } from '../ui/boardFormat';
 import { kitPlate, kitText, SPACE } from '../ui/kit';
 import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
@@ -44,11 +45,13 @@ import type {
   InventorySync,
   CityPresenceEvent,
   LootEvent,
+  MarketSyncEvent,
   MoveAcceptedEvent,
   PricesSync,
   QuestsSync,
   NodeStateShape,
   PlayerStateShape,
+  ResterStateShape,
   ShopSyncEvent,
   StallStateShape,
   LoftpodStateShape,
@@ -87,6 +90,7 @@ import {
   TILE_H,
   TILE_W,
   tileToWorld,
+  tileToWorldBase,
   worldToTile,
   worldToTileFloor,
 } from '../iso/project';
@@ -174,9 +178,26 @@ export class WorldScene extends Phaser.Scene {
   private coilWheel: Phaser.GameObjects.Image | null = null;
   private coilSpinning = false;
   private coilSpunToday = false;
+  /** T2 — the City Board's live face: rotating dot-matrix rows. */
+  private boardFace: {
+    caption: Phaser.GameObjects.Text;
+    value: Phaser.GameObjects.Text;
+    sub: Phaser.GameObjects.Text;
+  } | null = null;
+  private boardIndex = 0;
+  /** Latest market snapshot (T1 seed + slow-sweep relays); null pre-seed. */
+  private market: MarketSyncEvent | null = null;
+  private boardSparks: number | null = null;
+  private boardCharge: { tier: number; tierMax: number } | null = null;
+  /** Last Charge mirror — re-emitted when the Board opens, so a panel
+   *  constructed after the join-time sync still gets the tier. */
+  private lastCharge: ChargeStateShape | null = null;
   private tuner!: TunerPanel;
   private nodes = new Map<number, NodeView>();
   private sparks = new Map<string, Spark>();
+  /** L4: resting Sparks (scenery) — SEPARATE from sparks so every live
+   *  count (presence chip, nameplate threshold, blips) stays honest. */
+  private resters = new Map<string, Spark>();
   /** R1: the universal interaction language (pictograms / labels / hover). */
   private markers!: InteractionMarkers;
   /** C1/C2: central interactable registry — one hit resolver + the E path. */
@@ -263,6 +284,7 @@ export class WorldScene extends Phaser.Scene {
     // don't re-run, so the entity maps still point at destroyed objects.
     this.nodes = new Map();
     this.sparks = new Map();
+    this.resters = new Map();
     this.mobs = new Map();
     this.npcBubbles = new Map();
     this.lampViews = new Map();
@@ -368,6 +390,8 @@ export class WorldScene extends Phaser.Scene {
     this.spawnNodes();
     this.buildInteractionMarkers();
     this.setupAmbientChatter();
+    // L3: the bar menu's take-a-seat — walk to a free stool, then sit.
+    session.events.on(SessionEvents.takeSeat, () => this.takeBarSeat());
     this.setupFirstLoop();
     this.setupInput();
 
@@ -384,6 +408,66 @@ export class WorldScene extends Phaser.Scene {
       .setDepth(1e9);
 
     void this.connect();
+  }
+
+  /**
+   * T2 — the City Board's live face: three monospace rows (caption, figure,
+   * sub) mounted over the baked ink pane, rotating through the panel deck
+   * every {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain
+   * swap; a negative 24h dims to rose, everything else stays amber.
+   */
+  private placeBoardFace(p: Prop, frame: Phaser.GameObjects.Image): void {
+    const c = tileToWorld(p.x + 2, p.y + 1);
+    const mk = (dy: number, size: number, color: string): Phaser.GameObjects.Text => {
+      const t = this.add.text(c.x, c.y - 18 + dy, '', {
+        fontFamily: 'monospace',
+        fontSize: `${size}px`,
+        color,
+        fontStyle: 'bold',
+      });
+      t.setOrigin(0.5, 0.5);
+      t.setDepth(frame.depth + 1);
+      t.setLetterSpacing(2);
+      return t;
+    };
+    this.boardFace = {
+      caption: mk(-14, 9, PALETTE.warmGlow),
+      value: mk(0, 13, PALETTE.neonAmber),
+      sub: mk(13, 10, PALETTE.neonAmber),
+    };
+    this.boardFace.caption.setAlpha(0.85);
+    // The rotation: advance the deck, plainly. (Game-clock timer — the
+    // board is presentation; a slow tab just holds a panel longer.)
+    this.time.addEvent({
+      delay: CONFIG.billboard.rotateSeconds * 1000,
+      loop: true,
+      callback: () => {
+        this.boardIndex += 1;
+        this.renderBoardFace();
+      },
+    });
+    this.renderBoardFace();
+  }
+
+  /** Repaint the Board's current panel from the cached city + market state. */
+  private renderBoardFace(): void {
+    const f = this.boardFace;
+    if (f === null) return;
+    const panels = buildBoardPanels(this.market, this.boardSparks, this.boardCharge);
+    if (panels.length === 0) {
+      f.caption.setText('THE CITY BOARD');
+      f.value.setText('');
+      f.sub.setText('');
+      return;
+    }
+    const panel = panels[this.boardIndex % panels.length] as BoardPanel;
+    const tone = panel.tone === 'dimRose' ? PALETTE.neonRose : PALETTE.neonAmber;
+    f.caption.setText(panel.caption);
+    f.value.setText(panel.value);
+    f.value.setColor(PALETTE.neonAmber);
+    f.sub.setText(panel.sub ?? '');
+    f.sub.setColor(tone);
+    f.sub.setAlpha(panel.tone === 'dimRose' ? 0.8 : 1);
   }
 
   /**
@@ -757,6 +841,10 @@ export class WorldScene extends Phaser.Scene {
         onAdd(cb: (p: PlayerStateShape, id: string) => void): void;
         onRemove(cb: (p: PlayerStateShape, id: string) => void): void;
       };
+      resters: {
+        onAdd(cb: (r: ResterStateShape, id: string) => void): void;
+        onRemove(cb: (r: ResterStateShape, id: string) => void): void;
+      };
       nodes: {
         onAdd(cb: (n: NodeStateShape, key: string) => void): void;
       };
@@ -806,6 +894,9 @@ export class WorldScene extends Phaser.Scene {
       spark.setEquipped(p.equipped);
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
+      // L2: the drink in hand — mug overlay + sip loop, purely visual.
+      proxy(p).listen('drink', (v: string) => spark.setDrink(v === '' ? null : v));
+      spark.setDrink(p.drink === '' ? null : p.drink);
       // Working pose while gathering (server-set, presentation only).
       proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
       spark.setPose(p.pose === '' ? null : p.pose);
@@ -833,7 +924,17 @@ export class WorldScene extends Phaser.Scene {
       }
       proxy(p).onChange(() => {
         const s = this.sparks.get(sessionId);
-        if (s === undefined || s.isMoving) return;
+        if (s === undefined) return;
+        if (s.isMoving) {
+          // A healthy walk animation tracks the server within a tile or
+          // two. Further than that means the queue is stale — a tab that
+          // was backgrounded plays its frozen path in slow motion for
+          // minutes otherwise. Snap to truth and let the next walk start
+          // clean.
+          const far = Math.abs(s.tile.x - p.tileX) + Math.abs(s.tile.y - p.tileY) > 3;
+          if (far) s.snapTo({ x: p.tileX, y: p.tileY });
+          return;
+        }
         if (s.tile.x !== p.tileX || s.tile.y !== p.tileY) {
           s.snapTo({ x: p.tileX, y: p.tileY });
         }
@@ -844,6 +945,28 @@ export class WorldScene extends Phaser.Scene {
       this.sparks.get(sessionId)?.destroy();
       this.sparks.delete(sessionId);
       session.events.emit(SessionEvents.presence, this.sparks.size);
+    });
+
+    // L4: resting Sparks — rendered like citizens, counted like furniture.
+    // Inspect-only by design: a hover card tells you they're resting.
+    $state.resters.onAdd((r: ResterStateShape, cid: string) => {
+      const spark = new Spark(this, { x: r.tileX, y: r.tileY });
+      spark.setAppearance(r.appearance);
+      spark.setEquipped(r.equipped);
+      spark.setPose(r.pose === '' ? null : r.pose);
+      spark.setRestingTag(r.sparkName);
+      spark.image.setAlpha(0.92);
+      hoverTip(spark.image, () => ({
+        title: r.sparkName,
+        sub: 'resting',
+        lines: ['Left the city for a while — the stool keeps their shape.'],
+      }));
+      spark.image.setInteractive();
+      this.resters.set(cid, spark);
+    });
+    $state.resters.onRemove((_r: ResterStateShape, cid: string) => {
+      this.resters.get(cid)?.destroy();
+      this.resters.delete(cid);
     });
 
     $state.nodes.onAdd((n: NodeStateShape, key: string) => {
@@ -922,16 +1045,32 @@ export class WorldScene extends Phaser.Scene {
     $state.loftpods.onRemove((_p2: LoftpodStateShape, id: string) => this.removeLoftpod(id));
 
     // The Citywide Charge: lighting density tracks the meter's tier, and
-    // the UI scene shows the weekend-buff banner.
-    const chargeState = (room.state as { charge?: ChargeStateShape }).charge;
-    if (chargeState !== undefined) {
+    // the UI scene shows the weekend-buff banner. The City Board reads the
+    // same mirror — one truth for the tier everywhere (T2). Bound via the
+    // root proxy's listen: the join promise can resolve BEFORE the first
+    // state decode, so a synchronous read here may see undefined and would
+    // silently skip the binding (the old latent bug).
+    (proxy(room.state) as unknown as {
+      listen(prop: 'charge', cb: (cs: ChargeStateShape) => void): void;
+    }).listen('charge', (chargeState) => {
+      if (chargeState === undefined) return;
       const apply = () => {
         this.applyChargeLighting(chargeState.tier);
+        this.boardCharge = { tier: chargeState.tier, tierMax: 3 };
+        this.lastCharge = { ...chargeState };
+        this.renderBoardFace();
         session.events.emit(SessionEvents.charge, { ...chargeState });
       };
       apply();
       (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
-    }
+    });
+
+    // T1/T2: the City Board's market snapshot — cache for the face + panel.
+    room.onMessage(MSG.marketSync, (e: MarketSyncEvent) => {
+      this.market = e;
+      this.renderBoardFace();
+      session.events.emit(SessionEvents.marketSync, e);
+    });
 
     // The tram accepted the toll: hop rooms and rebuild the scene there.
     // U1a: your parcel run — marker at the landing, cleared on delivery.
@@ -1100,8 +1239,13 @@ export class WorldScene extends Phaser.Scene {
     });
 
     room.onMessage(MSG.inventory, (sync: InventorySync) => gameState.applySync(sync));
-    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) =>
-      session.events.emit(SessionEvents.cityPresence, ev),
+    room.onMessage(MSG.cityPresence, (ev: CityPresenceEvent) => {
+      // T2: the Board's SPARKS IN THE CITY = the city-wide seated total —
+      // the same honest counts the world map shows (resters never counted).
+      this.boardSparks = Object.values(ev.counts).reduce((a, b) => a + (b ?? 0), 0);
+      this.renderBoardFace();
+      session.events.emit(SessionEvents.cityPresence, ev);
+    },
     );
     room.onMessage(MSG.prices, (sync: PricesSync) =>
       session.events.emit(SessionEvents.prices, sync),
@@ -2113,6 +2257,56 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
+  /** L3: walk to the nearest free bar stool and settle onto it. */
+  private seatWatch: Phaser.Time.TimerEvent | null = null;
+
+  private takeBarSeat(): void {
+    const room = this.room;
+    if (room === null) return;
+    const me = this.sparks.get(room.sessionId);
+    if (me === undefined) return;
+    const taken = new Set(
+      [...this.sparks.entries()]
+        .filter(([sid]) => sid !== room.sessionId)
+        .map(([, sp]) => `${sp.tile.x},${sp.tile.y}`),
+    );
+    const free = this.map.barSpots.filter((t) => !taken.has(`${t.x},${t.y}`));
+    if (free.length === 0) {
+      floatText(this, me.image.x, me.image.y - 60, 'every stool is taken', PALETTE.warmGlow);
+      return;
+    }
+    free.sort(
+      (a3, b3) =>
+        Math.abs(a3.x - me.tile.x) + Math.abs(a3.y - me.tile.y) -
+        (Math.abs(b3.x - me.tile.x) + Math.abs(b3.y - me.tile.y)),
+    );
+    const spot = free[0] as { x: number; y: number };
+    send.move(room, { x: spot.x, y: spot.y });
+    this.seatWatch?.remove();
+    let waited = 0;
+    this.seatWatch = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        waited += 200;
+        const cur = this.sparks.get(room.sessionId);
+        if (
+          cur !== undefined &&
+          cur.tile.x === spot.x &&
+          cur.tile.y === spot.y &&
+          !cur.isMoving
+        ) {
+          send.idle(room, { pose: 'sit' });
+          this.seatWatch?.remove();
+          this.seatWatch = null;
+        } else if (waited > 8000) {
+          this.seatWatch?.remove();
+          this.seatWatch = null;
+        }
+      },
+    });
+  }
+
   /** Open the creator ('first' = name + look; 'wardrobe' = look only). */
   private openCreator(mode: 'first' | 'wardrobe'): void {
     const identity = this.identity;
@@ -2324,6 +2518,7 @@ export class WorldScene extends Phaser.Scene {
       if (p.kind === 'merchant') lightSpots.push({ x: p.x, y: p.y, cool: false });
       if (p.kind === 'tinkerbench') lightSpots.push({ x: p.x, y: p.y, cool: true });
       if (p.kind === 'tramgate') lightSpots.push({ x: p.x - 1, y: p.y + 2, cool: false });
+      if (p.kind === 'ampedbar') lightSpots.push({ x: p.x + 2, y: p.y + 3, cool: false });
     }
     for (const n of this.map.nodes) {
       // Antennas keep an always-on beacon + pool; koi spots glow only while
@@ -3346,6 +3541,89 @@ export class WorldScene extends Phaser.Scene {
           this.registerInteract(img, { x: p.x + 1, y: p.y + 3 }, 3, 'Bank', () => {
             if (this.room !== null) send.bank(this.room, { action: 'open' });
           });
+          break;
+        }
+        case 'ampedbar': {
+          const img = this.propSprite('ampedbar', x, y);
+          // Two-layer venue: the hall (counter, backbar, Vessa) anchors
+          // just BELOW the stool row so seated Sparks draw over it; the
+          // open façade (posts, signed header, flank furniture) bakes
+          // separately and keeps the true south-edge depth in front.
+          img.setDepth(depthForWorldY(tileToWorldBase(p.x + 1, p.y + 2).y) - 2);
+          const front = addVoxelSprite(this, 'ampedbar-front', x, y);
+          const frontTint = worldSpriteTint();
+          if (frontTint !== null) front.setTint(frontTint);
+          front.setDepth(depthForWorldY(y));
+          hoverTip(img, () => ({
+            title: 'The Amped Bar',
+            sub: 'drinks · company · a stool with your name on it',
+            lines: ['Warm light, cold fizz. Vessa keeps both honest.'],
+          }));
+          // The glowing name shingle over the door — emissive language,
+          // same voice as the stall shingles.
+          // Same lift as the stall shingles (−96): world name-texts share
+          // one altitude band, clear of the bare HUD texts at the bottom.
+          const doorW = tileToWorld(p.x + 2, p.y + Math.max(0, p.h - 1));
+          const shingle = this.add.text(doorW.x + TILE_W / 2, doorW.y - 96, 'THE AMPED BAR', {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: PALETTE.neonAmber,
+            fontStyle: 'bold',
+            stroke: PALETTE.ink,
+            strokeThickness: 3,
+          });
+          shingle.setOrigin(0.5, 1);
+          shingle.setDepth(depthForWorldY(y) + 3);
+          shingle.setAlpha(0.95);
+          // Hall warmth + the door lamp — the bar glows like a kept fire.
+          const hall = tileToWorld(p.x + 3, p.y + 2);
+          addLayeredGlow(this, hall.x, hall.y - 22, PALETTE_INT.warmGlow, 0.55, img.depth + 1, 0.45);
+          const door = tileToWorld(p.x + 2, p.y + 3);
+          addLayeredGlow(this, door.x + TILE_W / 2, door.y - 26, PALETTE_INT.neonAmber, 0.3, img.depth + 1, 0.5);
+          this.addGroundPool(door.x + TILE_W / 2, door.y + 4, PALETTE_INT.neonAmber, 0.5);
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x + 2, y: p.y + 3 },
+            3,
+            'Enter',
+            () => {
+              this.greetNpc('ampedbar', img);
+              session.events.emit(SessionEvents.openBar);
+            },
+            { hint: 'the door is on the south side' },
+          );
+          break;
+        }
+        case 'billboard': {
+          const img = this.propSprite('billboard', x, y);
+          hoverTip(img, () => ({
+            title: 'The City Board',
+            sub: 'the city, in figures',
+            lines: ['Reports only — what happened, never a pitch.'],
+          }));
+          this.placeBoardFace(p, img);
+          // Corner status lamps + a soft pool at the masts' feet.
+          const face = tileToWorld(p.x + 2, p.y + 1);
+          addLayeredGlow(this, face.x - 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
+          addLayeredGlow(this, face.x + 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
+          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.4);
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x + 2, y: p.y + 1 },
+            CONFIG.billboard.reachTiles,
+            'Inspect',
+            () => {
+              if (this.lastCharge !== null) {
+                session.events.emit(SessionEvents.charge, { ...this.lastCharge });
+              }
+              if (this.market !== null) {
+                session.events.emit(SessionEvents.marketSync, this.market);
+              }
+              session.events.emit(SessionEvents.openBoard);
+            },
+          );
           break;
         }
         case 'fortunecoil': {

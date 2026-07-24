@@ -45,6 +45,18 @@ export const NPC_CHATTER: Record<string, NpcVoice> = {
       'Every spark feeds the meter.',
     ],
   },
+  ampedbar: {
+    // L1: Vessa has heard everything and says little.
+    name: 'Vessa',
+    lift: 108,
+    greet: "What'll it be?",
+    lines: [
+      "Heard it all already. Pour's still the same.",
+      'The Dynamo keeps the lights. I keep the kettle.',
+      "Sit if you're sitting.",
+      'Quiet night. Good.',
+    ],
+  },
   tramgate: {
     name: 'the conductor',
     lift: 108,

@@ -168,7 +168,14 @@ export type SparkPoseId =
   | 'skimnet'
   | 'tuner'
   | 'riveter'
-  | 'brawl';
+  | 'brawl'
+  /** City-life L3 idle loops (persistent, server-replicated). */
+  | 'sit'
+  | 'lean'
+  | 'warm';
+
+/** The gather poses that carry a tool past the raised hand. */
+export type GatherPoseId = Exclude<SparkPoseId, 'brawl' | 'sit' | 'lean' | 'warm'>;
 
 const BODY_COLORS = {
   boots: MATERIAL_INT.gunmetal,
@@ -421,13 +428,13 @@ const BRASS = blendInt(PALETTE_INT.neonAmber, MATERIAL_INT.paintOchre, 0.55);
  *  [dx, dyForward, dz, color] — dyForward is mapped through the view.
  *  The brass skin swaps the BODY metals; neon working tips stay. */
 function toolCells(
-  pose: Exclude<SparkPoseId, 'brawl'>,
+  pose: GatherPoseId,
   brass: boolean,
 ): Array<[number, number, number, number]> {
   const rust = brass ? BRASS : BODY_COLORS.toolRust;
   const metal = brass ? BRASS : BODY_COLORS.toolMetal;
   const wood = BODY_COLORS.toolWood;
-  const cells: Record<Exclude<SparkPoseId, 'brawl'>, Array<[number, number, number, number]>> = {
+  const cells: Record<GatherPoseId, Array<[number, number, number, number]>> = {
     magclaw: [
       [0, 1, 0, rust],
       [-1, 2, 0, PALETTE_INT.neonTeal],
@@ -487,18 +494,38 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   const fwd = back ? -1 : 1;
   const posed = b.pose !== undefined;
   const walking = !posed && b.frame !== 'idle';
+  // City-life L3: the idle loops — sit folds the legs and drops the whole
+  // torso two voxels (everything above the boots rides `lift`), lean tips
+  // the body a second voxel with an ankle crossed, warm raises both palms.
+  const idleSit = b.pose === 'sit';
+  const idleLean = b.pose === 'lean';
+  const idleWarm = b.pose === 'warm';
+  const idlePose = idleSit || idleLean || idleWarm;
   // Stride: left leg forward on A, right on B; legs together on P/idle.
   const stride = b.frame === 'walkA' ? 1 : b.frame === 'walkB' ? -1 : 0;
-  const lift = !posed && b.frame === 'walkP' ? 1 : 0;
-  const lean = (walking ? 1 : posed ? 1 : 0) * fwd;
+  // Sit drops the torso HARD (-3) and hunches it forward (+2) — under the
+  // oversized head a subtle fold reads as standing; lean slouches one (-1)
+  // with a three-voxel tip into the wall.
+  const lift = !posed && b.frame === 'walkP' ? 1 : idleSit ? -3 : idleLean ? -1 : 0;
+  const lean = idleSit ? 2 * fwd : (walking ? 1 : posed ? 1 : 0) * fwd * (idleLean ? 3 : 1);
 
   // Legs (boots z0-1, trousers z2-3): two 2×3 columns.
   const leg = (x0: number, dy: number) => {
     v.push(...cbox(x0, dy, 0, 2, 3, 2, BODY_COLORS.boots, MATERIALS.gunmetal));
     v.push(...cbox(x0, dy, 2, 2, 3, 2, BODY_COLORS.trousers));
   };
-  leg(1, walking ? stride * fwd : 0);
-  leg(3, walking ? -stride * fwd : 0);
+  if (idleSit) {
+    // Folded: knees THRUST forward past the hunched torso, boots ahead —
+    // the read must survive the mascot head at street zoom.
+    v.push(...cbox(1, 2 * fwd, 0, 4, 3, 2, BODY_COLORS.trousers));
+    v.push(...cbox(1, 5 * fwd, 0, 4, 2, 1, BODY_COLORS.boots, MATERIALS.gunmetal));
+  } else if (idleLean) {
+    leg(1, 0);
+    leg(3, 1 * fwd); // crossed ankle
+  } else {
+    leg(1, walking ? stride * fwd : 0);
+    leg(3, walking ? -stride * fwd : 0);
+  }
 
   // Tool-belt (z4): dark strap, amber buckle on the front, rust hip pouch.
   v.push(...cbox(1, lean, 4 + lift, 4, 3, 1, C.band, MATERIALS.gunmetal));
@@ -575,8 +602,8 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   }
 
   // Arms: sleeves with VISIBLE skin hands; counter-swing while walking.
-  const raisedRight = posed; // gather/brawl: right arm up and forward
-  const raisedLeft = b.pose === 'brawl';
+  const raisedRight = posed && !idleSit && !idleLean; // gather/brawl/warm
+  const raisedLeft = b.pose === 'brawl' || idleWarm;
   const arm = (x0: number, raised: boolean, swing: number) => {
     if (raised) {
       v.push(...cbox(x0, lean, 6 + lift, 1, 2, 2, t.sleeve));
@@ -590,12 +617,19 @@ export function sparkBodyModel(b: SparkBuild): Voxel[] {
   arm(0, raisedLeft, walking ? -stride * fwd : 0);
   arm(5, raisedRight, walking ? stride * fwd : 0);
 
+  // The coilroll (lean loop): a paper twist with a live amperite tip at
+  // the lowered left hand — stylized, in-world, nothing else.
+  if (idleLean && !back) {
+    v.push({ x: 0, y: lean + 1, z: 4 + lift, c: BODY_COLORS.toolWood, mat: MATERIALS.wood });
+    v.push({ x: 0, y: lean + 2, z: 4 + lift, c: PALETTE_INT.emberOrange });
+  }
+
   // Tool past the raised right hand (gather poses only).
-  if (posed && b.pose !== 'brawl') {
+  if (posed && b.pose !== 'brawl' && !idlePose) {
     const handX = 5;
     const handY = lean + 2 * fwd;
     const cells = toolCells(
-      b.pose as Exclude<SparkPoseId, 'brawl'>,
+      b.pose as GatherPoseId,
       eq.tool === 'brassToolSkin',
     );
     for (const [dx, dyF, dz, c] of cells) {
@@ -758,8 +792,7 @@ const SPARK_POSES: SparkPoseId[] = [
   'skimnet',
   'tuner',
   'riveter',
-  'brawl',
-];
+  'brawl', 'sit', 'lean', 'warm'];
 
 /** Visual-slot part of an equipped map, as a stable texture-key chunk. */
 export function equipKey(eq: EquippedMap): string {

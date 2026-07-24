@@ -1110,6 +1110,146 @@ function fortunecoilModel(): Voxel[] {
   return v;
 }
 
+/**
+ * THE CITY BOARD (billboard T2): the plaza ticker on a 4×2 footprint —
+ * a broad ink screen on two gunmetal masts, rain hood over the pane,
+ * junction box + cable run + a maintenance ladder for the salvage-punk
+ * read. The pane bakes BLANK: the client mounts the live dot-matrix
+ * face (figures + title) over it, the placeCoilFace pattern.
+ */
+function billboardModel(): Voxel[] {
+  const v: Voxel[] = [];
+  // Masts on concrete feet.
+  for (const mx of [3, 26]) {
+    v.push(...mbox(mx, 6, 0, 3, 3, 2, MATERIALS.concreteDeep));
+    v.push(...mbox(mx + 1, 7, 2, 2, 2, 7, MATERIALS.gunmetal));
+  }
+  // Housing: the board box riding the masts; ink pane proud of the south
+  // face (the screen), gunmetal sill under it, hood on top.
+  v.push(...mbox(1, 7, 8, 30, 4, 10, MATERIALS.gunmetalDeep));
+  v.push(...mbox(2, 11, 8, 28, 1, 1, MATERIALS.gunmetal));
+  v.push(...box(2, 11, 9, 28, 1, 8, PALETTE_INT.ink));
+  v.push(...mbox(0, 6, 18, 32, 7, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(0, 12, 17, 32, 1, 1, MATERIALS.gunmetal));
+  // Corner status lamps (the client adds the soft glows).
+  v.push({ x: 2, y: 11, z: 17, c: PALETTE_INT.warmGlow });
+  v.push({ x: 29, y: 11, z: 17, c: PALETTE_INT.warmGlow });
+  // Junction box + cable run up the west mast; rust bites the base.
+  v.push(...mbox(1, 9, 0, 2, 2, 2, MATERIALS.rust));
+  v.push(...mbox(3, 9, 2, 1, 1, 6, MATERIALS.rustDeep));
+  // Maintenance ladder rungs on the east mast.
+  for (const z of [3, 5, 7]) {
+    v.push({ x: 29, y: 8, z, c: MATERIALS.gunmetal.base, mat: MATERIALS.gunmetal });
+  }
+  return v;
+}
+
+/**
+ * THE AMPED BAR (city-life L1): the Filament's watering hole on a 6×4
+ * footprint. South-facing so the camera gets the lit face: door gap +
+ * carved windows on the south wall, counter running the width of the
+ * hall with stools tucked under, bottle shelf glowing on the backbar,
+ * Vessa behind the taps, snug table nooks in the flanks, and the sign
+ * board over the door (the client hangs the glowing name shingle).
+ * The hall row + door stay walkable in the shared map — Sparks sit at
+ * the counter for real.
+ */
+function ampedbarModel(): Voxel[] {
+  const skin = mixPalette('warmGlow', 'groundAccent', 0.25);
+  const hair = mixPalette('structureMid', 'ink', 0.45);
+  const v: Voxel[] = [];
+  // Floor slab: warm wood underfoot, wall to wall.
+  v.push(...mbox(0, 0, 0, 48, 32, 1, MATERIALS.wood));
+  // Backbar wall (north), tall — carries the shelf and the glow.
+  v.push(...mbox(0, 0, 1, 48, 4, 12, MATERIALS.gunmetalDeep));
+  // Side walls, ochre paint with a rust bite at the east base.
+  v.push(...mbox(0, 4, 1, 4, 24, 10, MATERIALS.paintOchre));
+  for (const vox of mbox(44, 4, 1, 4, 24, 10, MATERIALS.paintOchre)) {
+    v.push(
+      vox.z < 3 && vox.y > 20 ? { ...vox, c: MATERIALS.rust.base, mat: MATERIALS.rust } : vox,
+    );
+  }
+  // Roof over the BACK ROWS only (backbar + shelf) — Vessa, the counter
+  // and the seated Sparks all stand in the open dusk, so the camera sees
+  // them; parapet lip on the roof's south edge.
+  v.push(...mbox(-1, -1, 13, 50, 9, 1, MATERIALS.gunmetalDeep));
+  v.push(...mbox(-1, 7, 12, 50, 1, 1, MATERIALS.gunmetal));
+  // The counter across the hall, lighter worn top.
+  v.push(...mbox(6, 12, 1, 36, 3, 4, MATERIALS.wood));
+  for (const vox of mbox(6, 12, 5, 36, 3, 1, MATERIALS.wood)) {
+    v.push({ ...vox, c: shade(MATERIALS.wood.base, 0.14) });
+  }
+  // Taps: two gunmetal stubs with an amber tell.
+  v.push(...mbox(14, 12, 6, 1, 1, 2, MATERIALS.gunmetal));
+  v.push(...mbox(28, 12, 6, 1, 1, 2, MATERIALS.gunmetal));
+  v.push({ x: 14, y: 12, z: 8, c: PALETTE_INT.neonAmber });
+  // Backbar bottle shelf: a wood rail with the city's colors racked on it.
+  v.push(...mbox(2, 1, 6, 44, 2, 1, MATERIALS.wood));
+  const bottleTints = [
+    PALETTE_INT.neonTeal,
+    PALETTE_INT.neonAmber,
+    PALETTE_INT.neonRose,
+    mixPalette('warmGlow', 'groundAccent', 0.2),
+  ];
+  for (let i = 0; i < 12; i++) {
+    v.push({ x: 4 + i * 3 + (i % 2), y: 1, z: 7, c: bottleTints[i % 4] as number });
+  }
+  // Vessa behind the taps: rose apron, dark crop, says little.
+  v.push(...mbox(21, 8, 1, 3, 2, 4, MATERIALS.paintRose));
+  v.push(...box(21, 8, 5, 3, 2, 2, skin));
+  v.push(...box(21, 8, 7, 3, 2, 1, hair));
+  // Stools tucked under the counter lip at the three seat tiles.
+  for (const sx of [10, 18, 34]) {
+    v.push(...mbox(sx, 15, 1, 2, 1, 1, MATERIALS.woodDeep));
+    v.push(...mbox(sx - 1, 15, 2, 4, 1, 1, MATERIALS.wood));
+  }
+  // Snug table nooks in the wall flanks — a couple of tables, mugs out.
+  for (const nx of [4, 41]) {
+    v.push(...mbox(nx, 18, 1, 3, 3, 3, MATERIALS.woodDeep));
+    v.push(...mbox(nx - 1, 17, 4, 5, 5, 1, MATERIALS.wood));
+    v.push({ x: nx, y: 18, z: 5, c: mixPalette('warmGlow', 'groundAccent', 0.15) });
+  }
+  // Hanging lamps under the roof edge (the client adds the soft glows).
+  v.push({ x: 12, y: 6, z: 11, c: PALETTE_INT.warmGlow });
+  v.push({ x: 36, y: 6, z: 11, c: PALETTE_INT.warmGlow });
+  return v;
+}
+
+/**
+ * The Amped Bar's FRONT layer — baked separately so it can draw at the
+ * true south-edge depth while the hall behind anchors below the stool
+ * row. Seated Sparks render between the two, visible at the counter.
+ * Open façade: corner posts carrying a signed header beam, plus chunky
+ * furniture on the two blocked door-flank tiles so the walk block reads.
+ */
+function ampedbarFrontModel(): Voxel[] {
+  const inkBoard = mixPalette('ink', 'structureMid', 0.2);
+  const v: Voxel[] = [];
+  // Corner posts (on the blocked corner tiles) up to the header. Tall:
+  // in iso a south-edge beam sits ~4 rows of parallax LOWER on screen
+  // than the side-wall rims, so the header must clear the wall tops to
+  // read as a header and not a curb.
+  v.push(...mbox(4, 28, 1, 3, 3, 10, MATERIALS.woodDeep));
+  v.push(...mbox(41, 28, 1, 3, 3, 10, MATERIALS.woodDeep));
+  // Header beam across the whole front + the sign board riding high.
+  v.push(...mbox(3, 28, 11, 42, 4, 2, MATERIALS.paintOchre));
+  v.push(...box(15, 31, 13, 18, 1, 4, inkBoard));
+  for (let i = 0; i < 6; i++) {
+    v.push({ x: 17 + i * 3, y: 31, z: 14 + (i % 2), c: i % 2 === 0 ? PALETTE_INT.neonAmber : PALETTE_INT.neonRose });
+  }
+  // West flank (tile 1 of the front row): a barrel table, mug out.
+  v.push(...mbox(10, 25, 1, 4, 4, 3, MATERIALS.wood));
+  for (const vox of mbox(10, 25, 4, 4, 4, 1, MATERIALS.woodDeep)) {
+    v.push({ ...vox, c: shade(MATERIALS.woodDeep.base, 0.1) });
+  }
+  v.push({ x: 11, y: 26, z: 5, c: mixPalette('warmGlow', 'groundAccent', 0.15) });
+  // East flank: a routing crate with a lantern set on it.
+  v.push(...mbox(33, 25, 1, 4, 4, 3, MATERIALS.rust));
+  v.push({ x: 34, y: 26, z: 4, c: PALETTE_INT.warmGlow });
+  v.push({ x: 36, y: 25, z: 3, c: PALETTE_INT.neonTeal });
+  return v;
+}
+
 /** A leaning tool rack — the work corner's silhouette. */
 function toolrackModel(): Voxel[] {
   const v: Voxel[] = [];
@@ -2429,7 +2569,18 @@ export function bakeWorldVoxelModels(scene: Phaser.Scene): void {
     }
   }
   bakeVoxelModel(scene, { name: 'fortunecoil', voxels: fortunecoilModel() });
+  bakeVoxelModel(scene, { name: 'billboard', voxels: billboardModel() });
   bakeVoxelModel(scene, { name: 'ledgerhouse', voxels: ledgerhouseModel() });
+  // The bar bakes in two depth layers; a shared anchor keeps them aligned
+  // when placed at the same world point (front has no floor to center on).
+  const barAnchor = { x: 23.5, y: 15 };
+  bakeVoxelModel(scene, { name: 'ampedbar', voxels: ampedbarModel(), anchor: barAnchor });
+  bakeVoxelModel(scene, {
+    name: 'ampedbar-front',
+    voxels: ampedbarFrontModel(),
+    anchor: barAnchor,
+    shadow: false,
+  });
   bakeVoxelModel(scene, { name: 'toolrack', voxels: toolrackModel() });
   bakeVoxelModel(scene, { name: 'scrapcache', voxels: scrapcacheModel() });
   // G6b world edges: rim segments per orientation/look, trusses, trestles,
