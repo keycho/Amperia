@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMPERIA — Field Guide</title>
+<meta name="description" content="How to play Amperia and how $AMP works: the districts, the two currencies, the trades, the Nightstalls, cosmetics, and the flywheel. Fixed supply, mint renounced.">
+<meta property="og:title" content="AMPERIA — Field Guide">
+<meta property="og:description" content="Learn the city: how to play, how you're paid in Bolts, and how $AMP works.">
+<meta property="og:image" content="img/market-night.webp">
+<style>
+  :root{
+    --void:#0A0814; --void2:#120E20; --ink:#141024; --ink2:#1B1430;
+    --line:#3A2F58; --amber:#FFB84D; --amber-hi:#FFE9C4; --amber-lo:#E89A3C;
+    --purple:#9A8AB8; --purple2:#B9A8D6; --dim:#8E7FAE;
+    --rose:#FF6F91; --teal:#2FD3B8; --cyan:#5BC0FF;
+    --mono:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,'Segoe UI',Roboto,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:80px}
+  body{background:var(--void); color:var(--amber-hi); font-family:var(--sans);
+    line-height:1.65; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(ellipse 1200px 700px at 50% -5%, rgba(255,184,77,.06), transparent 60%);}
+  a{color:var(--amber); text-decoration:none} a:hover{text-decoration:underline}
+
+  /* nav */
+  nav{position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
+    background:rgba(10,8,20,.82); border-bottom:1px solid var(--line)}
+  .nav-in{max-width:1180px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:26px}
+  .brand{font-family:var(--mono); font-weight:700; letter-spacing:2px; color:var(--amber-hi);
+    font-size:15px; display:flex; align-items:center; gap:9px}
+  .brand svg{width:20px;height:auto;filter:drop-shadow(0 0 8px rgba(255,184,77,.5))}
+  .nav-links{margin-left:auto; display:flex; gap:22px; font-family:var(--mono); font-size:13.5px}
+  .nav-links a{color:var(--purple2)} .nav-links a:hover{color:var(--amber); text-decoration:none}
+  .nav-links a.play{color:var(--amber)}
+
+  /* layout */
+  .shell{max-width:1180px; margin:0 auto; padding:0 24px; display:grid;
+    grid-template-columns:230px 1fr; gap:48px; align-items:start}
+  aside{position:sticky; top:80px; padding:40px 0; max-height:calc(100vh - 80px); overflow:auto}
+  aside .toc-h{font-family:var(--mono); font-size:11px; letter-spacing:3px; color:var(--teal);
+    text-transform:uppercase; margin-bottom:14px}
+  aside a{display:block; font-size:13.5px; color:var(--purple2); padding:5px 0; line-height:1.35}
+  aside a:hover{color:var(--amber); text-decoration:none}
+  main{padding:48px 0 100px; max-width:760px; min-width:0}
+
+  .hero-head{margin-bottom:14px}
+  .kicker{font-family:var(--mono); font-size:12px; letter-spacing:5px; color:var(--teal);
+    text-transform:uppercase; margin-bottom:12px}
+  h1{font-family:var(--mono); font-weight:700; font-size:clamp(34px,5vw,52px); letter-spacing:.02em;
+    line-height:1; background:linear-gradient(180deg,var(--amber-hi),var(--amber));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 22px rgba(255,184,77,.3))}
+  .intro{color:var(--purple2); font-size:18px; margin:18px 0 8px; max-width:640px}
+
+  section{padding-top:44px; scroll-margin-top:80px}
+  h2{font-family:var(--mono); font-weight:700; font-size:26px; color:var(--amber-hi);
+    letter-spacing:.02em; margin-bottom:6px; padding-bottom:10px; border-bottom:1px solid var(--line)}
+  h3{font-family:var(--mono); font-size:16px; color:var(--amber); margin:26px 0 6px}
+  p{color:var(--purple2); margin:12px 0}
+  p b, li b{color:var(--amber-hi); font-weight:600}
+  .lead{color:var(--purple2); font-size:16px}
+  ul{margin:12px 0 12px 4px; list-style:none}
+  li{color:var(--purple2); margin:8px 0; padding-left:22px; position:relative}
+  li::before{content:'▸'; position:absolute; left:0; color:var(--amber); font-size:12px; top:3px}
+  code{font-family:var(--mono); font-size:.9em; background:var(--ink2); color:var(--amber-hi);
+    padding:2px 7px; border-radius:5px; border:1px solid var(--line)}
+
+  .callout{background:linear-gradient(180deg,var(--ink2),var(--ink)); border:1px solid var(--line);
+    border-left:3px solid var(--amber); border-radius:10px; padding:18px 20px; margin:20px 0}
+  .callout p{margin:0; color:var(--amber-hi); font-size:14.5px}
+  .callout.teal{border-left-color:var(--teal)}
+  .callout.rose{border-left-color:var(--rose)}
+
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:20px 0}
+  .box{background:var(--ink); border:1px solid var(--line); border-radius:12px; padding:20px}
+  .box h4{font-family:var(--mono); font-size:15px; color:var(--amber-hi); margin-bottom:6px}
+  .box .tag{font-family:var(--mono); font-size:11px; letter-spacing:1px; padding:3px 8px; border-radius:6px;
+    display:inline-block; margin-bottom:10px}
+  .tag-soft{background:rgba(47,211,184,.12); color:var(--teal); border:1px solid rgba(47,211,184,.3)}
+  .tag-hard{background:rgba(255,184,77,.12); color:var(--amber); border:1px solid rgba(255,184,77,.3)}
+  .box p{margin:6px 0; font-size:14px}
+
+  table{width:100%; border-collapse:collapse; margin:18px 0; font-size:14px}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono); font-size:12px; letter-spacing:1px; color:var(--teal); text-transform:uppercase}
+  td{color:var(--purple2)} td b{color:var(--amber-hi)}
+
+  .flow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin:20px 0; counter-reset:s}
+  .flow .st{background:var(--ink); border:1px solid var(--line); border-radius:11px; padding:18px 16px 14px; position:relative}
+  .flow .st::before{counter-increment:s; content:counter(s); position:absolute; top:-11px; left:16px;
+    width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);
+    font-weight:700;font-size:12px;color:#1A1426;background:linear-gradient(180deg,var(--amber-hi),var(--amber))}
+  .flow .st b{display:block; font-family:var(--mono); font-size:14px; color:var(--amber-hi); margin:6px 0 4px}
+  .flow .st span{color:var(--purple2); font-size:13px}
+
+  .never{display:flex; gap:9px; flex-wrap:wrap; margin:18px 0}
+  .never .n{font-family:var(--mono); font-size:13px; color:var(--purple2);
+    border:1px solid var(--line); border-radius:999px; padding:8px 15px}
+  .never .n b{color:var(--rose); margin-right:6px}
+
+  .kbd{font-family:var(--mono); background:var(--ink2); border:1px solid var(--line);
+    border-bottom-width:2px; border-radius:5px; padding:1px 8px; color:var(--amber-hi); font-size:.9em}
+
+  footer{border-top:1px solid var(--line); padding:36px 24px 60px; text-align:center; margin-top:40px}
+  footer .fl{display:flex; gap:20px; justify-content:center; flex-wrap:wrap; font-family:var(--mono);
+    font-size:13.5px; margin-bottom:14px}
+  footer .fl a{color:var(--purple2)}
+  footer .fine{color:var(--dim); font-size:12px}
+
+  .mobtoc{display:none}
+  @media(max-width:860px){
+    .shell{grid-template-columns:1fr}
+    aside{display:none}
+    .two-col,.flow{grid-template-columns:1fr}
+    .nav-links a:not(.play){display:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 64 84" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE9C4"/><stop offset="1" stop-color="#FFB84D"/></linearGradient></defs>
+        <rect x="8" y="20" width="7" height="52" rx="2" fill="#241B3A"/><rect x="49" y="20" width="7" height="52" rx="2" fill="#241B3A"/>
+        <rect x="6" y="70" width="52" height="9" rx="3" fill="#171226"/>
+        <rect x="15" y="26" width="34" height="9" rx="3" fill="url(#c)"/><rect x="15" y="41" width="34" height="9" rx="3" fill="url(#c)"/><rect x="15" y="56" width="34" height="9" rx="3" fill="url(#c)"/>
+        <polygon points="32,2 42,14 32,26 22,14" fill="#5BC0FF"/>
+      </svg>AMPERIA
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="docs.html">Field Guide</a>
+      <a href="https://amperia-ashy.vercel.app/ledger">City Ledger</a>
+      <a class="play" href="https://amperia-ashy.vercel.app">Play →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="shell">
+  <aside>
+    <div class="toc-h">The Field Guide</div>
+    <a href="#what">What is Amperia</a>
+    <a href="#start">Getting started</a>
+    <a href="#firsthour">Your first hour</a>
+    <a href="#currencies">The two currencies</a>
+    <a href="#trades">The trades</a>
+    <a href="#world">The world</a>
+    <a href="#nightstalls">The Nightstalls</a>
+    <a href="#foundry">Cosmetics &amp; the Foundry</a>
+    <a href="#charge">Keeping the city lit</a>
+    <a href="#economy">The $AMP economy</a>
+    <a href="#ledger">The City Ledger</a>
+    <a href="#controls">Controls &amp; commands</a>
+    <a href="#rules">The rules we keep</a>
+    <a href="#faq">FAQ</a>
+  </aside>
+
+  <main>
+    <div class="hero-head">
+      <div class="kicker">Field Guide</div>
+      <h1>How the city works</h1>
+      <p class="intro">Amperia is an isometric salvage-punk city you scavenge, build, and trade in — a living world strung across the void and lit by the Great Dynamo. This guide covers how to play, how the city pays you, and how <b>$AMP</b> works.</p>
+    </div>
+
+    <section id="what">
+      <h2>What is Amperia</h2>
+      <p>You are a <b>Spark</b> — one of the people who keep a dark city burning. You gather salvage from the heaps, delve brass and amperite, skim glowkoi from the canals, tune signal from the antenna masts, craft and upgrade your gear, run a shop in the market, and help feed the Great Dynamo that lights the whole place.</p>
+      <p>It's a cozy, social, open-world game first. The token, <b>$AMP</b>, is the premium layer on top — it buys identity and access, never power. Everything that makes you stronger comes from playing.</p>
+      <div class="callout teal"><p>The one-line version: <b>gather → sell → spend, and keep the city lit.</b> Everything else is detail.</p></div>
+    </section>
+
+    <section id="start">
+      <h2>Getting started</h2>
+      <h3>Getting in</h3>
+      <p>Amperia runs on your wallet. Connect any Ethereum wallet (like MetaMask) on <b>Robinhood Chain</b>, sign in, and you're a Spark — no email, no password, nothing spent and nothing leaves your wallet. Your wallet is your account and your entry.</p>
+      <p>Holding <b>1,000 $AMP</b> becomes your key to the full city soon. It's not a fee and it's never spent — it simply stays in your wallet as your key. At launch you connect and play; the key activates as the city grows, so you can hold it early and be ready.</p>
+      <p>Just want to look? <b>Spectate</b> without a wallet — walk the streets and watch the city live, read-only. Connect whenever you're ready to actually play.</p>
+      <h3>Shape your Spark</h3>
+      <p>Every player designs their own Spark — skin, hair, jacket, and flair. This is who the city knows you as, so make one worth remembering. You can change your look later with cosmetics from the Foundry.</p>
+    </section>
+
+    <section id="firsthour">
+      <h2>Your first hour</h2>
+      <p>The whole game grows out of one simple loop. The city walks you through it the moment you arrive:</p>
+      <div class="flow">
+        <div class="st"><b>Gather</b><span>Find a glinting junk heap and work it with your Magclaw. It gives Salvage.</span></div>
+        <div class="st"><b>Sell</b><span>Carry your Salvage to a Merchant in the Nightstalls and sell it for Bolts.</span></div>
+        <div class="st"><b>Spend</b><span>Buy a Warmcup, better tools, or a tram ride. Now you're moving.</span></div>
+      </div>
+      <p>From there it opens up: more resources, more trades, quests from the Dispatcher, your own market stall, and the wider city. The first stretch is generous on purpose — the city pays new Sparks well while you find your feet, then settles into a steady rhythm.</p>
+      <div class="callout"><p>Look for the floating icons. Anything you can interact with shows a symbol above it — a coin for merchants, a claw for gather spots, a wheel for the Fortune Coil. Walk up and press <span class="kbd">E</span>.</p></div>
+    </section>
+
+    <section id="currencies">
+      <h2>The two currencies</h2>
+      <p>Amperia keeps its game money and its token strictly separate. This is the most important thing to understand, and it's deliberate.</p>
+      <div class="two-col">
+        <div class="box">
+          <span class="tag tag-soft">soft currency</span>
+          <h4>Bolts</h4>
+          <p>The city's own currency. You get Bolts only by <b>playing</b> — selling resources, completing quests, running a stall. Bolts buy tools, repairs, consumables, tram rides, and gear upgrades.</p>
+          <p><b>Bolts never convert to the token.</b> The game economy stays a game.</p>
+        </div>
+        <div class="box">
+          <span class="tag tag-hard">hard currency</span>
+          <h4>$AMP</h4>
+          <p>The premium layer, on <b>Robinhood Chain</b> (an Ethereum L2). Fixed supply, liquidity locked — no more can ever be made. $AMP buys cosmetics, memberships, market stall deeds, and other <b>identity and access</b> items.</p>
+          <p><b>$AMP never buys power.</b> No stats, no faster gathering, no advantage.</p>
+        </div>
+      </div>
+      <p>Because the two never mix, playing the game can't mint or move the token, and spending the token can't buy your way to the top of the ladder. They live side by side.</p>
+    </section>
+
+    <section id="trades">
+      <h2>The trades</h2>
+      <p>There are six trades, each with its own tool and its own Mastery track from 1 to 50. You level them by doing them, and higher Mastery opens better nodes, recipes, and cosmetic rewards — never raw power over other players.</p>
+      <table>
+        <tr><th>Trade</th><th>Tool</th><th>What you work</th></tr>
+        <tr><td><b>Scavving</b></td><td>Magclaw</td><td>Junk heaps → Salvage</td></tr>
+        <tr><td><b>Delving</b></td><td>Drillhammer</td><td>Brass &amp; Amperite from the deeps</td></tr>
+        <tr><td><b>Skimming</b></td><td>Skimnet</td><td>Glowkoi from the water</td></tr>
+        <tr><td><b>Tuning</b></td><td>Tuner</td><td>Signal from antenna masts</td></tr>
+        <tr><td><b>Brawling</b></td><td>—</td><td>Feral junkbots and city threats</td></tr>
+        <tr><td><b>Griddling</b></td><td>Riveter</td><td>Cooking &amp; crafting at the griddle</td></tr>
+      </table>
+      <p>Gear climbs through tiers as you progress: <b>Tinker → Brassbound → Coilworked → Ampforged → Filament-grade</b>. Hit Mastery 50 in a trade and you claim the <b>Mastercoil sash</b> — a mark only the city's best wear.</p>
+    </section>
+
+    <section id="world">
+      <h2>The world</h2>
+      <p>Amperia is one connected city of floating districts, linked by the <b>Tramgates</b>. You leave the market to work the edges, and come back to trade.</p>
+      <ul>
+        <li><b>The Filament</b> — the beating heart. The Great Dynamo, the Nightstalls market street, the Ledgerhouse, the Fortune Coil. Where you start.</li>
+        <li><b>The Stacks</b> — a vertical canyon of towers, rooftop markets and stair-runs. Ride the tram here <b>free</b> from the Filament.</li>
+        <li><b>More districts</b> — the Tangle, the Terrarium, the Boneyards, the Canals and the Circuit open the city outward over time.</li>
+      </ul>
+      <p>Tram rides between distant districts cost a few Bolts — a small toll that keeps the currency circulating. Your first ride is on the city, and the nearest district is always free, so no new Spark is ever stuck.</p>
+    </section>
+
+    <section id="nightstalls">
+      <h2>The Nightstalls</h2>
+      <p>The Nightstalls are the market street — a row of stalls under strung lights that never quite closes. Two things happen here.</p>
+      <p><b>Buy and sell with the Merchants.</b> NPC merchants like Sable buy your resources and sell you goods. Their prices move with real supply and demand across the whole city, so the resource everyone's dumping pays less, and the neglected one pays more. Watching prices is itself part of the game.</p>
+      <p><b>Run your own stall.</b> Rent a stall, stock your shop, and it sells while you're offline. Set your prices, come back to a fuller coffer. Every trade, toll and repair is a real, measured economy — published openly in the City Ledger.</p>
+    </section>
+
+    <section id="foundry">
+      <h2>Cosmetics &amp; the Foundry</h2>
+      <p>The <b>Cosmetic Foundry</b> is the premium shop, priced in $AMP. Everything in it is style — capes, crowns, coats, wings — and <b>nothing in it affects gameplay</b>. Pure look, no stats, ever.</p>
+      <p>Cosmetics come in three states, shown plainly:</p>
+      <ul>
+        <li><b>Available</b> — in the Foundry now.</li>
+        <li><b>Seasonal</b> — leaves when the season ends. When a set is close to leaving, the Foundry shows the date well in advance.</li>
+        <li><b>Vaulted</b> — a past season's set, retired for good. Vaulted items are shown in the catalog as history and never sold again.</li>
+      </ul>
+      <div class="callout"><p>Scarcity here is honest: sets are scarce because of <b>time</b>, announced ahead, never through hidden odds or pressure timers. Amperia has <b>no paid randomness</b> anywhere — you always know exactly what you're getting.</p></div>
+    </section>
+
+    <section id="charge">
+      <h2>Keeping the city lit</h2>
+      <p>The Great Dynamo lights the city, and it runs on the whole population. Feed it amperite and the <b>Citywide Charge</b> meter climbs — hit the weekly threshold and the whole city literally brightens, the weekend turns festival, and the top contributors wear an untradeable glow.</p>
+      <p>The city keeps score of who kept it burning. It's a shared goal, not a grind — and it's the closest thing Amperia has to a heartbeat.</p>
+    </section>
+
+    <section id="economy">
+      <h2>The $AMP economy</h2>
+      <p class="lead">One wheel, one direction. Nothing is ever printed — the mint is renounced — and every part of the loop points the same way: supply down.</p>
+      <div class="flow">
+        <div class="st"><b>Hold 1,000 $AMP</b><span>Your key. Held in your wallet, never spent.</span></div>
+        <div class="st"><b>Play for Bolts</b><span>The city runs on Bolts. Bolts never touch the token.</span></div>
+        <div class="st"><b>Spend if you want</b><span>Cosmetics, memberships, stalls. $AMP only. Identity, never power.</span></div>
+        <div class="st"><b>Every spend burns 30%</b><span>Burned onchain at the till. The other 70% goes to the treasury.</span></div>
+        <div class="st"><b>Volume buys back</b><span>Trading-volume creator rewards fund monthly buybacks: half burned, half to the champions' purse.</span></div>
+        <div class="st"><b>The city grows</b><span>Purses fund refereed finals. New Sparks bring keys. Supply only falls.</span></div>
+      </div>
+      <h3>Where the money goes</h3>
+      <p>When you spend $AMP in the shop, <b>30% is burned onchain immediately</b> and <b>70% goes to the city treasury</b> — a public wallet with two rules: it <b>never sells</b>, and its only outflows are further burns and the <b>champions' purse</b> (the prize reserve that pays refereed Circuit finals and world-firsts, under fixed caps). From the market's side, the treasury's share is as good as gone: it can only ever come back as burns or as prizes in players' hands.</p>
+      <h3>What funds the buybacks</h3>
+      <p>Amperia's <b>creator rewards</b> — the trading-volume fees the token earns on Robinhood Chain — fund an automated monthly buyback. Half of what it buys is burned; half tops up the champions' purse. So the market's own activity feeds the wheel, while in-game spending burns directly. Two independent paths, both pointing supply downward. And because $AMP fair-launched with no mint and no team allocation, none of it can ever be printed back.</p>
+      <div class="callout rose"><p>Amperia is a game; <b>$AMP is a token you use inside it, not an investment.</b> This page describes how the mechanism works — it makes no promise about price or return, and it never will.</p></div>
+    </section>
+
+    <section id="ledger">
+      <h2>The City Ledger</h2>
+      <p>Every Bolt, trade, toll, burn and buyback is recorded. The <b>City Ledger</b> is the public dashboard where those numbers live — players, Bolts in circulation, Bolts removed by sinks, trades settled, the Citywide Charge, and (once the token layer opens) $AMP burned, the treasury balance, buybacks and the champions' purse.</p>
+      <p>It's updated monthly, in public, and nothing on it is ever estimated. <a href="https://amperia-ashy.vercel.app/ledger">Open the live City Ledger →</a></p>
+    </section>
+
+    <section id="controls">
+      <h2>Controls &amp; commands</h2>
+      <ul>
+        <li><span class="kbd">Click</span> — walk, work a node, or talk to an NPC.</li>
+        <li><span class="kbd">E</span> — interact with whatever you're standing next to (trade, ride, spin).</li>
+        <li><span class="kbd">1</span>–<span class="kbd">6</span> — tool belt / hotbar slots.</li>
+        <li><span class="kbd">I</span> pack · <span class="kbd">K</span> skills · <span class="kbd">G</span> goals · <span class="kbd">J</span> Manifest · <span class="kbd">M</span> minimap.</li>
+        <li><span class="kbd">Enter</span> — chat. Hold <span class="kbd">E</span> for emotes.</li>
+      </ul>
+      <p>Handy slash commands: <code>/haul</code> <code>/park</code> <code>/near</code> <code>/crew</code> <code>/charge</code> <code>/help</code>. The <b>Manifest</b> is your collection log — every first-find, craft and rare pays a one-time bonus and fills a page.</p>
+    </section>
+
+    <section id="rules">
+      <h2>The rules we keep</h2>
+      <p>These aren't marketing lines — they're built into the code and the ledger, and they don't bend:</p>
+      <div class="never">
+        <span class="n"><b>✗</b>never a wage</span>
+        <span class="n"><b>✗</b>never pay-to-win</span>
+        <span class="n"><b>✗</b>never printed</span>
+        <span class="n"><b>✗</b>treasury never sold</span>
+        <span class="n"><b>✗</b>no paid randomness</span>
+      </div>
+      <p>Free and premium Sparks share identical rates, stats, drop tables and stall slots. Progression comes from playing. $AMP buys breadth and identity — memberships gate <i>content</i>, never advantage. And no randomized outcome ever follows a payment, anywhere.</p>
+    </section>
+
+    <section id="faq">
+      <h2>FAQ</h2>
+      <h3>How do I get in?</h3>
+      <p>Connect an Ethereum wallet on Robinhood Chain and sign in. No email, no password — your wallet is your account. Or spectate the city read-only without a wallet, and connect when you want to play.</p>
+      <h3>Do I need $AMP to play at launch?</h3>
+      <p>No. At launch you just connect your wallet and play. Holding <b>1,000 $AMP</b> becomes the key to the full city soon after — held in your wallet, never spent or taken. You keep all of it.</p>
+      <h3>Can I turn Bolts into $AMP?</h3>
+      <p>No. There is no path from Bolts, resources or items to the token. That wall is deliberate and permanent.</p>
+      <h3>Does spending $AMP make me stronger?</h3>
+      <p>No. $AMP buys cosmetics, memberships and stalls — identity and access. Power comes only from playing.</p>
+      <h3>Is $AMP an investment?</h3>
+      <p>No. $AMP is a utility token you use inside a game. This guide explains mechanism, not markets, and makes no promise about price.</p>
+      <h3>How do I know the numbers are real?</h3>
+      <p>The City Ledger publishes them monthly, in public, from the game's own records. Nothing is estimated.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="fl">
+    <a href="index.html">Home</a>
+    <a href="docs.html">Field Guide</a>
+    <a href="https://amperia-ashy.vercel.app">Play</a>
+    <a href="https://amperia-ashy.vercel.app/ledger">City Ledger</a>
+    <a href="https://x.com/YOUR_HANDLE">X / Twitter</a>
+  </div>
+  <div class="fine">Fixed supply · mint renounced · built in public. Amperia is a game; $AMP is a token you use inside it, not an investment.</div>
+</footer>
+
+</body>
+</html>

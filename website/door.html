@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMPERIA — keep the city lit</title>
+<meta name="description" content="An isometric salvage-punk city. Connect your wallet and play. $AMP on Robinhood Chain — fixed supply, mint renounced.">
+<meta property="og:title" content="AMPERIA — keep the city lit">
+<meta property="og:description" content="The city is open. Connect your wallet and step in.">
+<meta property="og:image" content="img/roofline-vista.webp">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{
+    --void:#0A0814; --ink:#12101f; --ink2:#1B1430; --line:#3A2F58;
+    --amber:#FFB84D; --amber-hi:#FFE9C4; --amber-lo:#E89A3C;
+    --purple:#9A8AB8; --purple2:#B9A8D6; --dim:#8E7FAE; --teal:#2FD3B8; --rose:#FF6F91;
+    --mono:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:var(--mono); color:var(--amber-hi); background:var(--void);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; overflow-x:hidden; position:relative;
+  }
+  /* full-bleed atmospheric backdrop */
+  .bg{position:fixed; inset:0; z-index:0;
+    background:url('img/door-bg.webp') center/cover no-repeat;}
+  .bg::after{content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse 1200px 800px at 50% 45%, rgba(10,8,20,.25), rgba(10,8,20,.78) 90%),
+      linear-gradient(180deg, rgba(10,8,20,.55), rgba(10,8,20,.25) 40%, rgba(10,8,20,.8));}
+  #embers{position:fixed; inset:0; z-index:1; pointer-events:none}
+
+  /* the door card */
+  .card{
+    position:relative; z-index:2; width:min(440px, calc(100vw - 40px));
+    background:rgba(13,11,24,.92); border:1px solid var(--line); border-radius:16px;
+    box-shadow:0 40px 100px rgba(0,0,0,.7), 0 0 60px rgba(255,184,77,.06);
+    overflow:hidden; backdrop-filter:blur(6px);
+  }
+  .card-strip{
+    display:flex; align-items:center; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); background:rgba(27,20,48,.6);
+    font-size:12.5px; color:var(--teal); letter-spacing:.5px;
+  }
+  .card-strip .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);
+    box-shadow:0 0 8px var(--teal); animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .card-in{padding:30px 30px 26px; text-align:center;
+    background-image:radial-gradient(rgba(255,233,196,.05) 1px, transparent 1px);
+    background-size:22px 22px;}
+  .mark{width:52px; height:auto; margin:0 auto 16px; display:block;
+    filter:drop-shadow(0 0 16px rgba(255,184,77,.45))}
+  h1{font-size:26px; font-weight:700; letter-spacing:.04em; margin-bottom:14px; line-height:1.2}
+  h1 .glow{background:linear-gradient(180deg,var(--amber-hi),var(--amber));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 18px rgba(255,184,77,.5))}
+  .blurb{font-size:13.5px; line-height:1.7; color:var(--purple2); margin-bottom:22px}
+  .blurb b{color:var(--amber-hi); font-weight:700}
+  .btn{
+    display:block; width:100%; padding:15px 0; border-radius:12px; cursor:pointer;
+    background:linear-gradient(180deg,var(--amber),var(--amber-lo)); color:#1A1426;
+    font-family:var(--mono); font-weight:700; font-size:15.5px; letter-spacing:.5px;
+    text-decoration:none; transition:.15s; box-shadow:0 0 26px rgba(255,184,77,.3);
+  }
+  .btn:hover{transform:translateY(-1px); box-shadow:0 0 40px rgba(255,184,77,.5)}
+  .under{font-size:11.5px; color:var(--dim); margin-top:10px}
+  .spectate{display:inline-block; margin-top:14px; font-size:12.5px; color:var(--purple);
+    text-decoration:none; border-bottom:1px dotted var(--line); padding-bottom:1px}
+  .spectate:hover{color:var(--amber)}
+  .stats{display:flex; justify-content:center; gap:0; margin-top:24px;
+    border-top:1px solid var(--line); padding-top:18px}
+  .stat{flex:1; max-width:150px}
+  .stat + .stat{border-left:1px solid var(--line)}
+  .stat .n{font-size:26px; font-weight:700; color:var(--amber-hi);
+    text-shadow:0 0 14px rgba(255,184,77,.35)}
+  .stat .l{font-size:11px; color:var(--dim); margin-top:3px; letter-spacing:.4px}
+
+  /* footer */
+  .foot{position:relative; z-index:2; margin-top:34px; text-align:center}
+  .flinks{display:flex; gap:22px; justify-content:center; flex-wrap:wrap; font-size:13px}
+  .flinks a{color:var(--purple2); text-decoration:none; border-bottom:1px dotted transparent}
+  .flinks a:hover{color:var(--amber); border-bottom-color:var(--amber)}
+  .fine{font-size:11px; color:var(--dim); margin-top:14px; letter-spacing:.3px}
+  .wordmark-bottom{margin-top:22px; font-size:18px; font-weight:700; letter-spacing:6px;
+    color:var(--amber-hi); opacity:.85; text-shadow:0 0 20px rgba(255,184,77,.4)}
+  .vtag{position:fixed; right:14px; bottom:12px; z-index:2; font-size:10.5px; color:var(--dim); opacity:.7}
+  @media(max-height:760px){ .foot{margin-top:20px} .wordmark-bottom{display:none} }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<canvas id="embers"></canvas>
+
+<div class="card">
+  <div class="card-strip"><span class="dot"></span> the city is open</div>
+  <div class="card-in">
+    <svg class="mark" viewBox="0 0 64 84" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE9C4"/><stop offset="1" stop-color="#FFB84D"/></linearGradient></defs>
+      <rect x="8" y="20" width="7" height="52" rx="2" fill="#241B3A"/><rect x="49" y="20" width="7" height="52" rx="2" fill="#241B3A"/>
+      <rect x="6" y="70" width="52" height="9" rx="3" fill="#171226"/>
+      <rect x="15" y="26" width="34" height="9" rx="3" fill="url(#c)"/><rect x="15" y="41" width="34" height="9" rx="3" fill="url(#c)"/><rect x="15" y="56" width="34" height="9" rx="3" fill="url(#c)"/>
+      <polygon points="32,2 42,14 32,26 22,14" fill="#5BC0FF"/>
+    </svg>
+    <h1>enter <span class="glow">AMPERIA</span></h1>
+    <p class="blurb">
+      an isometric salvage-punk city — scavenge, craft, run a shop, keep the Dynamo lit.
+      connect your wallet and sign in to prove it's you — <b>no transaction, no fee</b>.
+      MetaMask and any Ethereum wallet on <b>Robinhood Chain</b> works.
+      holding <b>1,000 $AMP</b> becomes your key soon — held, never spent.
+    </p>
+    <a class="btn" href="https://amperia-ashy.vercel.app">connect wallet</a>
+    <div class="under">you'll be asked to approve a signature</div>
+    <a class="spectate" href="https://amperia-ashy.vercel.app">or spectate the city without a wallet →</a>
+    <div class="stats">
+      <div class="stat"><div class="n" id="st-today">—</div><div class="l">in the city today</div></div>
+      <div class="stat"><div class="n" id="st-all">—</div><div class="l">Sparks all time</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <div class="flinks">
+    <a href="https://x.com/YOUR_HANDLE">x</a>
+    <a href="https://hood.fun">$amp</a>
+    <a href="docs.html">field guide</a>
+    <a href="https://amperia-ashy.vercel.app/ledger">city ledger</a>
+    <a href="about.html">about</a>
+  </div>
+  <div class="fine">fixed supply · mint renounced · never a wage · receipts published monthly</div>
+  <div class="wordmark-bottom">AMPERIA</div>
+</div>
+<div class="vtag">v0.9 · doors-open</div>
+
+<script>
+// live counts from the public stats API (graceful dashes if unreachable)
+fetch('https://amperia-production.up.railway.app/api/public-stats')
+  .then(r=>r.json())
+  .then(d=>{
+    var t=document.getElementById('st-today'), a=document.getElementById('st-all');
+    if(d && typeof d.activeToday==='number') t.textContent=d.activeToday;
+    if(d && typeof d.sparksRegistered==='number') a.textContent=d.sparksRegistered;
+    // tolerate alternate key names
+    if(t.textContent==='—' && d && d.active_today!=null) t.textContent=d.active_today;
+    if(a.textContent==='—' && d && d.accounts!=null) a.textContent=d.accounts;
+  }).catch(function(){});
+
+// embers
+(function(){
+  var c=document.getElementById('embers'), x=c.getContext('2d'), W,H,P;
+  function size(){W=c.width=innerWidth;H=c.height=innerHeight;seed();}
+  function seed(){P=[];for(var i=0;i<26;i++)P.push({x:Math.random()*W,y:Math.random()*H,
+    r:1+Math.random()*2,s:.1+Math.random()*.35,a:.1+Math.random()*.4,t:Math.random()*6.28});}
+  function tick(){x.clearRect(0,0,W,H);
+    for(var i=0;i<P.length;i++){var p=P[i];p.y-=p.s;p.t+=.015;p.x+=Math.sin(p.t)*.2;
+      if(p.y<-5){p.y=H+5;p.x=Math.random()*W;}
+      x.fillStyle='rgba(255,184,77,'+(p.a*(.6+.4*Math.sin(p.t)))+')';
+      x.shadowBlur=6;x.shadowColor='rgba(255,184,77,.7)';
+      x.fillRect(p.x,p.y,p.r*2,p.r*2);}
+    requestAnimationFrame(tick);}
+  size();addEventListener('resize',size);tick();
+})();
+</script>
+</body>
+</html>
