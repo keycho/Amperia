@@ -139,3 +139,42 @@ describe('the script itself', () => {
     }
   });
 });
+
+describe('chapters 4-5 (S2c)', () => {
+  const skills =
+    (levels: Partial<Record<string, number>>) =>
+    (id: string): number =>
+      levels[id] ?? 1;
+
+  it('ch4 gates on ch3 done + Skimming 4, at the barkeep', () => {
+    const log = emptyStoryLog();
+    const lv = skills({ skimming: 4 });
+    expect(chapterAvailable(log, 'ch4', lv as never)).toBe(false);
+    log.chapters['ch3'] = { state: 'done', progress: 5 };
+    expect(chapterAvailable(log, 'ch4', skills({ skimming: 3 }) as never)).toBe(false);
+    expect(chapterAvailable(log, 'ch4', lv as never)).toBe(true);
+    expect(storyChapter('ch4')?.npc).toBe('barkeep');
+  });
+
+  it('ch4 advances on glowkoi gathers only, capped at 4', () => {
+    const log = emptyStoryLog();
+    log.chapters['ch4'] = { state: 'task', progress: 0 };
+    advanceStory(log, { type: 'gather', itemId: 'salvage', qty: 2 });
+    expect(log.chapters['ch4']?.progress).toBe(0);
+    advanceStory(log, { type: 'gather', itemId: 'glowkoi', qty: 3 });
+    advanceStory(log, { type: 'gather', itemId: 'glowkoi', qty: 3 });
+    expect(log.chapters['ch4']?.progress).toBe(4);
+    expect(chapterReady(log, 'ch4')).toBe(true);
+  });
+
+  it('ch5 gates on ch4 done + Scavving 10 and gathers brass to 8', () => {
+    const log = emptyStoryLog();
+    log.chapters['ch4'] = { state: 'done', progress: 4 };
+    expect(chapterAvailable(log, 'ch5', skills({ scavving: 9 }) as never)).toBe(false);
+    expect(chapterAvailable(log, 'ch5', skills({ scavving: 10 }) as never)).toBe(true);
+    log.chapters['ch5'] = { state: 'task', progress: 0 };
+    advanceStory(log, { type: 'gather', itemId: 'brass', qty: 8 });
+    expect(chapterReady(log, 'ch5')).toBe(true);
+  });
+});
+

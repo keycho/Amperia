@@ -3101,7 +3101,7 @@ export class WorldScene extends Phaser.Scene {
   /** Anchor world position for a prop: bottom corner of its footprint. */
   /** S2: does this NPC hold story business for ME right now? (offered,
    *  mid-task or ready — anything that should open the story panel first.) */
-  private storyAtNpc(npc: 'merchant' | 'dispatcher' | 'warden'): boolean {
+  private storyAtNpc(npc: 'merchant' | 'dispatcher' | 'warden' | 'barkeep'): boolean {
     const st = this.storyState;
     if (st === null) return false;
     return STORY_CHAPTERS.some((c) => {
@@ -3737,6 +3737,11 @@ export class WorldScene extends Phaser.Scene {
             'Enter',
             () => {
               this.greetNpc('ampedbar', img);
+              // S2c ch4: Vessa's chapter outranks the drinks menu.
+              if (this.storyAtNpc('barkeep')) {
+                session.events.emit(SessionEvents.openStory, 'barkeep');
+                return;
+              }
               session.events.emit(SessionEvents.openBar);
             },
             { hint: 'the door is on the south side' },

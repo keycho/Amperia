@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE, UI_TEXT_WARM } from '@shared/palette';
+import { PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import type { StorySync } from '@shared/protocol';
 import {
   STORY_CHAPTERS,
@@ -8,6 +8,7 @@ import {
   type StoryLine,
   type StoryNpc,
 } from '@shared/story';
+import { ITEMS, type ItemId } from '@shared/items';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { sound } from '../audio/sound';
@@ -178,6 +179,29 @@ export class StoryPanel {
         });
       } else if (step.kind === 'keepsake') {
         caption('a keepsake');
+        // Founder note 3: keepsakes take the RESULT-CARD frame — these
+        // flavor lines are the best writing in the game; give them the
+        // crafted-item moment, never a toast.
+        const item = ITEMS[def.keepsake.itemId as ItemId];
+        const cx = W / 2;
+        const halo = this.scene.add
+          .image(cx, y + 46, 'fx-glow')
+          .setTint(PALETTE_INT.neonAmber)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setScale(0.42)
+          .setAlpha(0.4);
+        this.container.add(halo);
+        const big = this.scene.add.image(cx, y + 46, item.icon);
+        big.setDisplaySize(72, 72);
+        this.container.add(big);
+        y += 92;
+        const nm = kitText(this.scene, cx, y, item.name, 'body', {
+          color: PALETTE.neonAmber,
+          bold: true,
+        });
+        nm.setOrigin(0.5, 0);
+        this.container.add(nm);
+        y += Math.ceil(nm.height) + 6;
         text(def.keepsake.caption, PALETTE.warmGlow, true);
         text('It goes in your Pack, and its page goes in the journal.', PALETTE.groundAccent);
         button('keep it', () => {

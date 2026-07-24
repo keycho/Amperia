@@ -108,6 +108,8 @@ export const MANIFEST_ENTRIES: readonly ManifestEntryDef[] = [
   E('deadFilament', 'story', 'A Dead Filament', 'Fetch wire for the wick-dipper.', 'item'),
   E('punchedTicket', 'story', 'A Punched Ticket', "Ride the Conductor's Leg for dispatch.", 'item'),
   E('makersRubbing', 'story', "A Maker's-Mark Rubbing", 'Feed the meter for the Warden.', 'item'),
+  E('barChalk', 'story', 'A Stub of Bar Chalk', "Fill Vessa's stew pot.", 'item'),
+  E('unclaimedLamp', 'story', 'An Unclaimed Lamp', "Work the south heaps for Sable.", 'item'),
 ];
 
 export const MANIFEST_BY_ID: Readonly<Record<string, ManifestEntryDef>> = Object.fromEntries(

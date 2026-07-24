@@ -194,6 +194,8 @@ const BUILDERS: Record<string, (accent: number) => Voxel[]> = {
   'icon-dead-filament': () => deadFilamentModel(),
   'icon-punched-ticket': () => punchedTicketModel(),
   'icon-makers-rubbing': () => makersRubbingModel(),
+  'icon-bar-chalk': () => barChalkModel(),
+  'icon-unclaimed-lamp': () => unclaimedLampModel(),
 };
 
 /** S2 ch1: a burned-out bulb — glass dome, brass base, snapped filament. */
@@ -219,6 +221,26 @@ function punchedTicketModel(): Voxel[] {
 }
 
 /** S2 ch3: wax-crayon rubbing — pale sheet, a glyph nobody reads. */
+/** S2c ch4: a worn chalk stub — flat side from the wall, dust at the foot. */
+function barChalkModel(): Voxel[] {
+  const chalk = blendInt(C.glow, 0xffffff, 0.55);
+  const v = box(1, 1, 1, 2, 2, 3, chalk);
+  v.push({ x: 1, y: 1, z: 4, c: shade(chalk, -0.12) }); // the worn crown
+  v.push({ x: 2, y: 2, z: 0, c: shade(chalk, -0.3) }); // dust
+  v.push({ x: 0, y: 2, z: 0, c: shade(chalk, -0.35) });
+  return v;
+}
+
+/** S2c ch5: the unclaimed lamp — collar, cage, one warm bead kept lit. */
+function unclaimedLampModel(): Voxel[] {
+  const v = box(1, 1, 0, 3, 3, 1, C.metal); // base
+  v.push(...box(2, 2, 1, 1, 1, 3, shade(C.metal, -0.15))); // stem
+  v.push(...box(1, 1, 4, 3, 3, 1, C.metal)); // collar
+  v.push({ x: 2, y: 2, z: 5, c: C.amber }); // the kept flame
+  v.push({ x: 2, y: 2, z: 6, c: shade(C.metal, -0.2) }); // cap
+  return v;
+}
+
 function makersRubbingModel(): Voxel[] {
   const paper = blendInt(C.glow, 0xffffff, 0.5);
   const v = box(0, 0, 0, 5, 1, 5, paper);

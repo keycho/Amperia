@@ -27,6 +27,8 @@ export type ItemId =
   | 'deadFilament'
   | 'punchedTicket'
   | 'makersRubbing'
+  | 'barChalk'
+  | 'unclaimedLamp'
   | 'silverfern'
   | 'emberseed'
   | 'heatlamp'
@@ -257,6 +259,24 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     category: 'curio',
     stack: 1,
     icon: 'icon-punched-ticket',
+    rare: true,
+  },
+  barChalk: {
+    id: 'barChalk',
+    name: 'A Stub of Bar Chalk',
+    flavor: 'Fourteen months of marks on a wall nobody looked at, and nobody ever collected.',
+    category: 'curio',
+    stack: 1,
+    icon: 'icon-bar-chalk',
+    rare: true,
+  },
+  unclaimedLamp: {
+    id: 'unclaimedLamp',
+    name: 'An Unclaimed Lamp',
+    flavor: 'Off the top layer of the dump. Lit once a year, for nobody they could name.',
+    category: 'curio',
+    stack: 1,
+    icon: 'icon-unclaimed-lamp',
     rare: true,
   },
   makersRubbing: {

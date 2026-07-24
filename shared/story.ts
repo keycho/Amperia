@@ -16,7 +16,7 @@ import type { SkillId } from './mastery';
  * Scrapcache whitelist knows only raw resources).
  */
 
-export type StoryNpc = 'merchant' | 'dispatcher' | 'warden';
+export type StoryNpc = 'merchant' | 'dispatcher' | 'warden' | 'barkeep';
 
 export interface StoryLine {
   /** Display speaker (in-world name). */
@@ -276,6 +276,128 @@ export const STORY_CHAPTERS: readonly ChapterDef[] = [
     },
     journal:
       "The Dynamo was found, not built — already warm under fourteen months of scrap. Every copy of the Warden's ledger is missing the same torn page. Page one.",
+  },
+  {
+    id: 'ch4',
+    n: 4,
+    title: 'THE DARK ROUNDS',
+    npc: 'barkeep',
+    unlock: { after: 'ch3', skill: { id: 'skimming', level: 4 } },
+    intro: [
+      {
+        speaker: 'Vessa',
+        text: "New face, old thirst. Sit anywhere that isn't the end stool. That one's taken, and no, you don't see anybody on it. Sharp eyes. Wrong conclusion.",
+      },
+      {
+        speaker: 'Vessa',
+        text: "Since you're here — my stew pot's short. Four glowkoi, skimmed fresh, and don't let the canal hear you bragging. Bring them and I'll tell you about the stool.",
+      },
+    ],
+    choices: [
+      {
+        prompt: "Who's the stool for?",
+        reply: [
+          {
+            speaker: 'Vessa',
+            text: "Somebody who never once sat in it. That's the point of it, which makes no sense to you yet. Koi first. Stories pour better over a burner.",
+          },
+        ],
+      },
+      { prompt: 'Four koi. Easy.', reply: [] },
+    ],
+    send: [
+      {
+        speaker: 'Vessa',
+        text: "Mind the wisps out by the slow water. They don't want your koi. They want your attention. Don't give it.",
+      },
+    ],
+    taskCopy: "Skim 4 Glowkoi for Vessa's stew",
+    task: { type: 'gather', itemId: 'glowkoi', qty: 4 },
+    outro: [
+      {
+        speaker: 'Vessa',
+        text: "Fat ones. Good. The pot forgives a lot but it doesn't forgive stingy. Right — the stool.",
+      },
+      {
+        speaker: 'Vessa',
+        text: "This bar was my aunt's pitch during the Dark. No power for the taps, so she poured what poured cold, and on the worst nights she poured what she called the dark rounds — free, no questions, chalk mark on the wall behind. Fourteen months of chalk. Nobody ever came back to square a mark, because she never once looked at the wall while she made it.",
+      },
+      {
+        speaker: 'Vessa',
+        text: "The end stool was for the Conductor. Every night that tram ran past our lamps, out into all that black, and every night my aunt set a cup at the end stool for when the loop came home. Never once got sat on. The loop always ran late and the Conductor always waved through the window and rang on. Fourteen months, one full cup a night.",
+      },
+      {
+        speaker: 'Vessa',
+        text: "When it ended, my aunt kept setting the cup. Habit, she said. Same as Sable's wicks. This city runs on habits it refuses to explain. Here — you came for a story and you got a true one, and I've given you a stool. Take the chalk too. It's down to a stub, same as everything that mattered back then.",
+      },
+    ],
+    keepsake: {
+      itemId: 'barChalk',
+      caption: 'A STUB OF BAR CHALK — fourteen months of marks nobody collected.',
+    },
+    journal:
+      "Vessa's aunt poured dark rounds free through the Long Dark and chalked marks she never counted. The end stool still gets a full cup, for a Conductor who never once had time to sit.",
+  },
+  {
+    id: 'ch5',
+    n: 5,
+    title: 'THE SOUTH PLATFORM',
+    npc: 'merchant',
+    unlock: { after: 'ch4', skill: { id: 'scavving', level: 10 } },
+    intro: [
+      {
+        speaker: 'Sable',
+        text: "Back again, love. Good. I've been sorting the deep crates and my wrists have opinions. Bring me eight good brass fittings — the heaps south of the plaza run rich with them, and there's a reason for that you should hear standing exactly where you're standing.",
+      },
+      {
+        speaker: 'Sable',
+        text: 'Look down. Go on. This plaza — the stones under your boots — this was the dump. The whole south platform was. Fourteen months of a dark city throws a lot away.',
+      },
+    ],
+    choices: [
+      {
+        prompt: 'They built the plaza on a dump?',
+        reply: [
+          {
+            speaker: 'Sable',
+            text: "They built the plaza *out* of one, which is a different and better thing. Cleared it barrow by barrow with their own hands. Everything worth saving got saved. Some of it's still turning up. That's your errand, if you're quick enough to have already guessed.",
+          },
+        ],
+      },
+      { prompt: 'Eight fittings. Going.', reply: [] },
+    ],
+    send: [
+      {
+        speaker: 'Sable',
+        text: "South heaps, love. And if you turn up anything with a wick in it, I'll want to see it before the scales do.",
+      },
+    ],
+    taskCopy: 'Gather 8 Brass from the south heaps',
+    task: { type: 'gather', itemId: 'brass', qty: 8 },
+    outro: [
+      {
+        speaker: 'Sable',
+        text: "Good fittings. Boiler brass, most of this — off the Old Works, from when the crews came stripping plate to rebuild it. You know that part. Here's the part the records keep flat.",
+      },
+      {
+        speaker: 'Sable',
+        text: "Clearing a dump is reading a diary backwards. Every layer, the crews turned up how people had lived: lamp after lamp after lamp, burned to the collar. Wick-crates with my mother's knots on them, empty. And near the bottom — my mother swore this on her scales — tools. Good tools, laid out neat under a tarp, *with fresh oil on them.* Fourteen months of dark, and somebody had been keeping their tools oiled. Under the dump. Right about where that machine was idling.",
+      },
+      {
+        speaker: 'Sable',
+        text: "Nobody claimed them. Nobody ever claimed them. My mother kept one lamp off the top layer instead — unclaimed, like its owner. We light it once a year and we don't say for whom, because we don't know. That's not a sad thing, love. It's a *kept* thing. There's a difference, and by now you know the difference has a story to it.",
+      },
+      {
+        speaker: 'Sable',
+        text: 'Take the lamp this year. My wrists, remember.',
+      },
+    ],
+    keepsake: {
+      itemId: 'unclaimedLamp',
+      caption: 'AN UNCLAIMED LAMP — lit once a year, for nobody they could name.',
+    },
+    journal:
+      'The Filament plaza is the old dump, cleared by hand. Near the bottom of it the crews found good tools under a tarp — oiled, tended, fourteen months into the Dark. Nobody ever claimed them.',
   },
 ];
 

@@ -3347,7 +3347,13 @@ export class FilamentRoom extends Room<FilamentState> {
       const def = readyNow[readyNow.length - 1];
       if (def !== undefined) {
         const who =
-          def.npc === 'merchant' ? 'Sable' : def.npc === 'dispatcher' ? 'the Dispatcher' : 'the Charge Warden';
+          def.npc === 'merchant'
+            ? 'Sable'
+            : def.npc === 'dispatcher'
+              ? 'the Dispatcher'
+              : def.npc === 'barkeep'
+                ? 'Vessa'
+                : 'the Charge Warden';
         client.send(MSG.notice, { text: `That's done — ${who} will want to see you.` });
       }
     }
@@ -3363,7 +3369,9 @@ export class FilamentRoom extends Room<FilamentState> {
     if (rt === undefined || rt.spectator || typeof msg.id !== 'string') return;
     const def = storyChapter(msg.id);
     if (def === undefined) return;
-    if (!this.nearProp(rt, def.npc, CONFIG.story.npcRadiusTiles)) {
+    // S2c: story NPCs that live inside a venue prop reach-check against it.
+    const npcProp = def.npc === 'barkeep' ? 'ampedbar' : def.npc;
+    if (!this.nearProp(rt, npcProp, CONFIG.story.npcRadiusTiles)) {
       client.send(MSG.notice, { text: 'Come closer — stories are told, not shouted.' });
       return;
     }
