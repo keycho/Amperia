@@ -35,7 +35,7 @@ const ISLAND_AT: Record<DistrictId, { x: number; y: number }> = {
   filament: { x: 138, y: 204 },
   stacks: { x: 312, y: 144 },
   terrarium: { x: 486, y: 204 },
-  underworks: { x: 140, y: 300 },
+  underworks: { x: 150, y: 130 },
   tangle: { x: 644, y: 278 },
 };
 
