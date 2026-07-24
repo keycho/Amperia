@@ -214,11 +214,13 @@ if (!ch4Done) {
   await walkTo(page, bar.x, bar.y + 1);
   await clearBanner(page);
 }
+await clearBanner(page);
 await page.evaluate(() => window.__amperia.session.events.emit('openStory', 'barkeep'));
 await shot(page, 'ch4-5-outro');
 await panelNext(page);
 await panelNext(page);
 await panelNext(page);
+await panelNext(page); // the fourth outro line -> the keepsake beat
 await shot(page, 'ch4-6-KEEPSAKE-CARD');
 await page.evaluate(() => {
   window.__amperia.session.room.send('story', { action: 'complete', id: 'ch4' });
@@ -254,12 +256,18 @@ const seam = await page.evaluate(() => {
   const scene = window.__amperia.game.scene.getScene('world');
   const room = window.__amperia.session.room;
   const seams = scene.map.nodes.filter((n) => n.kind === 'brassSeam');
+  const mobs = [];
+  room.state.mobs.forEach((mv) => mobs.push({ x: mv.tileX, y: mv.tileY }));
+  const mobDist = (n) =>
+    mobs.length === 0 ? 999 : Math.min(...mobs.map((b) => Math.hypot(n.x - b.x, n.y - b.y)));
+  let pool = seams.filter((n) => mobDist(n) >= 8);
+  if (pool.length === 0) pool = seams;
   const me = room.state.players.get(room.sessionId);
-  seams.sort(
+  pool.sort(
     (a, b) =>
       Math.hypot(a.x - me.tileX, a.y - me.tileY) - Math.hypot(b.x - me.tileX, b.y - me.tileY),
   );
-  return seams[0] ?? null;
+  return pool[0] ?? null;
 });
 if (seam === null) throw new Error('no brass seam');
 await walkTo(page, seam.x, seam.y);
@@ -299,11 +307,13 @@ for (let i = 0; i < 70; i++) {
 if ((await ch5Progress()) < 8) console.warn('ch5 never completed');
 
 await walkTo(page, sable.x, sable.y + 1);
+await clearBanner(page);
 await page.evaluate(() => window.__amperia.session.events.emit('openStory', 'merchant'));
 await shot(page, 'ch5-3-outro');
 await panelNext(page);
 await panelNext(page);
 await panelNext(page);
+await panelNext(page); // fourth outro line -> keepsake
 await shot(page, 'ch5-4-KEEPSAKE-CARD');
 await page.evaluate(() => {
   window.__amperia.session.room.send('story', { action: 'complete', id: 'ch5' });
