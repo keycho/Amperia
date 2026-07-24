@@ -50,8 +50,9 @@ export interface StyleConfig {
  * grammar's idea of falloff. One set for all modes, like shadows.
  */
 export const DARKNESS = {
-  /** Ink alpha over the floor at full distance (floor minimum guard). */
-  maxAlpha: 0.32,
+  /** Ink alpha over the floor at full distance (floor minimum guard).
+   *  v3 GOLDEN DARK: one band darker — light pools must claim the frame. */
+  maxAlpha: 0.42,
   /** Inside this tile radius of a light: untouched — the pool. */
   poolRadius: 2.5,
   /** Beyond this: full darkness band. */
@@ -59,7 +60,11 @@ export const DARKNESS = {
   /** Number of quantized bands between pool and far. */
   bands: 3,
   /** How far props dim at full distance (0..1 mix toward dusk-dark). */
-  propDim: 0.28,
+  propDim: 0.36,
+  /** v3: far zones drain toward warm monochrome — cool channels sink
+   *  harder than red with distance, so unlit reaches read umber, not gray
+   *  and never cool. 0..1 strength at full band distance (~25%). */
+  farDesat: 0.25,
 } as const;
 
 /** G1: shadows are grounding, not a style toggle — one set for all modes. */

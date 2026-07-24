@@ -74,14 +74,16 @@ export function addGodRays(
     shaft.setRotation(a);
     shaft.setTint(PALETTE_INT.neonAmber);
     shaft.setBlendMode(Phaser.BlendModes.ADD);
-    shaft.setAlpha(bloom(0.10));
-    shaft.setScale(0.8 + (i % 2) * 0.35, 1.35);
+    // v3 GOLDEN DARK: hotter, taller — the crown's rays carry the apex's
+    // doubled emissive out over the plaza.
+    shaft.setAlpha(bloom(0.16));
+    shaft.setScale(0.8 + (i % 2) * 0.35, 1.8);
     shaft.setDepth(depth);
     // Slow sway + breathe — theatre, not strobe.
     scene.tweens.add({
       targets: shaft,
       rotation: a + 0.09,
-      alpha: bloom(0.16),
+      alpha: bloom(0.24),
       duration: 5200 + i * 900,
       yoyo: true,
       repeat: -1,

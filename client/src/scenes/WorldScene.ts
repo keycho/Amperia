@@ -3156,6 +3156,8 @@ export class WorldScene extends Phaser.Scene {
           // (addendum b): hot core + hue bloom + wide skirt, all amber.
           // Biggest and SOFTEST: wide skirt, restrained core — the coil
           // bakes supply the hot metal; the glow must never white them out.
+          // v3 GOLDEN DARK: the apex is the brightest thing in the city by
+          // intent (~2x the old emissive) — every street should feel it.
           const halo = addLayeredGlow(
             this,
             x,
@@ -3163,12 +3165,31 @@ export class WorldScene extends Phaser.Scene {
             PALETTE_INT.neonAmber,
             1.5,
             depthForWorldY(y) + 1,
-            0.38,
+            0.7,
           );
           this.tweens.add({
             targets: [halo.mid, halo.outer],
-            alpha: { from: bloom(0.28), to: bloom(0.44) },
+            alpha: { from: bloom(0.52), to: bloom(0.8) },
             duration: 2200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          // v3: the banner's tall shaft — a column of gold rising off the
+          // crown, narrow at the coils, fading with height. Slow breathe.
+          const beam = this.add.image(x, y - 195, 'fx-shaft');
+          beam.setOrigin(0.5, 0.04);
+          beam.setRotation(Math.PI);
+          beam.setTint(PALETTE_INT.neonAmber);
+          beam.setBlendMode(Phaser.BlendModes.ADD);
+          beam.setAlpha(bloom(0.3));
+          beam.setScale(0.85, 2.2);
+          beam.setDepth(depthForWorldY(y) + 1);
+          this.tweens.add({
+            targets: beam,
+            alpha: { from: bloom(0.26), to: bloom(0.4) },
+            scaleX: 1.0,
+            duration: 3800,
             yoyo: true,
             repeat: -1,
             ease: 'sine.inout',
@@ -5098,10 +5119,14 @@ export class WorldScene extends Phaser.Scene {
     const band = this.darknessBand(t.tx, t.ty);
     const base = wt ?? 0xffffff;
     if (band > 0) {
-      const dim = 1 - (band / DARKNESS.bands) * DARKNESS.propDim;
+      const k = band / DARKNESS.bands;
+      const dim = 1 - k * DARKNESS.propDim;
+      // v3 far warm-mono: green and blue sink harder than red with
+      // distance, so the dark reaches drain umber — never gray, never cool.
+      const desat = k * DARKNESS.farDesat;
       const r = Math.round(((base >> 16) & 0xff) * dim);
-      const gc = Math.round(((base >> 8) & 0xff) * dim);
-      const b = Math.round((base & 0xff) * dim);
+      const gc = Math.round(((base >> 8) & 0xff) * dim * (1 - desat * 0.35));
+      const b = Math.round((base & 0xff) * dim * (1 - desat * 0.85));
       img.setTint((r << 16) | (gc << 8) | b);
     } else if (wt !== null) {
       img.setTint(wt);
