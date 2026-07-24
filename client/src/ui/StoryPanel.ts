@@ -9,6 +9,7 @@ import {
   type StoryNpc,
 } from '@shared/story';
 import { ITEMS, type ItemId } from '@shared/items';
+import { itemThumbKey } from '../render/itemThumbs';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
 import { sound } from '../audio/sound';
@@ -191,7 +192,7 @@ export class StoryPanel {
           .setScale(0.42)
           .setAlpha(0.4);
         this.container.add(halo);
-        const big = this.scene.add.image(cx, y + 46, item.icon);
+        const big = this.scene.add.image(cx, y + 46, itemThumbKey(item));
         big.setDisplaySize(72, 72);
         this.container.add(big);
         y += 92;
