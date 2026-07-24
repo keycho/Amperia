@@ -51,20 +51,22 @@ export interface StyleConfig {
  */
 export const DARKNESS = {
   /** Ink alpha over the floor at full distance (floor minimum guard).
-   *  v3 GOLDEN DARK: one band darker — light pools must claim the frame. */
-  maxAlpha: 0.42,
+   *  v3 GOLDEN DARK (banner tune): the dark BETWEEN pools is nearly night —
+   *  the city reads as light-fields on warm black, never a lit stage. */
+  maxAlpha: 0.55,
   /** Inside this tile radius of a light: untouched — the pool. */
   poolRadius: 2.5,
   /** Beyond this: full darkness band. */
-  farRadius: 7.5,
+  farRadius: 8.5,
   /** Number of quantized bands between pool and far. */
-  bands: 3,
-  /** How far props dim at full distance (0..1 mix toward dusk-dark). */
-  propDim: 0.36,
+  bands: 4,
+  /** How far props dim at full distance (0..1 mix toward dusk-dark) —
+   *  banner tune: unlit props fall to near-silhouette. */
+  propDim: 0.5,
   /** v3: far zones drain toward warm monochrome — cool channels sink
    *  harder than red with distance, so unlit reaches read umber, not gray
-   *  and never cool. 0..1 strength at full band distance (~25%). */
-  farDesat: 0.25,
+   *  and never cool. 0..1 strength at full band distance. */
+  farDesat: 0.4,
 } as const;
 
 /** G1: shadows are grounding, not a style toggle — one set for all modes. */

@@ -190,5 +190,5 @@ export function splitTone(color: number, strength = 0.14): number {
  * every bulb tint the scene hangs.
  */
 export function garlandTint(color: number): number {
-  return blendInt(sat(color, -0.2), PALETTE_INT.warmGlow, 0.4);
+  return blendInt(sat(color, -0.35), PALETTE_INT.warmGlow, 0.55);
 }

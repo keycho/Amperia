@@ -126,6 +126,7 @@ import {
   addBadFlicker,
   addFilmGrain,
   addGodRays,
+  addHaze,
   addHueCycle,
   addLampCone,
 } from '../render/atmosphere';
@@ -489,7 +490,10 @@ export class WorldScene extends Phaser.Scene {
   /** Repaint the Board's current panel from the cached city + market state. */
   private renderBoardFace(): void {
     const f = this.boardFace;
-    if (f === null) return;
+    // Stale after a district restart: the scene instance survives restart but
+    // its objects don't — a marketSync landing mid-travel (or in a district
+    // with no billboard) must not touch destroyed Texts.
+    if (f === null || !f.caption.active) return;
     const panels = buildBoardPanels(this.market, this.boardSparks, this.boardCharge);
     if (panels.length === 0) {
       f.caption.setText('THE CITY BOARD');
@@ -2580,7 +2584,16 @@ export class WorldScene extends Phaser.Scene {
     const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
     this.lightSpots = lightSpots;
     for (const p of this.map.props) {
-      if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
+      if (p.kind === 'dynamo') {
+        // Banner tune: the Dynamo's warmth claims the PLAZA, not a lamp's
+        // circle — a center spot plus a ring pushes its pool wide, so the
+        // market at its feet sits inside one broad glow field.
+        lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
+        lightSpots.push({ x: p.x - 1.5, y: p.y + 1.5, cool: false });
+        lightSpots.push({ x: p.x + 4.5, y: p.y + 1.5, cool: false });
+        lightSpots.push({ x: p.x + 1.5, y: p.y - 1.5, cool: false });
+        lightSpots.push({ x: p.x + 1.5, y: p.y + 4.5, cool: false });
+      }
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
       if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
       if (p.kind === 'alleylamp') lightSpots.push({ x: p.x, y: p.y, cool: false });
@@ -3163,7 +3176,7 @@ export class WorldScene extends Phaser.Scene {
             x,
             y - 160,
             PALETTE_INT.neonAmber,
-            1.5,
+            1.8,
             depthForWorldY(y) + 1,
             0.7,
           );
@@ -3175,20 +3188,37 @@ export class WorldScene extends Phaser.Scene {
             repeat: -1,
             ease: 'sine.inout',
           });
-          // v3: the banner's tall shaft — a column of gold rising off the
-          // crown, narrow at the coils, fading with height. Slow breathe.
+          // v3: the banner's tall shaft — a THIN column of gold rising off
+          // the crown, all the way up the frame. Slow breathe, no sway.
           const beam = this.add.image(x, y - 195, 'fx-shaft');
           beam.setOrigin(0.5, 0.04);
           beam.setRotation(Math.PI);
           beam.setTint(PALETTE_INT.neonAmber);
           beam.setBlendMode(Phaser.BlendModes.ADD);
-          beam.setAlpha(bloom(0.3));
-          beam.setScale(0.85, 2.2);
+          beam.setAlpha(bloom(0.36));
+          beam.setScale(0.42, 3.6);
           beam.setDepth(depthForWorldY(y) + 1);
           this.tweens.add({
             targets: beam,
-            alpha: { from: bloom(0.26), to: bloom(0.4) },
-            scaleX: 1.0,
+            alpha: { from: bloom(0.3), to: bloom(0.46) },
+            duration: 3800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          // The beam's hot core — a defined bright line inside the soft
+          // column, so the shaft READS from across the district.
+          const beamCore = this.add.image(x, y - 195, 'fx-shaft');
+          beamCore.setOrigin(0.5, 0.04);
+          beamCore.setRotation(Math.PI);
+          beamCore.setTint(PALETTE_INT.warmGlow);
+          beamCore.setBlendMode(Phaser.BlendModes.ADD);
+          beamCore.setAlpha(bloom(0.62));
+          beamCore.setScale(0.12, 3.4);
+          beamCore.setDepth(depthForWorldY(y) + 2);
+          this.tweens.add({
+            targets: beamCore,
+            alpha: { from: bloom(0.52), to: bloom(0.72) },
             duration: 3800,
             yoyo: true,
             repeat: -1,
@@ -3216,7 +3246,12 @@ export class WorldScene extends Phaser.Scene {
           addLayeredGlow(this, x, y - 210, PALETTE_INT.neonTeal, 0.12, depthForWorldY(y) + 2);
           // God-rays (R5a): soft shafts fanning from the crown.
           addGodRays(this, x, y - 190, depthForWorldY(y) + 1);
-          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
+          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 3.2);
+          // Banner tune: the broad glow FIELD at the Dynamo's feet — a hot
+          // inner pool inside the wide one, plus a soft warm haze over the
+          // plaza floor, under everything standing. Gold, radial, generous.
+          this.addGroundPool(x, y - 6, PALETTE_INT.neonAmber, 1.6);
+          addHaze(this, x, y - 4, PALETTE_INT.warmGlow, 2.8);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
           addEmberMotes(this, x, y - 70, depthForWorldY(y) + 3, {
@@ -4604,10 +4639,11 @@ export class WorldScene extends Phaser.Scene {
       for (let i = 1; i < bulbs; i++) {
         const p = curve.getPoint(i / bulbs);
         const tint = bulbTints[bulbIdx++ % bulbTints.length] as number;
-        g.fillStyle(tint, 0.95);
-        g.fillCircle(p.x, p.y + 2, 2.2);
-        // Glow language (addendum b): hot core + hue bloom per bulb.
-        const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.08, 1e5 + 1);
+        // Banner tune: bulbs are faint warm dots riding the dark — rhythm,
+        // not illumination. The Dynamo owns the plaza's light.
+        g.fillStyle(tint, 0.6);
+        g.fillCircle(p.x, p.y + 2, 2);
+        const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.05, 1e5 + 1);
         // Every third bulb wavers a touch — strings feel strung, not printed.
         if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
@@ -4689,9 +4725,10 @@ export class WorldScene extends Phaser.Scene {
     for (let i = 1; i < bulbs; i++) {
       const p = curve.getPoint(i / bulbs);
       const tint = tints[i % tints.length] as number;
-      g.fillStyle(tint, 0.95);
-      g.fillCircle(p.x, p.y + 2, 2.2);
-      const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.09, 1e5 + 1);
+      // Banner tune: same faint-dot discipline as every string in the city.
+      g.fillStyle(tint, 0.6);
+      g.fillCircle(p.x, p.y + 2, 2);
+      const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.05, 1e5 + 1);
       if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
       this.stringBulbGlows.push(glow.core, glow.mid, glow.outer);
     }

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { MATERIAL_INT, PALETTE_INT, sat, splitTone } from '@shared/palette';
+import { blendInt, MATERIAL_INT, PALETTE_INT, sat, splitTone } from '@shared/palette';
 import { FLOOR_SPECKLE, GRIT, gritDownsample, gritSize } from './grit';
 import { voxelHash } from './materials';
 import { shade } from './voxel';
@@ -61,7 +61,10 @@ export function night(base: number, t: number): number {
   const r = mix((base >> 16) & 0xff, (dusk >> 16) & 0xff);
   const g = mix((base >> 8) & 0xff, (dusk >> 8) & 0xff);
   const b = mix(base & 0xff, dusk & 0xff);
-  return splitTone(sat((r << 16) | (g << 8) | b, -0.14));
+  // v3 GOLDEN DARK (banner tune): one exposure step down on EVERY floor —
+  // the city floor is near-night; light pools carry the ground, ambient
+  // doesn't. One lever, all districts, map bake included.
+  return blendInt(splitTone(sat((r << 16) | (g << 8) | b, -0.14)), PALETTE_INT.ink, 0.18);
 }
 
 /**
