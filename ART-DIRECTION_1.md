@@ -18,10 +18,10 @@ Warm-forward base so the world is comfortable for long sessions; saturated neon 
 
 | Role | Hex | Use |
 |---|---|---|
-| **Dusk sky / deep base** | `#35284F` | Sky, deepest shadows (a warm plum — never pure black) |
-| **Ink (outlines only)** | `#1E1930` | Sprite outlines, fine linework — not large fills |
-| **Structure mid** | `#4E4560` | Building bodies, walls, mid-shadow |
-| **Ground base** | `#6B5E70` | Primary walkable pavement / plating (warm grey-mauve) |
+| **Dusk sky / deep base** | `#2A211A` *(v3)* | Sky, deepest shadows (warm near-black UMBER — never pure black, never plum) |
+| **Ink (outlines only)** | `#1A1512` *(v3)* | Sprite outlines, fine linework — not large fills |
+| **Structure mid** | `#544A40` *(v3)* | Building bodies, walls, mid-shadow (warm grey-brown) |
+| **Ground base** | `#685C4D` *(v3)* | Primary walkable pavement / plating (warm stone) |
 | **Ground accent / decking** | `#9A8574` | Wooden decks, tan tiles, rugs, paths — adds warmth & variety |
 | **Warm ambient glow** | `#FFD9A0` | The overall golden light wash, lamp halos |
 | **Neon amber** *(primary warm)* | `#FFB84D` | Signage, lanterns, key light sources |
@@ -34,9 +34,10 @@ Warm-forward base so the world is comfortable for long sessions; saturated neon 
 | **Violet neon** *(rare, premium)* | `#B266FF` | Premium-feeling signage — rarer than rose |
 
 **Palette rules:**
-- Big areas use the **warm mid-values** (`#6B5E70`, `#9A8574`, `#4E4560`). Pure saturated neon is an *accent*, not a fill — that's what keeps it cozy instead of loud.
+- Big areas use the **warm mid-values** (`#685C4D`, `#9A8574`, `#544A40`). Pure saturated neon is an *accent*, not a fill — that's what keeps it cozy instead of loud.
 - **One dominant hue per district** (e.g., the market is amber/rose, the workshop row is teal, the garden tier is green) so zones read at a glance and the world feels varied.
-- **Never let pure black own a large region** — deepest tone is the plum `#35284F`. This is the single biggest difference from dark cyberpunk and the main reason it's easy on the eyes daily.
+- **Never let pure black own a large region** — deepest tone is the warm umber `#2A211A` (v3). Still the biggest difference from dark cyberpunk: dark, but warm, easy on the eyes daily.
+- **Purple is demoted to an accent (v3):** `violetNeon` survives on rare premium signage and cosmetics; nothing STRUCTURAL (ground, walls, shadow, void) carries a violet cast anymore.
 
 ## 3. Lighting
 
@@ -264,3 +265,17 @@ same-sized props in ANY district. The brief defines:
 ---
 
 *Companion files: the Game Bible v2, the Economy Design v2, and `CLAUDE.md`. Part I is LOCKED as ever; Part II is additive and equally binding — build and asset choices should conform to both.*
+
+---
+
+# PART III — v3 THE GOLDEN DARK (the live-game regrade; supersedes Part I §2 values)
+
+The banner is the grade: a single blazing Dynamo, warm gold on near-black. The live game reads to match — not as a preset, as THE look. All of it flows through `shared/palette.ts` + the style config; no per-asset repainting.
+
+**AU1 — the base.** Foundation tones (ground, pavement, wall shading, ambient shadow, void glow) moved from ink-plum to **warm near-black umber** (`#2A211A` base, `#1A1512` ink, `#0C0A07` void). The void beyond deck edges is neutral-black with only the faintest warm horizon glow near lit districts. The split-tone shadow pole is warm now — darks fall toward umber, never toward teal.
+
+**AU2 — the gold hierarchy.** Light pools amber, window lights gold, brass warm. Luminance ladder, strictly: **the Dynamo is the apex** (~2× emissive, a tall subtle shaft, visible from everywhere in the Filament) → lamps + garlands clearly below → ambient one darkness band lower than v2. Zones far from any light desaturate ~25% toward warm monochrome, so wide shots read as the banner.
+
+**AU3 — the color budget (per screenful).** Gold/amber dominant on a warm-black base. Teal only on interactables, lenses and water glints — enforced by scarcity. Rose/pink only on awnings, hair and cosmetics. Garland bulbs muted ~40% and warm-shifted: market charm, not carnival confetti. **Characters and cosmetics keep full saturation** — they are the life against the dark.
+
+**AU4 — unchanged + hard constraints.** UI kit plates keep their v2 look (brand; regraded separately if ever). Interaction pictograms, labels, E-prompts and the tutorial arrow at full visibility. The fresh-Spark first loop passes; the overlap tour stays green; pure black never owns a region.
