@@ -248,7 +248,7 @@ function specFor(kind: FloorKind, v: number): KindSpec {
         noise: 0.035,
         post: (g, vv, span) => {
           const sheen = blendInt(MATERIAL_INT.waterSheen, MATERIAL_INT.paintPlum, 0.3);
-          g.fillStyle(sheen, 0.22);
+          g.fillStyle(sheen, 0.34);
           for (const y of [10, 22, 38, 52]) {
             const yy = (y + vv * 5) % 60 + 2;
             const [xl, xr] = span(yy);

@@ -132,6 +132,40 @@ const SPARK = `Keyart${Math.floor(Math.random() * 9000)}`;
   await fpage.close();
 }
 
+// ── N4d: the fishing water — a glowkoi spot framed close ────────────────────
+{
+  const page = await openWorld(
+    browser,
+    auth.token,
+    'filament',
+    { width: 2560, height: 1440 },
+    SPARK,
+  );
+  const koi = await page.evaluate(() => {
+    const scene = window.__amperia.game.scene.getScene('world');
+    const k = scene.map.nodes.filter((n) => n.kind === 'glowkoi');
+    return k.length > 0 ? { x: k[0].x, y: k[0].y } : null;
+  });
+  if (koi !== null) await photo(page, koi, 3, `${OUT}/fishing-spot.png`);
+  else console.warn('no glowkoi node found');
+  await page.close();
+}
+
+// ── N4d: the Underworks lift landing (own account — the previous page's
+// seat can linger a beat and one Spark holds one seat) ──────────────────────
+{
+  const auth2 = await signIn();
+  const page = await openWorld(
+    browser,
+    auth2.token,
+    'underworks',
+    { width: 2560, height: 1440 },
+    SPARK,
+  );
+  await photo(page, { x: 6, y: 20 }, 2, `${OUT}/underworks-lift.png`);
+  await page.close();
+}
+
 // ── 5: the Stacks roofline vista ────────────────────────────────────────────
 {
   const page = await openWorld(
