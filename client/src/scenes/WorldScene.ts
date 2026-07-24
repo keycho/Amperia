@@ -12,7 +12,7 @@ import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
 import { applyWorldPostFX } from '../render/postfx';
 import { playTramTransition } from '../ui/tramTransition';
-import { blendInt, garlandTint, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { blendInt, emberMid, garlandTint, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
   CacheStateShape,
@@ -3083,7 +3083,9 @@ export class WorldScene extends Phaser.Scene {
     // the texels inside stay countable (fx-glow washed whole regions).
     // 2.8 ≈ the old footprint × 0.7 across the 512→128px texture swap.
     const pool = this.add.image(x, y, 'fx-pool');
-    pool.setTint(tint);
+    // v3 n2: pools carry the ember ramp's MID band — the pavement inside
+    // a pool reads firelit saturated orange, not pale cream.
+    pool.setTint(emberMid(tint));
     pool.setBlendMode(Phaser.BlendModes.ADD);
     pool.setScale(scale * 2.8, scale * 2.8 * 0.42);
     pool.setAlpha(0.24);
@@ -3227,7 +3229,7 @@ export class WorldScene extends Phaser.Scene {
           // Coil-ring blooms aligned to the baked rings.
           [-52, -92, -132].forEach((dy, i) => {
             const coil = this.add.image(x, y + dy, 'fx-glow');
-            coil.setTint(PALETTE_INT.neonAmber);
+            coil.setTint(emberMid(PALETTE_INT.neonAmber));
             coil.setBlendMode(Phaser.BlendModes.ADD);
             coil.setAlpha(bloom(0.5));
             coil.setScale(0.5, 0.2);

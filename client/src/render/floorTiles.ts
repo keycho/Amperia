@@ -64,7 +64,9 @@ export function night(base: number, t: number): number {
   // v3 GOLDEN DARK (banner tune): one exposure step down on EVERY floor —
   // the city floor is near-night; light pools carry the ground, ambient
   // doesn't. One lever, all districts, map bake included.
-  return blendInt(splitTone(sat((r << 16) | (g << 8) | b, -0.14)), PALETTE_INT.ink, 0.18);
+  // v3 n2: floors keep more of their color (sat −0.14 → −0.10) so the
+  // umber ground reads BROWN with red-orange in it, not grey with yellow.
+  return blendInt(splitTone(sat((r << 16) | (g << 8) | b, -0.1)), PALETTE_INT.ink, 0.18);
 }
 
 /**

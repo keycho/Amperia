@@ -4,12 +4,12 @@ import { PALETTE, PALETTE_INT, hexToInt, mixPalette } from './palette';
 describe('locked palette', () => {
   it('matches the exact ART-DIRECTION.md hex table', () => {
     expect(PALETTE).toEqual({
-      duskSky: '#2A211A',
+      duskSky: '#2C2016',
       ink: '#1A1512',
-      structureMid: '#544A40',
-      groundBase: '#685C4D',
-      groundAccent: '#9A8574',
-      warmGlow: '#FFD9A0',
+      structureMid: '#574A3B',
+      groundBase: '#6C5843',
+      groundAccent: '#9C8064',
+      warmGlow: '#FFA033',
       neonAmber: '#FFB84D',
       neonRose: '#FF6F91',
       neonTeal: '#2FD3B8',

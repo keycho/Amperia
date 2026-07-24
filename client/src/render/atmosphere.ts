@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE_INT } from '@shared/palette';
+import { emberMid, PALETTE_INT } from '@shared/palette';
 import { FILM_GRAIN_ALPHA } from './grit';
 import { bloom } from './styleConfig';
 
@@ -72,7 +72,8 @@ export function addGodRays(
     const shaft = scene.add.image(x, y, 'fx-shaft');
     shaft.setOrigin(0.5, 0.04);
     shaft.setRotation(a);
-    shaft.setTint(PALETTE_INT.neonAmber);
+    // v3 n2: rays ride the ember ramp's mid band — saturated, not pale.
+    shaft.setTint(emberMid(PALETTE_INT.neonAmber));
     shaft.setBlendMode(Phaser.BlendModes.ADD);
     // v3 GOLDEN DARK: hotter, taller — the crown's rays carry the apex's
     // doubled emissive out over the plaza.
