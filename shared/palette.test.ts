@@ -4,10 +4,10 @@ import { PALETTE, PALETTE_INT, hexToInt, mixPalette } from './palette';
 describe('locked palette', () => {
   it('matches the exact ART-DIRECTION.md hex table', () => {
     expect(PALETTE).toEqual({
-      duskSky: '#35284F',
-      ink: '#1E1930',
-      structureMid: '#4E4560',
-      groundBase: '#6B5E70',
+      duskSky: '#2A211A',
+      ink: '#1A1512',
+      structureMid: '#544A40',
+      groundBase: '#685C4D',
       groundAccent: '#9A8574',
       warmGlow: '#FFD9A0',
       neonAmber: '#FFB84D',
@@ -22,7 +22,7 @@ describe('locked palette', () => {
   });
 
   it('converts hex to Phaser ints', () => {
-    expect(hexToInt('#35284F')).toBe(0x35284f);
+    expect(hexToInt('#2A211A')).toBe(0x2a211a);
     expect(PALETTE_INT.neonTeal).toBe(0x2fd3b8);
   });
 

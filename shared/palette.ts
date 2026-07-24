@@ -8,13 +8,13 @@
  */
 export const PALETTE = {
   /** Sky, deepest shadows — a warm plum, never pure black. */
-  duskSky: '#35284F',
+  duskSky: '#2A211A',
   /** Sprite outlines and fine linework only — not large fills. */
-  ink: '#1E1930',
+  ink: '#1A1512',
   /** Building bodies, walls, mid-shadow. */
-  structureMid: '#4E4560',
-  /** Primary walkable pavement / plating (warm grey-mauve). */
-  groundBase: '#6B5E70',
+  structureMid: '#544A40',
+  /** Primary walkable pavement / plating (warm stone (v3)). */
+  groundBase: '#685C4D',
   /** Wooden decks, tan tiles, rugs, paths — warmth & variety. */
   groundAccent: '#9A8574',
   /** The overall golden light wash, lamp halos. */
@@ -96,8 +96,8 @@ export const MATERIAL_COLORS = {
   rust: '#6E4A33',
   rustDeep: '#513425',
   /** Gunmetal — Dynamo housing, plating, pipes (cool grey-blue). */
-  gunmetal: '#525B6E',
-  gunmetalDeep: '#3B4252',
+  gunmetal: '#565A60',
+  gunmetalDeep: '#3E4147',
   /** Wood / decking — stall frames, boardwalk, pallets (groundAccent tan). */
   wood: '#9A8574',
   woodDeep: '#75655A',
@@ -106,16 +106,16 @@ export const MATERIAL_COLORS = {
   paintOchre: '#96793F',
   paintRose: '#96626E',
   /** Concrete / pavement — neutral grey-mauve ground and curbs. */
-  concrete: '#6B6169',
-  concreteDeep: '#514A52',
+  concrete: '#6B6459',
+  concreteDeep: '#524B42',
   /** Street asphalt — dark, warm-grey, never purple. */
-  asphalt: '#453F47',
-  asphaltDeep: '#332E36',
+  asphalt: '#454039',
+  asphaltDeep: '#34302A',
   /** Spark skin midtone (character identity block) — warm sand; the
    *  creator's tone options derive from this via sanctioned mixes. */
   skin: '#E3B98A',
   /** The void beyond the map: ink fading to near-black (composition §B5). */
-  voidBlack: '#0B0812',
+  voidBlack: '#0C0A07',
 } as const;
 
 export type MaterialColorKey = keyof typeof MATERIAL_COLORS;
@@ -167,7 +167,7 @@ export function sat(color: number, k: number): number {
 }
 
 /** Split-tone poles: shadows pull cool teal-blue, lit areas pull amber. */
-const SPLIT_SHADOW = mixInt(PALETTE_INT.neonTeal, PALETTE_INT.ink, 0.68);
+const SPLIT_SHADOW = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.ink, 0.82);
 const SPLIT_LIT = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, 0.45);
 
 /**
