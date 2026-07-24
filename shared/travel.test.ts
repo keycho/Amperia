@@ -5,7 +5,7 @@ import { tramHops, tramToll } from './travel';
 
 describe('the tram line (D3)', () => {
   it('runs Filament ↔ Stacks ↔ Terrarium ↔ Tangle', () => {
-    expect(CONFIG.travel.line).toEqual(['filament', 'stacks', 'terrarium', 'tangle']);
+    expect(CONFIG.travel.line).toEqual(['underworks', 'filament', 'stacks', 'terrarium', 'tangle']);
   });
 
   it('counts hops along the line in both directions', () => {
@@ -18,7 +18,7 @@ describe('the tram line (D3)', () => {
 
   it('same stop or an unknown stop = no ride', () => {
     expect(tramHops('filament', 'filament')).toBe(0);
-    expect(tramHops('filament', 'underworks' as DistrictId)).toBe(0);
+    expect(tramHops('filament', 'nowhere' as DistrictId)).toBe(0);
   });
 
   it('charges the Bolts toll per hop', () => {

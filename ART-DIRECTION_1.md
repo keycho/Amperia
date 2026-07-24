@@ -1,4 +1,4 @@
-# ART DIRECTION — "Cozy Salvage-Punk" *(LOCKED — Part I unchanged; Part II addendum added in v2)*
+# ART DIRECTION — "Cozy Salvage-Punk" *(v3 FINAL — THE GOLDEN DARK. Part III supersedes Part I §2 values; canonical key art: `docs/brand/key-art-banner.webp`)*
 
 *The look for the game. Warm, lived-in, neon-lit future night-market. Punk by attitude (DIY junk-tech, patched chrome, graffiti, string lights), cozy by mood. Built to be pleasant to look at and play every day, and to read cleanly in flat isometric. Name-agnostic — this holds whatever the game ends up being called.*
 
@@ -18,12 +18,12 @@ Warm-forward base so the world is comfortable for long sessions; saturated neon 
 
 | Role | Hex | Use |
 |---|---|---|
-| **Dusk sky / deep base** | `#35284F` | Sky, deepest shadows (a warm plum — never pure black) |
-| **Ink (outlines only)** | `#1E1930` | Sprite outlines, fine linework — not large fills |
-| **Structure mid** | `#4E4560` | Building bodies, walls, mid-shadow |
-| **Ground base** | `#6B5E70` | Primary walkable pavement / plating (warm grey-mauve) |
-| **Ground accent / decking** | `#9A8574` | Wooden decks, tan tiles, rugs, paths — adds warmth & variety |
-| **Warm ambient glow** | `#FFD9A0` | The overall golden light wash, lamp halos |
+| **Dusk sky / deep base** | `#2C2016` *(v3 n2)* | Sky, deepest shadows (warm near-black UMBER — never pure black, never plum) |
+| **Ink (outlines only)** | `#1A1512` *(v3)* | Sprite outlines, fine linework — not large fills |
+| **Structure mid** | `#574A3B` *(v3 n2)* | Building bodies, walls, mid-shadow (warm grey-brown) |
+| **Ground base** | `#6C5843` *(v3 n2)* | Primary walkable pavement / plating (warm stone) |
+| **Ground accent / decking** | `#9C8064` *(v3 n2)* | Wooden decks, tan tiles, rugs, paths — adds warmth & variety |
+| **Warm ambient glow** | `#FFA033` *(v3 n2)* | The light wash + lamp halos — saturated amber-orange; cream survives only in emissive cores |
 | **Neon amber** *(primary warm)* | `#FFB84D` | Signage, lanterns, key light sources |
 | **Neon rose / coral** | `#FF6F91` | Accent signage, fabric, highlights |
 | **Neon teal** *(primary cool)* | `#2FD3B8` | Interactables, UI highlights, screens |
@@ -34,13 +34,14 @@ Warm-forward base so the world is comfortable for long sessions; saturated neon 
 | **Violet neon** *(rare, premium)* | `#B266FF` | Premium-feeling signage — rarer than rose |
 
 **Palette rules:**
-- Big areas use the **warm mid-values** (`#6B5E70`, `#9A8574`, `#4E4560`). Pure saturated neon is an *accent*, not a fill — that's what keeps it cozy instead of loud.
+- Big areas use the **warm mid-values** (`#6C5843`, `#9C8064`, `#574A3B`). Pure saturated neon is an *accent*, not a fill — that's what keeps it cozy instead of loud.
 - **One dominant hue per district** (e.g., the market is amber/rose, the workshop row is teal, the garden tier is green) so zones read at a glance and the world feels varied.
-- **Never let pure black own a large region** — deepest tone is the plum `#35284F`. This is the single biggest difference from dark cyberpunk and the main reason it's easy on the eyes daily.
+- **Never let pure black own a large region** — deepest tone is the warm umber `#2C2016` (v3 n2). Still the biggest difference from dark cyberpunk: dark, but warm, easy on the eyes daily.
+- **Purple is demoted to an accent (v3):** `violetNeon` survives on rare premium signage and cosmetics; nothing STRUCTURAL (ground, walls, shadow, void) carries a violet cast anymore.
 
 ## 3. Lighting
 
-- **Key light = perpetual golden dusk.** Warm, soft, directional — the whole scene sits in `#FFD9A0` ambient.
+- **Key light = perpetual golden dusk.** Warm, soft, directional — the whole scene sits in `#FFA033` ambient (v3 n2 — saturated, not cream).
 - **Local neon glow** from signs, stalls, and string lights adds the punk color; each emits a soft bloom halo.
 - **Gentle bloom + haze**, not heavy fog. Distant lights glow softly so the backdrop feels deep without going murky.
 - **Wet-sheen ground, lightly.** Tiles have a subtle reflective glaze that catches nearby neon (the charming part of Blade Runner) — but *damp and shiny*, not drenched and gloomy.
@@ -264,3 +265,21 @@ same-sized props in ANY district. The brief defines:
 ---
 
 *Companion files: the Game Bible v2, the Economy Design v2, and `CLAUDE.md`. Part I is LOCKED as ever; Part II is additive and equally binding — build and asset choices should conform to both.*
+
+---
+
+# PART III — v3 THE GOLDEN DARK (the live-game regrade; supersedes Part I §2 values)
+
+The banner is the grade: a single blazing Dynamo, warm gold on near-black. The live game reads to match — not as a preset, as THE look. All of it flows through `shared/palette.ts` + the style config; no per-asset repainting.
+
+**AU1 — the base.** Foundation tones (ground, pavement, wall shading, ambient shadow, void glow) moved from ink-plum to **warm near-black umber** (`#2A211A` base, `#1A1512` ink, `#0C0A07` void). The void beyond deck edges is neutral-black with only the faintest warm horizon glow near lit districts. The split-tone shadow pole is warm now — darks fall toward umber, never toward teal.
+
+**Notch 2 — EMBER SATURATION (v3 n2).** The banner's light is saturated amber-orange, not cream. Three moves: (1) the warm light family re-valued — `warmGlow` is now `#FFA033`; every layered glow runs the **ember ramp** (white core → saturated mid → deep burnt skirt; brightness falls faster than saturation, so the falloff gets MORE orange as it dims — hue-preserving, so teal tells deepen to deep teal). (2) The ground pulled to true umber — brown with red-orange in it (`#6C5843` base, materials warmed to match); pools tint the pavement firelit via the ramp's mid band. (3) Lit-area saturation up ~20% (split-tone strength 0.14→0.17, floor desat eased). Cream/white survives ONLY in innermost emissive cores.
+
+**Notch 3 — THE DARKNESS BETWEEN THE LIGHT (v3 n3).** The hue is right; contrast comes from coverage. (1) Light pools ~30% tighter (pool radius 2.5 → 1.75 tiles, footprint 2.8 → 2.0) — adjacent pools no longer merge. (2) The grade is S-curved (midGamma 0.6): the mid-brightness wash falls hard toward the dark bands while band 0 and every hot core stay exactly as they were — the middle drops out, the lights never dim. (3) The deepest ambient band a step darker (0.55 → 0.62) and darkness arrives sooner (far radius 6), so real dark pockets open INSIDE districts. (4) Away faces model harder: the face ramp's dark side deepens (−35% → −48%). Target held: 50%+ of a wide frame at or near the dark bands (measured 65% below luma 60), light living in islands. Never pure black — the floor under the deepest band stays warm umber.
+
+**AU2 — the gold hierarchy.** Light pools amber, window lights gold, brass warm. Luminance ladder, strictly: **the Dynamo is the apex** (~2× emissive, a tall subtle shaft, visible from everywhere in the Filament) → lamps + garlands clearly below → ambient one darkness band lower than v2. Zones far from any light desaturate ~25% toward warm monochrome, so wide shots read as the banner.
+
+**AU3 — the color budget (per screenful).** Gold/amber dominant on a warm-black base. Teal only on interactables, lenses and water glints — enforced by scarcity. Rose/pink only on awnings, hair and cosmetics. Garland bulbs muted ~40% and warm-shifted: market charm, not carnival confetti. **Characters and cosmetics keep full saturation** — they are the life against the dark.
+
+**AU4 — unchanged + hard constraints.** UI kit plates keep their v2 look (brand; regraded separately if ever). Interaction pictograms, labels, E-prompts and the tutorial arrow at full visibility. The fresh-Spark first loop passes; the overlap tour stays green; pure black never owns a region.

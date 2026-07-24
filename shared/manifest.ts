@@ -15,6 +15,7 @@ export type ManifestPageId =
   | 'gardens'
   | 'mobs'
   | 'errands'
+  | 'story'
   | 'wardrobe';
 
 export interface ManifestPageDef {
@@ -32,6 +33,7 @@ export const MANIFEST_PAGES: readonly ManifestPageDef[] = [
   { id: 'gardens', label: 'Gardens', blurb: 'What the Terrarium let you keep.' },
   { id: 'mobs', label: 'Junkbots', blurb: 'What the ferals left behind.' },
   { id: 'errands', label: 'Errands', blurb: 'What the city trusted you with.' },
+  { id: 'story', label: 'The Long Dark', blurb: 'What the city remembers, chapter by chapter.' },
   { id: 'wardrobe', label: 'Wardrobe', blurb: 'What the city put on your back.' },
 ];
 
@@ -102,6 +104,10 @@ export const MANIFEST_ENTRIES: readonly ManifestEntryDef[] = [
     'Keep the Citywide Charge fed, week after week.',
     'cosmetic',
   ),
+  // S2 — the Long Dark keepsakes (chapters 1-3; the page grows with the tale).
+  E('deadFilament', 'story', 'A Dead Filament', 'Fetch wire for the wick-dipper.', 'item'),
+  E('punchedTicket', 'story', 'A Punched Ticket', "Ride the Conductor's Leg for dispatch.", 'item'),
+  E('makersRubbing', 'story', "A Maker's-Mark Rubbing", 'Feed the meter for the Warden.', 'item'),
 ];
 
 export const MANIFEST_BY_ID: Readonly<Record<string, ManifestEntryDef>> = Object.fromEntries(
@@ -135,6 +141,9 @@ export const PAGE_AWARDS: readonly PageAward[] = [
   { page: 'gardens', title: 'Seedkeeper' },
   { page: 'mobs', title: 'Botbreaker' },
   { page: 'errands', title: 'Runner' },
+  // The bar rises as chapters land — whoever holds every keepsake WRITTEN
+  // holds the title; new chapters reopen the page.
+  { page: 'story', title: 'Lampkeeper' },
   { page: 'wardrobe', title: 'City-Dressed' },
 ];
 

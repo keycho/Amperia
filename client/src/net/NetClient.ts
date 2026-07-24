@@ -20,6 +20,7 @@ import type {
   TravelIntent,
   UseItemIntent,
   BarIntent,
+  StoryIntent,
   IdleIntent,
   GatherIntent,
   GlintClickIntent,
@@ -98,7 +99,7 @@ export const TOKEN_KEY = 'amperia.token';
 /** Mirrors the Spark's district so a stored-token resume rejoins it. */
 export const DISTRICT_KEY = 'amperia.district';
 
-const DISTRICTS: readonly DistrictId[] = ['filament', 'tangle', 'stacks', 'terrarium'];
+const DISTRICTS: readonly DistrictId[] = ['filament', 'tangle', 'stacks', 'terrarium', 'underworks'];
 
 export function rememberedDistrict(): DistrictId {
   const stored = localStorage.getItem(DISTRICT_KEY);
@@ -143,6 +144,7 @@ export const send = {
   chargeInfo: (room: FilamentRoom) => room.send(MSG.chargeInfo, {}),
   useItem: (room: FilamentRoom, msg: UseItemIntent) => room.send(MSG.useItem, msg),
   bar: (room: FilamentRoom, msg: BarIntent) => room.send(MSG.bar, msg),
+  story: (room: FilamentRoom, msg: StoryIntent) => room.send(MSG.story, msg),
   idle: (room: FilamentRoom, msg: IdleIntent) => room.send(MSG.idle, msg),
   craft: (room: FilamentRoom, msg: CraftIntent) => room.send(MSG.craft, msg),
   repair: (room: FilamentRoom, msg: RepairIntent) => room.send(MSG.repair, msg),

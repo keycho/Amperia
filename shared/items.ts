@@ -24,6 +24,9 @@ export type ItemId =
   | 'wispFilament'
   | 'drayPlate'
   | 'waxChit'
+  | 'deadFilament'
+  | 'punchedTicket'
+  | 'makersRubbing'
   | 'silverfern'
   | 'emberseed'
   | 'heatlamp'
@@ -233,6 +236,36 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     category: 'curio',
     stack: 50,
     icon: 'icon-wax-chit',
+    rare: true,
+  },
+  // S2 — the Long Dark keepsakes. Story curios: granted once per chapter,
+  // never sold, never dropped (no drop path knows them — golden rule 7's
+  // structural cousin), kept where you'll see them.
+  deadFilament: {
+    id: 'deadFilament',
+    name: 'A Dead Filament',
+    flavor: 'A little glass bulb from the Long Dark, burned clear through. It gave everything.',
+    category: 'curio',
+    stack: 1,
+    icon: 'icon-dead-filament',
+    rare: true,
+  },
+  punchedTicket: {
+    id: 'punchedTicket',
+    name: 'A Punched Ticket',
+    flavor: 'Fourteen bell-counts to the Stacks. Punched in the dark, by hand.',
+    category: 'curio',
+    stack: 1,
+    icon: 'icon-punched-ticket',
+    rare: true,
+  },
+  makersRubbing: {
+    id: 'makersRubbing',
+    name: "A Maker's-Mark Rubbing",
+    flavor: 'A symbol in wax-crayon. Nobody living reads it. It was made by somebody, for somebody.',
+    category: 'curio',
+    stack: 1,
+    icon: 'icon-makers-rubbing',
     rare: true,
   },
   warmcup: {

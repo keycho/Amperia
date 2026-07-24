@@ -45,6 +45,11 @@ export const SessionEvents = {
   openBar: 'openBar',
   /** Open the City Board inspect panel (world → UI scene, billboard T2). */
   openBoard: 'openBoard',
+  /** S2: open the Long Dark story panel. Payload: the NPC kind or null
+   *  (null = the journal view). */
+  openStory: 'openStory',
+  /** S2: PRIVATE story state (server → this client only). Payload StorySync. */
+  storySync: 'storySync',
   /** T1: the City Board market snapshot. Payload MarketSyncEvent. */
   marketSync: 'marketSync',
   /** L3: the menu's take-a-seat — WorldScene walks to a stool + sits. */

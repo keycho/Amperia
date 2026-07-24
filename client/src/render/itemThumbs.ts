@@ -190,7 +190,46 @@ const BUILDERS: Record<string, (accent: number) => Voxel[]> = {
   'icon-wax-chit': () => waxChitModel(),
   'icon-sparkwrench': (a) => sparkwrenchModel(a),
   'icon-scarf': () => scarfModel(),
+  // S2 keepsakes — each its own silhouette, worn and warm.
+  'icon-dead-filament': () => deadFilamentModel(),
+  'icon-punched-ticket': () => punchedTicketModel(),
+  'icon-makers-rubbing': () => makersRubbingModel(),
 };
+
+/** S2 ch1: a burned-out bulb — glass dome, brass base, snapped filament. */
+function deadFilamentModel(): Voxel[] {
+  const glass = blendInt(C.metal, 0xffffff, 0.45);
+  const v = box(1, 0, 2, 3, 1, 3, glass);
+  v.push({ x: 2, y: 0, z: 5, c: shade(glass, 0.2) }); // crown highlight
+  v.push({ x: 2, y: 0, z: 3, c: shade(C.ink, 0.25) }); // the dead filament
+  v.push(...box(1, 0, 0, 3, 1, 2, blendInt(C.amber, C.ochre, 0.5))); // brass base
+  v.push({ x: 2, y: 0, z: 0, c: shade(blendInt(C.amber, C.ochre, 0.5), -0.3) });
+  return v;
+}
+
+/** S2 ch2: a hand-punched tram ticket, one stripe, one hole. */
+function punchedTicketModel(): Voxel[] {
+  const paper = blendInt(C.glow, 0xffffff, 0.35);
+  const v = box(0, 0, 1, 5, 1, 3, paper);
+  v.push({ x: 1, y: 0, z: 2, c: C.amber }); // the fare stripe
+  v.push({ x: 2, y: 0, z: 2, c: C.amber });
+  v.push({ x: 3, y: 0, z: 2, c: shade(C.ink, 0.3) }); // the punch
+  v.push({ x: 4, y: 0, z: 3, c: shade(paper, -0.25) }); // worn corner
+  return v;
+}
+
+/** S2 ch3: wax-crayon rubbing — pale sheet, a glyph nobody reads. */
+function makersRubbingModel(): Voxel[] {
+  const paper = blendInt(C.glow, 0xffffff, 0.5);
+  const v = box(0, 0, 0, 5, 1, 5, paper);
+  const wax = shade(C.ink, 0.18);
+  for (const [x, z] of [
+    [1, 3], [2, 3], [3, 3], [2, 2], [1, 1], [3, 1],
+  ] as const) {
+    v.push({ x, y: 0, z, c: wax });
+  }
+  return v;
+}
 
 /** A Scuttlebot's maker-mark: a pointed badge, one corner caved in. */
 function dentedCrestModel(): Voxel[] {

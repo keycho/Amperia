@@ -7,18 +7,19 @@
  * derived from the locked table.
  */
 export const PALETTE = {
-  /** Sky, deepest shadows — a warm plum, never pure black. */
-  duskSky: '#35284F',
+  /** Sky, deepest shadows — a warm near-black umber, never pure black. */
+  duskSky: '#2C2016',
   /** Sprite outlines and fine linework only — not large fills. */
-  ink: '#1E1930',
+  ink: '#1A1512',
   /** Building bodies, walls, mid-shadow. */
-  structureMid: '#4E4560',
-  /** Primary walkable pavement / plating (warm grey-mauve). */
-  groundBase: '#6B5E70',
+  structureMid: '#574A3B',
+  /** Primary walkable pavement / plating (warm stone (v3)). */
+  groundBase: '#6C5843',
   /** Wooden decks, tan tiles, rugs, paths — warmth & variety. */
-  groundAccent: '#9A8574',
-  /** The overall golden light wash, lamp halos. */
-  warmGlow: '#FFD9A0',
+  groundAccent: '#9C8064',
+  /** The light wash + lamp halos — saturated amber-orange (v3 n2);
+   *  cream survives only in emissive CORES via the ember ramp. */
+  warmGlow: '#FFA033',
   /** Signage, lanterns, key light sources (primary warm neon). */
   neonAmber: '#FFB84D',
   /** Accent signage, fabric, highlights. */
@@ -96,8 +97,8 @@ export const MATERIAL_COLORS = {
   rust: '#6E4A33',
   rustDeep: '#513425',
   /** Gunmetal — Dynamo housing, plating, pipes (cool grey-blue). */
-  gunmetal: '#525B6E',
-  gunmetalDeep: '#3B4252',
+  gunmetal: '#5A5750',
+  gunmetalDeep: '#443F38',
   /** Wood / decking — stall frames, boardwalk, pallets (groundAccent tan). */
   wood: '#9A8574',
   woodDeep: '#75655A',
@@ -106,16 +107,16 @@ export const MATERIAL_COLORS = {
   paintOchre: '#96793F',
   paintRose: '#96626E',
   /** Concrete / pavement — neutral grey-mauve ground and curbs. */
-  concrete: '#6B6169',
-  concreteDeep: '#514A52',
+  concrete: '#6D5D49',
+  concreteDeep: '#544837',
   /** Street asphalt — dark, warm-grey, never purple. */
-  asphalt: '#453F47',
-  asphaltDeep: '#332E36',
+  asphalt: '#473C2F',
+  asphaltDeep: '#362C21',
   /** Spark skin midtone (character identity block) — warm sand; the
    *  creator's tone options derive from this via sanctioned mixes. */
   skin: '#E3B98A',
   /** The void beyond the map: ink fading to near-black (composition §B5). */
-  voidBlack: '#0B0812',
+  voidBlack: '#0C0A07',
 } as const;
 
 export type MaterialColorKey = keyof typeof MATERIAL_COLORS;
@@ -166,8 +167,9 @@ export function sat(color: number, k: number): number {
   return (adj((color >> 16) & 0xff) << 16) | (adj((color >> 8) & 0xff) << 8) | adj(color & 0xff);
 }
 
-/** Split-tone poles: shadows pull cool teal-blue, lit areas pull amber. */
-const SPLIT_SHADOW = mixInt(PALETTE_INT.neonTeal, PALETTE_INT.ink, 0.68);
+/** Split-tone poles (v3): shadows sink into warm umber dark, lit areas
+ *  pull amber — the whole curve lives on the gold axis now. */
+const SPLIT_SHADOW = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.ink, 0.82);
 const SPLIT_LIT = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, 0.45);
 
 /**
@@ -175,9 +177,33 @@ const SPLIT_LIT = mixInt(PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, 0.45);
  * more it leans cool teal; the lighter, the more it leans warm amber.
  * Mids stay put. This is what makes "dark but colorful" hold together.
  */
-export function splitTone(color: number, strength = 0.14): number {
+export function splitTone(color: number, strength = 0.17): number {
   const t = luma(color) / 255;
   const wShadow = Math.pow(1 - t, 2.2) * strength;
   const wLit = Math.pow(t, 1.9) * strength;
   return mixInt(mixInt(color, SPLIT_SHADOW, wShadow), SPLIT_LIT, wLit);
+}
+
+/**
+ * v3 color budget — garland bulbs: mute ~40% toward warm gold with a touch
+ * of desaturation. Strings festoon the streets; they must never compete
+ * with the Dynamo or read as a second neon system. One audit point for
+ * every bulb tint the scene hangs.
+ */
+export function garlandTint(color: number): number {
+  return blendInt(sat(color, -0.35), PALETTE_INT.warmGlow, 0.55);
+}
+
+/**
+ * v3 notch-2 — the EMBER RAMP. Light falls off white → saturated hue →
+ * deep burnt dark, and brightness falls FASTER than saturation: the mid
+ * band is darker but MORE saturated, never paler. Hue-preserving, so an
+ * amber lamp deepens to burnt orange while a teal tell deepens to deep
+ * teal. One audit point for every layered glow's band tints.
+ */
+export function emberMid(tint: number): number {
+  return sat(tint, 0.25);
+}
+export function emberDeep(tint: number): number {
+  return sat(blendInt(tint, PALETTE_INT.ink, 0.45), 0.35);
 }

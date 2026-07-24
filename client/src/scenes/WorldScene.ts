@@ -12,7 +12,7 @@ import { showSpeechBubble } from '../ui/SpeechBubble';
 import { NPC_CHATTER } from '../systems/npcChatter';
 import { applyWorldPostFX } from '../render/postfx';
 import { playTramTransition } from '../ui/tramTransition';
-import { blendInt, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
+import { blendInt, emberMid, garlandTint, hexToInt, MATERIAL_INT, mixPalette, PALETTE, PALETTE_INT, UI_TEXT_WARM } from '@shared/palette';
 import { towerWindows } from '../render/voxelWorldModels';
 import type {
   CacheStateShape,
@@ -46,6 +46,7 @@ import type {
   CityPresenceEvent,
   LootEvent,
   MarketSyncEvent,
+  StorySync,
   MoveAcceptedEvent,
   PricesSync,
   QuestsSync,
@@ -63,6 +64,7 @@ import type {
   TendStateEvent,
   MoveIntent,
 } from '@shared/protocol';
+import { STORY_CHAPTERS } from '@shared/story';
 import { makeRng, type Rng } from '@shared/rng';
 import { levelForXp, type SkillId } from '@shared/mastery';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
@@ -124,6 +126,7 @@ import {
   addBadFlicker,
   addFilmGrain,
   addGodRays,
+  addHaze,
   addHueCycle,
   addLampCone,
 } from '../render/atmosphere';
@@ -185,9 +188,13 @@ export class WorldScene extends Phaser.Scene {
     sub: Phaser.GameObjects.Text;
   } | null = null;
   private boardIndex = 0;
+  /** Inner width of the face quad — text rows scale to stay inside it. */
+  private boardInnerW = 114;
   /** Latest market snapshot (T1 seed + slow-sweep relays); null pre-seed. */
   private market: MarketSyncEvent | null = null;
   private boardSparks: number | null = null;
+  /** S2: this Spark's PRIVATE story state (server → own client only). */
+  private storyState: StorySync | null = null;
   private boardCharge: { tier: number; tierMax: number } | null = null;
   /** Last Charge mirror — re-emitted when the Board opens, so a panel
    *  constructed after the join-time sync still gets the tier. */
@@ -411,31 +418,62 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * T2 — the City Board's live face: three monospace rows (caption, figure,
-   * sub) mounted over the baked ink pane, rotating through the panel deck
-   * every {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain
-   * swap; a negative 24h dims to rose, everything else stays amber.
+   * T2 — the City Board's live face: a CAMERA-FACING framed panel (the
+   * Fortune Coil precedent — every readable surface faces the viewer; the
+   * voxel bake supplies only the dark riveted back). Three monospace rows
+   * live INSIDE the panel's quad with padding — clamped to its width,
+   * never past its edges — rotating through the deck every
+   * {@link CONFIG.billboard.rotateSeconds}. No flashing — a plain swap;
+   * a negative 24h dims to rose, everything else stays amber.
    */
   private placeBoardFace(p: Prop, frame: Phaser.GameObjects.Image): void {
-    const c = tileToWorld(p.x + 2, p.y + 1);
+    // The framed face texture: gunmetal frame, ink screen, scanline rows.
+    const key = 'board-face';
+    const FW = 128;
+    const FH = 52;
+    if (!this.textures.exists(key)) {
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      g.fillStyle(MATERIAL_INT.gunmetalDeep, 1);
+      g.fillRoundedRect(0, 0, FW, FH, 5);
+      g.fillStyle(MATERIAL_INT.gunmetal, 1);
+      g.fillRoundedRect(2, 2, FW - 4, FH - 4, 4);
+      g.fillStyle(PALETTE_INT.ink, 1);
+      g.fillRoundedRect(4, 4, FW - 8, FH - 8, 3);
+      // Faint scanlines — the dot-matrix tell.
+      g.fillStyle(blendInt(PALETTE_INT.ink, PALETTE_INT.structureMid, 0.18), 1);
+      for (let sy = 7; sy < FH - 6; sy += 4) g.fillRect(5, sy, FW - 10, 1);
+      // Corner service lamps.
+      g.fillStyle(PALETTE_INT.neonAmber, 0.9);
+      g.fillRect(6, FH - 8, 3, 3);
+      g.fillRect(FW - 9, FH - 8, 3, 3);
+      g.generateTexture(key, FW, FH);
+      g.destroy();
+    }
+    // The pane rides the pole top (deck-edge form): two-plus storeys up.
+    const c = tileToWorld(p.x + 1, p.y + 1);
+    const cx = c.x + 2;
+    const cy = c.y - 128;
+    const panel = this.add.image(cx, cy, key);
+    panel.setDepth(frame.depth + 1);
     const mk = (dy: number, size: number, color: string): Phaser.GameObjects.Text => {
-      const t = this.add.text(c.x, c.y - 18 + dy, '', {
+      const t = this.add.text(cx, cy + dy, '', {
         fontFamily: 'monospace',
         fontSize: `${size}px`,
         color,
         fontStyle: 'bold',
       });
       t.setOrigin(0.5, 0.5);
-      t.setDepth(frame.depth + 1);
+      t.setDepth(frame.depth + 2);
       t.setLetterSpacing(2);
       return t;
     };
     this.boardFace = {
-      caption: mk(-14, 9, PALETTE.warmGlow),
-      value: mk(0, 13, PALETTE.neonAmber),
-      sub: mk(13, 10, PALETTE.neonAmber),
+      caption: mk(-15, 8, PALETTE.warmGlow),
+      value: mk(-1, 12, PALETTE.neonAmber),
+      sub: mk(12, 9, PALETTE.neonAmber),
     };
     this.boardFace.caption.setAlpha(0.85);
+    this.boardInnerW = FW - 14;
     // The rotation: advance the deck, plainly. (Game-clock timer — the
     // board is presentation; a slow tab just holds a panel longer.)
     this.time.addEvent({
@@ -452,7 +490,10 @@ export class WorldScene extends Phaser.Scene {
   /** Repaint the Board's current panel from the cached city + market state. */
   private renderBoardFace(): void {
     const f = this.boardFace;
-    if (f === null) return;
+    // Stale after a district restart: the scene instance survives restart but
+    // its objects don't — a marketSync landing mid-travel (or in a district
+    // with no billboard) must not touch destroyed Texts.
+    if (f === null || !f.caption.active) return;
     const panels = buildBoardPanels(this.market, this.boardSparks, this.boardCharge);
     if (panels.length === 0) {
       f.caption.setText('THE CITY BOARD');
@@ -462,10 +503,18 @@ export class WorldScene extends Phaser.Scene {
     }
     const panel = panels[this.boardIndex % panels.length] as BoardPanel;
     const tone = panel.tone === 'dimRose' ? PALETTE.neonRose : PALETTE.neonAmber;
+    // Bound to the face: any row wider than the panel's inner width scales
+    // down uniformly — whole glyphs, never past the frame.
+    const fit = (t: Phaser.GameObjects.Text): void => {
+      t.setScale(t.width > this.boardInnerW ? this.boardInnerW / t.width : 1);
+    };
     f.caption.setText(panel.caption);
+    fit(f.caption);
     f.value.setText(panel.value);
     f.value.setColor(PALETTE.neonAmber);
+    fit(f.value);
     f.sub.setText(panel.sub ?? '');
+    fit(f.sub);
     f.sub.setColor(tone);
     f.sub.setAlpha(panel.tone === 'dimRose' ? 0.8 : 1);
   }
@@ -895,7 +944,24 @@ export class WorldScene extends Phaser.Scene {
       proxy(p).listen('trim', (v: string) => spark.setTrim(v));
       spark.setTrim(p.trim);
       // L2: the drink in hand — mug overlay + sip loop, purely visual.
-      proxy(p).listen('drink', (v: string) => spark.setDrink(v === '' ? null : v));
+      proxy(p).listen('drink', (v: string) => {
+        spark.setDrink(v === '' ? null : v);
+        // S1: the pour lands in the ear too — your own glass pours; a
+        // nearby Spark's fresh glass clinks (the round hitting the bar).
+        if (v !== '') {
+          if (sessionId === room.sessionId) {
+            sound.barPour();
+          } else {
+            const me = this.sparks.get(room.sessionId);
+            if (
+              me !== undefined &&
+              Math.abs(me.tile.x - spark.tile.x) + Math.abs(me.tile.y - spark.tile.y) <= 7
+            ) {
+              sound.mugClink();
+            }
+          }
+        }
+      });
       spark.setDrink(p.drink === '' ? null : p.drink);
       // Working pose while gathering (server-set, presentation only).
       proxy(p).listen('pose', (v: string) => spark.setPose(v === '' ? null : v));
@@ -1065,6 +1131,12 @@ export class WorldScene extends Phaser.Scene {
       (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
     });
 
+    // S2: PRIVATE story state — cache for NPC precedence, hand to the panel.
+    room.onMessage(MSG.storySync, (e: StorySync) => {
+      this.storyState = e;
+      session.events.emit(SessionEvents.storySync, e);
+    });
+
     // T1/T2: the City Board's market snapshot — cache for the face + panel.
     room.onMessage(MSG.marketSync, (e: MarketSyncEvent) => {
       this.market = e;
@@ -1098,9 +1170,11 @@ export class WorldScene extends Phaser.Scene {
         tangle: 'The tram rattles out into the Tangle…',
         stacks: 'Up-line to the Stacks — windows all the way up.',
         terrarium: 'The Terrarium stop — you can smell the green from here.',
+        underworks: 'Down the shaft — lamps lit, voices low.',
       };
       session.events.emit(SessionEvents.notice, lines[to]);
       // U5b: the tram beat — vignette + name card riding over the rebuild.
+      sound.tramChime(); // S1: the two-tone departure
       playTramTransition(to);
       this.expectLeave = true;
       void room.leave().finally(() => {
@@ -2511,7 +2585,16 @@ export class WorldScene extends Phaser.Scene {
     const lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
     this.lightSpots = lightSpots;
     for (const p of this.map.props) {
-      if (p.kind === 'dynamo') lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
+      if (p.kind === 'dynamo') {
+        // The Dynamo's warmth claims its FEET, not the district — a center
+        // spot plus the footprint corners. n3: the ring pulled in so the
+        // plaza corners genuinely reach the dark bands.
+        lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
+        lightSpots.push({ x: p.x, y: p.y, cool: false });
+        lightSpots.push({ x: p.x + 3, y: p.y, cool: false });
+        lightSpots.push({ x: p.x, y: p.y + 3, cool: false });
+        lightSpots.push({ x: p.x + 3, y: p.y + 3, cool: false });
+      }
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
       if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
       if (p.kind === 'alleylamp') lightSpots.push({ x: p.x, y: p.y, cool: false });
@@ -2788,7 +2871,9 @@ export class WorldScene extends Phaser.Scene {
           if (!ground) continue;
           const band = this.darknessBand(tx, ty);
           if (band === 0) continue;
-          const a = (band / DARKNESS.bands) * DARKNESS.maxAlpha;
+          // n3 S-curve: mids drop hard (pow < 1), the deepest band holds
+          // the ceiling — the middle falls out, the pools stay pools.
+          const a = Math.pow(band / DARKNESS.bands, DARKNESS.midGamma) * DARKNESS.maxAlpha;
           const { x, y } = tileToWorld(tx, ty);
           dark.fillStyle(PALETTE_INT.ink, a);
           this.traceDiamond(dark, x, y);
@@ -3001,15 +3086,31 @@ export class WorldScene extends Phaser.Scene {
     // the texels inside stay countable (fx-glow washed whole regions).
     // 2.8 ≈ the old footprint × 0.7 across the 512→128px texture swap.
     const pool = this.add.image(x, y, 'fx-pool');
-    pool.setTint(tint);
+    // v3 n2: pools carry the ember ramp's MID band — the pavement inside
+    // a pool reads firelit saturated orange, not pale cream.
+    pool.setTint(emberMid(tint));
     pool.setBlendMode(Phaser.BlendModes.ADD);
-    pool.setScale(scale * 2.8, scale * 2.8 * 0.42);
+    // n3: pool footprints ~30% tighter (2.8 -> 2.0) — pools are pools,
+    // with genuinely dark ground between neighbours.
+    pool.setScale(scale * 2.0, scale * 2.0 * 0.42);
     pool.setAlpha(0.24);
     pool.setDepth(DEPTH_FLOOR + 4);
     return pool;
   }
 
   /** Anchor world position for a prop: bottom corner of its footprint. */
+  /** S2: does this NPC hold story business for ME right now? (offered,
+   *  mid-task or ready — anything that should open the story panel first.) */
+  private storyAtNpc(npc: 'merchant' | 'dispatcher' | 'warden'): boolean {
+    const st = this.storyState;
+    if (st === null) return false;
+    return STORY_CHAPTERS.some((c) => {
+      if (c.npc !== npc) return false;
+      if (st.offered.includes(c.id)) return true;
+      return st.chapters[c.id]?.state === 'task';
+    });
+  }
+
   private propAnchor(p: Prop): { x: number; y: number } {
     const nw = tileToWorld(p.x, p.y);
     const se = tileToWorld(p.x + p.w - 1, p.y + p.h - 1);
@@ -3075,19 +3176,57 @@ export class WorldScene extends Phaser.Scene {
           // (addendum b): hot core + hue bloom + wide skirt, all amber.
           // Biggest and SOFTEST: wide skirt, restrained core — the coil
           // bakes supply the hot metal; the glow must never white them out.
+          // v3 GOLDEN DARK: the apex is the brightest thing in the city by
+          // intent (~2x the old emissive) — every street should feel it.
           const halo = addLayeredGlow(
             this,
             x,
             y - 160,
             PALETTE_INT.neonAmber,
-            1.5,
+            1.8,
             depthForWorldY(y) + 1,
-            0.38,
+            0.7,
           );
           this.tweens.add({
             targets: [halo.mid, halo.outer],
-            alpha: { from: bloom(0.28), to: bloom(0.44) },
+            alpha: { from: bloom(0.52), to: bloom(0.8) },
             duration: 2200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          // v3: the banner's tall shaft — a THIN column of gold rising off
+          // the crown, all the way up the frame. Slow breathe, no sway.
+          const beam = this.add.image(x, y - 195, 'fx-shaft');
+          beam.setOrigin(0.5, 0.04);
+          beam.setRotation(Math.PI);
+          beam.setTint(PALETTE_INT.neonAmber);
+          beam.setBlendMode(Phaser.BlendModes.ADD);
+          beam.setAlpha(bloom(0.36));
+          beam.setScale(0.42, 3.6);
+          beam.setDepth(depthForWorldY(y) + 1);
+          this.tweens.add({
+            targets: beam,
+            alpha: { from: bloom(0.3), to: bloom(0.46) },
+            duration: 3800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inout',
+          });
+          // The beam's hot core — a defined bright line inside the soft
+          // column, so the shaft READS from across the district.
+          const beamCore = this.add.image(x, y - 195, 'fx-shaft');
+          beamCore.setOrigin(0.5, 0.04);
+          beamCore.setRotation(Math.PI);
+          beamCore.setTint(PALETTE_INT.warmGlow);
+          beamCore.setBlendMode(Phaser.BlendModes.ADD);
+          beamCore.setAlpha(bloom(0.62));
+          beamCore.setScale(0.12, 3.4);
+          beamCore.setDepth(depthForWorldY(y) + 2);
+          this.tweens.add({
+            targets: beamCore,
+            alpha: { from: bloom(0.52), to: bloom(0.72) },
+            duration: 3800,
             yoyo: true,
             repeat: -1,
             ease: 'sine.inout',
@@ -3095,7 +3234,7 @@ export class WorldScene extends Phaser.Scene {
           // Coil-ring blooms aligned to the baked rings.
           [-52, -92, -132].forEach((dy, i) => {
             const coil = this.add.image(x, y + dy, 'fx-glow');
-            coil.setTint(PALETTE_INT.neonAmber);
+            coil.setTint(emberMid(PALETTE_INT.neonAmber));
             coil.setBlendMode(Phaser.BlendModes.ADD);
             coil.setAlpha(bloom(0.5));
             coil.setScale(0.5, 0.2);
@@ -3114,7 +3253,12 @@ export class WorldScene extends Phaser.Scene {
           addLayeredGlow(this, x, y - 210, PALETTE_INT.neonTeal, 0.12, depthForWorldY(y) + 2);
           // God-rays (R5a): soft shafts fanning from the crown.
           addGodRays(this, x, y - 190, depthForWorldY(y) + 1);
-          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 1.9);
+          // n3: the global pool footprint tightened 2.8 -> 2.0; the Dynamo
+          // keeps most of its field (its scale compensates) while every
+          // lamp and stall pool shrinks for real — light in islands.
+          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 4.0);
+          this.addGroundPool(x, y - 6, PALETTE_INT.neonAmber, 2.0);
+          addHaze(this, x, y - 4, PALETTE_INT.warmGlow, 2.8);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
           addEmberMotes(this, x, y - 70, depthForWorldY(y) + 3, {
@@ -3603,15 +3747,41 @@ export class WorldScene extends Phaser.Scene {
             lines: ['Reports only — what happened, never a pitch.'],
           }));
           this.placeBoardFace(p, img);
-          // Corner status lamps + a soft pool at the masts' feet.
-          const face = tileToWorld(p.x + 2, p.y + 1);
-          addLayeredGlow(this, face.x - 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
-          addLayeredGlow(this, face.x + 52, face.y - 66, PALETTE_INT.warmGlow, 0.22, img.depth + 2, 0.35);
-          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.4);
+          // Work-lamp spill over the face's top edge + a pool at the base.
+          const face = tileToWorld(p.x + 1, p.y + 1);
+          addLayeredGlow(this, face.x - 34, face.y - 172, PALETTE_INT.warmGlow, 0.3, img.depth + 2, 0.5);
+          addLayeredGlow(this, face.x + 30, face.y - 168, PALETTE_INT.warmGlow, 0.24, img.depth + 2, 0.4);
+          this.addGroundPool(face.x, face.y + 6, PALETTE_INT.neonAmber, 0.35);
+          {
+            const g = this.add.graphics();
+            g.setDepth(img.depth - 1);
+            // Taut guy-wires from the shaft to the deck anchor blocks.
+            g.lineStyle(1.5, mixPalette('structureMid', 'ink', 0.55), 0.9);
+            g.lineBetween(face.x - 8, face.y - 96, face.x - 46, face.y + 4);
+            g.lineBetween(face.x + 2, face.y - 96, face.x + 40, face.y - 2);
+            // Power cables sagging away to the Nightstalls roofline (NW) —
+            // the Dynamo-cable technique, hung high, landing on stall tops.
+            const roofA = tileToWorld(p.x + 1, 44);
+            const roofB = tileToWorld(p.x + 4, 43);
+            const topX = face.x - 2;
+            const topY = face.y - 150;
+            for (const [ax, ay] of [
+              [roofA.x, roofA.y - 46],
+              [roofB.x + TILE_W / 2, roofB.y - 42],
+            ] as const) {
+              const curve = new Phaser.Curves.QuadraticBezier(
+                new Phaser.Math.Vector2(topX, topY),
+                new Phaser.Math.Vector2((topX + ax) / 2, Math.max(topY, ay) + 40),
+                new Phaser.Math.Vector2(ax, ay),
+              );
+              g.lineStyle(2, mixPalette('duskSky', 'ink', 0.35), 0.9);
+              curve.draw(g, 24);
+            }
+          }
           img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
           this.registerInteract(
             img,
-            { x: p.x + 2, y: p.y + 1 },
+            { x: p.x, y: p.y + 1 },
             CONFIG.billboard.reachTiles,
             'Inspect',
             () => {
@@ -3744,6 +3914,34 @@ export class WorldScene extends Phaser.Scene {
           addFlicker(this, sign, bloom(0.55), 0.1);
           break;
         }
+        case 'oldworks': {
+          const img = this.propSprite('oldworks', x, y);
+          hoverTip(img, () => ({
+            title: 'The Old Works',
+            sub: 'the hall that went dark',
+            lines: ['The boilers that ran the city before the Dynamo.', 'Cold since the Works Failure.'],
+          }));
+          break;
+        }
+        case 'liftgate': {
+          const img = this.propSprite('liftgate', x, y);
+          hoverTip(img, () => ({
+            title: 'Freight Lift',
+            sub: 'the way up and the way down',
+            lines: ['The shaft runs to the surface. Click for the stop board.'],
+          }));
+          img.setInteractive({ useHandCursor: true }); // hover cursor; click routes centrally
+          this.registerInteract(
+            img,
+            { x: p.x, y: p.y },
+            4,
+            'Lift',
+            () => {
+              this.toggleTramBoard(img.x, img.y - 80);
+            },
+          );
+          break;
+        }
         case 'tramgate': {
           const img = this.propSprite('tramgate', x, y);
           hoverTip(img, () => ({
@@ -3797,7 +3995,11 @@ export class WorldScene extends Phaser.Scene {
             'Trade',
             () => {
               this.greetNpc('merchant', img);
-              session.events.emit(SessionEvents.openMerchant);
+              if (this.storyAtNpc('merchant')) {
+                session.events.emit(SessionEvents.openStory, 'merchant');
+              } else {
+                session.events.emit(SessionEvents.openMerchant);
+              }
             },
             { hint: 'step closer to trade' },
           );
@@ -3850,7 +4052,11 @@ export class WorldScene extends Phaser.Scene {
             'Board',
             () => {
               this.greetNpc('dispatcher', img);
-              session.events.emit(SessionEvents.openQuests);
+              if (this.storyAtNpc('dispatcher')) {
+                session.events.emit(SessionEvents.openStory, 'dispatcher');
+              } else {
+                session.events.emit(SessionEvents.openQuests);
+              }
             },
             { hint: 'step up to the board' },
           );
@@ -3875,7 +4081,11 @@ export class WorldScene extends Phaser.Scene {
             'Charge',
             () => {
               this.greetNpc('warden', img);
-              if (this.room !== null) send.chargeInfo(this.room);
+              if (this.storyAtNpc('warden')) {
+                session.events.emit(SessionEvents.openStory, 'warden');
+              } else if (this.room !== null) {
+                send.chargeInfo(this.room);
+              }
             },
             { hint: 'the Warden is by the Dynamo' },
           );
@@ -4076,7 +4286,7 @@ export class WorldScene extends Phaser.Scene {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: PALETTE.neonAmber,
-      backgroundColor: '#1E1930CC',
+      backgroundColor: `${PALETTE.ink}CC`,
       padding: { x: 4, y: 2 },
     });
     label.setOrigin(0.5, 1);
@@ -4231,7 +4441,7 @@ export class WorldScene extends Phaser.Scene {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: UI_TEXT_WARM,
-      backgroundColor: '#1E1930CC',
+      backgroundColor: `${PALETTE.ink}CC`,
       padding: { x: 4, y: 2 },
     });
     shingle.setOrigin(0.5, 1);
@@ -4441,13 +4651,14 @@ export class WorldScene extends Phaser.Scene {
 
     const g = this.add.graphics();
     g.setDepth(1e5);
-    // ~70% warm / 30% cool: amber, rose, amber, teal.
+    // v3 color budget: bulbs run muted warm-gold (garlandTint) — the string
+    // rhythm survives, but nothing on a wire competes with the Dynamo.
     const bulbTints = [
       PALETTE_INT.neonAmber,
       PALETTE_INT.neonRose,
       PALETTE_INT.neonAmber,
       PALETTE_INT.neonTeal,
-    ];
+    ].map(garlandTint);
     let bulbIdx = 0;
     for (const [a, b] of lines) {
       const sag = Math.min(60, Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y) * 0.12);
@@ -4463,10 +4674,11 @@ export class WorldScene extends Phaser.Scene {
       for (let i = 1; i < bulbs; i++) {
         const p = curve.getPoint(i / bulbs);
         const tint = bulbTints[bulbIdx++ % bulbTints.length] as number;
-        g.fillStyle(tint, 0.95);
-        g.fillCircle(p.x, p.y + 2, 2.2);
-        // Glow language (addendum b): hot core + hue bloom per bulb.
-        const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.08, 1e5 + 1);
+        // Banner tune: bulbs are faint warm dots riding the dark — rhythm,
+        // not illumination. The Dynamo owns the plaza's light.
+        g.fillStyle(tint, 0.6);
+        g.fillCircle(p.x, p.y + 2, 2);
+        const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.05, 1e5 + 1);
         // Every third bulb wavers a touch — strings feel strung, not printed.
         if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
         if (i % 3 === 1) this.addGroundPool(p.x, p.y + 90, tint, 0.22);
@@ -4537,14 +4749,21 @@ export class WorldScene extends Phaser.Scene {
     );
     g.lineStyle(1.5, mixPalette('ink', 'structureMid', 0.5), 0.85);
     curve.draw(g, 40);
-    const tints = [PALETTE_INT.neonAmber, PALETTE_INT.warmGlow, PALETTE_INT.neonAmber, PALETTE_INT.neonRose];
+    // v3 color budget: same garland mute as every other string in the city.
+    const tints = [
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.warmGlow,
+      PALETTE_INT.neonAmber,
+      PALETTE_INT.neonRose,
+    ].map(garlandTint);
     const bulbs = Math.max(6, Math.floor(curve.getLength() / 30));
     for (let i = 1; i < bulbs; i++) {
       const p = curve.getPoint(i / bulbs);
       const tint = tints[i % tints.length] as number;
-      g.fillStyle(tint, 0.95);
-      g.fillCircle(p.x, p.y + 2, 2.2);
-      const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.09, 1e5 + 1);
+      // Banner tune: same faint-dot discipline as every string in the city.
+      g.fillStyle(tint, 0.6);
+      g.fillCircle(p.x, p.y + 2, 2);
+      const glow = addLayeredGlow(this, p.x, p.y + 2, tint, 0.05, 1e5 + 1);
       if (i % 3 === 0) addFlicker(this, glow.mid, bloom(0.5), 0.12);
       this.stringBulbGlows.push(glow.core, glow.mid, glow.outer);
     }
@@ -4979,10 +5198,15 @@ export class WorldScene extends Phaser.Scene {
     const band = this.darknessBand(t.tx, t.ty);
     const base = wt ?? 0xffffff;
     if (band > 0) {
-      const dim = 1 - (band / DARKNESS.bands) * DARKNESS.propDim;
+      // n3: props ride the same S-curve as the floor — half-lit props sink.
+      const k = Math.pow(band / DARKNESS.bands, DARKNESS.midGamma);
+      const dim = 1 - k * DARKNESS.propDim;
+      // v3 far warm-mono: green and blue sink harder than red with
+      // distance, so the dark reaches drain umber — never gray, never cool.
+      const desat = k * DARKNESS.farDesat;
       const r = Math.round(((base >> 16) & 0xff) * dim);
-      const gc = Math.round(((base >> 8) & 0xff) * dim);
-      const b = Math.round((base & 0xff) * dim);
+      const gc = Math.round(((base >> 8) & 0xff) * dim * (1 - desat * 0.35));
+      const b = Math.round((base & 0xff) * dim * (1 - desat * 0.85));
       img.setTint((r << 16) | (gc << 8) | b);
     } else if (wt !== null) {
       img.setTint(wt);

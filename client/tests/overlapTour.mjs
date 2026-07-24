@@ -242,7 +242,7 @@ async function runTour(viewport) {
       if (!window.__amperia.session.panelOpen) return null;
       const ui = window.__amperia.game.scene.getScene('ui');
       const names = [];
-      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','barPanel','billboardPanel','inventoryPanel']) {
+      for (const k of ['merchantPanel','benchPanel','questPanel','tradePanel','shopPanel','chargePanel','manifestPanel','goalPanel','bankPanel','worldMapPanel','howToPlayPanel','skillsPanel','foundryPanel','barPanel','billboardPanel','storyPanel','inventoryPanel']) {
         if (ui[k]?.visible === true) {
           names.push(k);
           ui[k].setVisible(false); // force-close so later states stay honest
@@ -331,6 +331,7 @@ async function runTour(viewport) {
     ['merchant', 'openMerchant'],
     ['bar', 'openBar'],
     ['board', 'openBoard'],
+    ['story', 'openStory'],
     ['bench', 'openBench'],
     ['quests', 'openQuests'],
     ['foundry', 'openFoundry'],
@@ -420,9 +421,9 @@ async function runTour(viewport) {
     await b.keyboard.press('Escape');
   }
 
-  // 10b — the City Board's world face (billboard T2): live dot-matrix rows
-  // + the marker label + a nameplate in the same frame.
-  await walkTo(pageA, 29, 37);
+  // 10b — the City Board's world face (billboard T2, deck-edge pole): live
+  // dot-matrix rows + the marker label + a nameplate in the same frame.
+  await walkTo(pageA, 34, 58);
   await capture('cityboard');
   await teardown('cityboard');
 

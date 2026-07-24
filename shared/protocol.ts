@@ -25,6 +25,8 @@ export const MSG = {
   repair: 'repair',
   quest: 'quest',
   quests: 'quests',
+  story: 'story',
+  storySync: 'storySync',
   donate: 'donate',
   travel: 'travel',
   travelGo: 'travelGo',
@@ -262,6 +264,24 @@ export interface QuestIntent {
 export interface DonateIntent {
   itemId: string;
   qty: number;
+}
+
+/** S2 player → server: begin a chapter's task / hand a finished one in. */
+export interface StoryIntent {
+  action: 'begin' | 'complete';
+  id: string;
+}
+
+/**
+ * S2 server → THE OWNING CLIENT ONLY (privacy rule, locked): story STATE,
+ * never dialogue. The client renders every line locally from the shared
+ * chapter defs, so two Sparks at the same NPC can never see each other's
+ * story. This message is always client.send — never broadcast.
+ */
+export interface StorySync {
+  chapters: Record<string, { state: 'task' | 'done'; progress: number }>;
+  /** Chapter ids whose unlock gates the server has verified as passed. */
+  offered: string[];
 }
 
 /** Server → player: the full personal quest log. */
