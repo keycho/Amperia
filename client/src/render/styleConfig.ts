@@ -57,7 +57,7 @@ export const DARKNESS = {
   /** Ink alpha over the floor at full distance (floor minimum guard).
    *  v3 n3: the deepest band is a step darker still — light lives in
    *  ISLANDS; the dark between pools is the frame's majority tone. */
-  maxAlpha: 0.62,
+  maxAlpha: 0.68,
   /** Inside this tile radius of a light: untouched — the pool.
    *  n3: ~30% tighter — adjacent stalls' pools no longer merge. */
   poolRadius: 1.75,
@@ -65,7 +65,7 @@ export const DARKNESS = {
    *  real dark pockets open INSIDE districts, not only at the edges. */
   farRadius: 6,
   /** Number of quantized bands between pool and far. */
-  bands: 4,
+  bands: 5,
   /** How far props dim at full distance (0..1 mix toward dusk-dark) —
    *  banner tune: unlit props fall to near-silhouette. */
   propDim: 0.5,
@@ -73,11 +73,10 @@ export const DARKNESS = {
    *  harder than red with distance, so unlit reaches read umber, not gray
    *  and never cool. 0..1 strength at full band distance. */
   farDesat: 0.4,
-  /** n3 S-CURVE: darkness ramps with pow(t, midGamma) — below 1, the MID
-   *  zones fall hard toward the dark bands while band 0 (the pool) and
-   *  the hot cores stay exactly as they are. Contrast comes from the
-   *  middle dropping out, never from dimming the lights. */
-  midGamma: 0.6,
+  /** S-curve on the darkness ramp. N4b: eased 0.6 -> 0.72 — the notch-3
+   *  crush dulled local contrast; extra darkness now comes from the
+   *  DEEPER far band (maxAlpha 0.68), not from crushing the mids. */
+  midGamma: 0.72,
 } as const;
 
 /** G1: shadows are grounding, not a style toggle — one set for all modes. */

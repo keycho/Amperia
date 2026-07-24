@@ -118,11 +118,11 @@ function specFor(kind: FloorKind, v: number): KindSpec {
     case 'asphalt':
       return {
         base: night(MATERIAL_INT.asphalt, 0.12),
-        noise: 0.07,
+        noise: 0.12,
         cell: (c, r, vv, h) => {
-          if (h(3) < 0.04) return shade(night(MATERIAL_INT.asphalt, 0.12), 0.1); // chip
+          if (h(3) < 0.04) return shade(night(MATERIAL_INT.asphalt, 0.12), 0.16); // chip
           if (vv % 2 === 0 && Math.abs(r - (c * 0.45 - 2 - vv)) < 0.6) {
-            return shade(night(MATERIAL_INT.asphaltDeep, 0.12), -0.12); // crack run
+            return shade(night(MATERIAL_INT.asphaltDeep, 0.12), -0.2); // crack run
           }
           return null;
         },
@@ -133,16 +133,16 @@ function specFor(kind: FloorKind, v: number): KindSpec {
       const lit = kind === 'paverLight' ? 0.1 : 0;
       return {
         base: shade(base, lit),
-        noise: 0.045,
+        noise: 0.09,
         cell: (c, r, _vv, h) => {
           // Four paver quadrants with a quiet checker offset.
           const q = (c < 8 ? 0 : 1) + (r < 4 ? 0 : 2);
-          const qShade = [0.03, -0.03, -0.05, 0.05][q] as number;
+          const qShade = [0.06, -0.06, -0.1, 0.1][q] as number;
           return shade(shade(base, lit + qShade), (h(11) - 0.5) * 0.05);
         },
         post: (g, _vv, span) => {
           // Grout along both diagonals of the tile (paver joints).
-          const grout = shade(night(MATERIAL_INT.concreteDeep, 0.16), -0.05);
+          const grout = shade(night(MATERIAL_INT.concreteDeep, 0.16), -0.16);
           g.fillStyle(grout, 0.85);
           for (const y of [31, 32]) {
             const [xl, xr] = span(y);
@@ -158,10 +158,10 @@ function specFor(kind: FloorKind, v: number): KindSpec {
     case 'plating':
       return {
         base: night(MATERIAL_INT.gunmetalDeep, 0.14),
-        noise: 0.05,
+        noise: 0.075,
         post: (g, vv, span) => {
           // Plate border: darken the outermost 5px of each row.
-          const edge = shade(night(MATERIAL_INT.gunmetalDeep, 0.14), -0.14);
+          const edge = shade(night(MATERIAL_INT.gunmetalDeep, 0.14), -0.24);
           g.fillStyle(edge, 0.9);
           for (let y = 0; y < 64; y++) {
             const [xl, xr] = span(y);
@@ -198,12 +198,12 @@ function specFor(kind: FloorKind, v: number): KindSpec {
         cell: (_c, r, vv, h) => {
           // Board bands two cell-rows tall, shade alternating per board.
           const board = Math.floor((r + (vv % 2)) / 2);
-          const b = shade(night(MATERIAL_INT.wood, 0.16), board % 2 === 0 ? 0.035 : -0.035);
+          const b = shade(night(MATERIAL_INT.wood, 0.16), board % 2 === 0 ? 0.055 : -0.055);
           if (h(17) < 0.05) return shade(b, -0.12); // knot
           return shade(b, (h(19) - 0.5) * 0.05);
         },
         post: (g, vv, span) => {
-          const seam = shade(night(MATERIAL_INT.woodDeep, 0.16), -0.2);
+          const seam = shade(night(MATERIAL_INT.woodDeep, 0.16), -0.3);
           g.fillStyle(seam, 0.8);
           for (const y of [15, 31, 47]) {
             const yy = (y + (vv % 2) * 8) % 62;
