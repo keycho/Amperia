@@ -2585,14 +2585,14 @@ export class WorldScene extends Phaser.Scene {
     this.lightSpots = lightSpots;
     for (const p of this.map.props) {
       if (p.kind === 'dynamo') {
-        // Banner tune: the Dynamo's warmth claims the PLAZA, not a lamp's
-        // circle — a center spot plus a ring pushes its pool wide, so the
-        // market at its feet sits inside one broad glow field.
+        // The Dynamo's warmth claims its FEET, not the district — a center
+        // spot plus the footprint corners. n3: the ring pulled in so the
+        // plaza corners genuinely reach the dark bands.
         lightSpots.push({ x: p.x + 1.5, y: p.y + 1.5, cool: false });
-        lightSpots.push({ x: p.x - 1.5, y: p.y + 1.5, cool: false });
-        lightSpots.push({ x: p.x + 4.5, y: p.y + 1.5, cool: false });
-        lightSpots.push({ x: p.x + 1.5, y: p.y - 1.5, cool: false });
-        lightSpots.push({ x: p.x + 1.5, y: p.y + 4.5, cool: false });
+        lightSpots.push({ x: p.x, y: p.y, cool: false });
+        lightSpots.push({ x: p.x + 3, y: p.y, cool: false });
+        lightSpots.push({ x: p.x, y: p.y + 3, cool: false });
+        lightSpots.push({ x: p.x + 3, y: p.y + 3, cool: false });
       }
       if (p.kind === 'stall') lightSpots.push({ x: p.x + 1, y: p.y + 2, cool: false });
       if (p.kind === 'shack') lightSpots.push({ x: p.x, y: p.y + 2, cool: false });
@@ -2870,7 +2870,9 @@ export class WorldScene extends Phaser.Scene {
           if (!ground) continue;
           const band = this.darknessBand(tx, ty);
           if (band === 0) continue;
-          const a = (band / DARKNESS.bands) * DARKNESS.maxAlpha;
+          // n3 S-curve: mids drop hard (pow < 1), the deepest band holds
+          // the ceiling — the middle falls out, the pools stay pools.
+          const a = Math.pow(band / DARKNESS.bands, DARKNESS.midGamma) * DARKNESS.maxAlpha;
           const { x, y } = tileToWorld(tx, ty);
           dark.fillStyle(PALETTE_INT.ink, a);
           this.traceDiamond(dark, x, y);
@@ -3087,7 +3089,9 @@ export class WorldScene extends Phaser.Scene {
     // a pool reads firelit saturated orange, not pale cream.
     pool.setTint(emberMid(tint));
     pool.setBlendMode(Phaser.BlendModes.ADD);
-    pool.setScale(scale * 2.8, scale * 2.8 * 0.42);
+    // n3: pool footprints ~30% tighter (2.8 -> 2.0) — pools are pools,
+    // with genuinely dark ground between neighbours.
+    pool.setScale(scale * 2.0, scale * 2.0 * 0.42);
     pool.setAlpha(0.24);
     pool.setDepth(DEPTH_FLOOR + 4);
     return pool;
@@ -3248,11 +3252,11 @@ export class WorldScene extends Phaser.Scene {
           addLayeredGlow(this, x, y - 210, PALETTE_INT.neonTeal, 0.12, depthForWorldY(y) + 2);
           // God-rays (R5a): soft shafts fanning from the crown.
           addGodRays(this, x, y - 190, depthForWorldY(y) + 1);
-          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 3.2);
-          // Banner tune: the broad glow FIELD at the Dynamo's feet — a hot
-          // inner pool inside the wide one, plus a soft warm haze over the
-          // plaza floor, under everything standing. Gold, radial, generous.
-          this.addGroundPool(x, y - 6, PALETTE_INT.neonAmber, 1.6);
+          // n3: the global pool footprint tightened 2.8 -> 2.0; the Dynamo
+          // keeps most of its field (its scale compensates) while every
+          // lamp and stall pool shrinks for real — light in islands.
+          const pool = this.addGroundPool(x, y - 6, PALETTE_INT.warmGlow, 4.0);
+          this.addGroundPool(x, y - 6, PALETTE_INT.neonAmber, 2.0);
           addHaze(this, x, y - 4, PALETTE_INT.warmGlow, 2.8);
           this.placeDynamoCables(x, y);
           // Embers boiling off the coil housing.
@@ -5165,7 +5169,8 @@ export class WorldScene extends Phaser.Scene {
     const band = this.darknessBand(t.tx, t.ty);
     const base = wt ?? 0xffffff;
     if (band > 0) {
-      const k = band / DARKNESS.bands;
+      // n3: props ride the same S-curve as the floor — half-lit props sink.
+      const k = Math.pow(band / DARKNESS.bands, DARKNESS.midGamma);
       const dim = 1 - k * DARKNESS.propDim;
       // v3 far warm-mono: green and blue sink harder than red with
       // distance, so the dark reaches drain umber — never gray, never cool.

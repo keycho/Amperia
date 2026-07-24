@@ -203,11 +203,13 @@ function project(
 }
 
 /**
- * The face ramp (R2a): top +30% light · left base · right −35% dark.
+ * The face ramp (R2a): top +30% light · left base · right −48% dark.
  * The old ±20% spread was why blocks read soft — this is the crisp read.
+ * v3 n3: the away face (right — the key light sits top-left) drops a
+ * real step darker, so objects MODEL in light the way the banner's do.
  */
 export const RAMP_TOP = 0.3;
-export const RAMP_RIGHT = -0.35;
+export const RAMP_RIGHT = -0.48;
 
 function drawCube(
   g: Phaser.GameObjects.Graphics,
