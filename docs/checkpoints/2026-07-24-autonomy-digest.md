@@ -67,3 +67,13 @@ to shoot). The final v4 state is fully evidenced in `docs/screenshots/marketing/
 - POOL_BANDS=5; midGamma 0.72; maxAlpha 0.68; DARKNESS.bands=5; floor spread values in
   floorTiles.ts; the five vendor hues + water pair in palette.ts; water sheen alpha
   0.34; the micro-contrast metric definition (histo script).
+
+## U1 — the darkness mechanic (0cc2a81)
+- Wicklamp + Cellwax burn (ledger sink), server light-radius gate on gather/attack,
+  banded darkness overlay (ink 0.93, never pure black), wisp courtesy pools, chasm
+  void tiles, ember floor + guide-glow path to the lift (no-stranding), HUD gauge.
+- Probes banked: u1-lone-light-pool, u1-ember-guide-glow (digest dir).
+- Tuning note for review: guide-glow dots read faint at 1280x720 — candidate for a
+  brightness/density notch; all values tunable (CONFIG.underworks.lamp, overlay 0.93).
+- Incident: updateDarkness ran in the Colyseus pre-decode window (join resolves
+  before first state decode — the session's recurring lesson); held at full dark.
