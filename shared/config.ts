@@ -676,6 +676,13 @@ export const CONFIG = {
    * never "earn"). The tutorial chain teaches the whole core loop; dailies
    * repeat under a per-day cap.
    */
+  /** S2 — the Long Dark questline. Chapter content lives in shared/story.ts
+   *  (script LOCKED after voice review); tunables live here. */
+  story: {
+    /** Chebyshev reach to talk story with an NPC (matches quests). */
+    npcRadiusTiles: 3,
+  },
+
   quests: {
     /** Max daily-quest turn-ins per UTC day. */
     dailyTurnInCap: 2,

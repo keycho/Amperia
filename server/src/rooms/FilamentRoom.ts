@@ -102,6 +102,7 @@ import {
   type SortPackIntent,
   type DonateIntent,
   type QuestIntent,
+  type StoryIntent,
   type ReclaimIntent,
   type RepairIntent,
   type ShopIntent,
@@ -132,6 +133,16 @@ import {
 } from '@shared/trade';
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
+import {
+  advanceStory,
+  chapterAvailable,
+  chapterReady,
+  emptyStoryLog,
+  STORY_CHAPTERS,
+  storyChapter,
+  type StoryEvent,
+  type StoryLog,
+} from '@shared/story';
 import { presence } from '../services/presence.js';
 import { marketData } from '../services/marketdata.js';
 import { merchant } from '../services/merchant.js';
@@ -266,6 +277,8 @@ interface PlayerRuntime {
   drinkUntilMs: number | null;
   /** L3: the persistent idle loop ('sit'|'lean'|'warm'), null = none. */
   idlePose: string | null;
+  /** S2 — the Long Dark story log (private; synced to the owner only). */
+  story: StoryLog;
   session: Session | null;
   lastChatAtMs: number;
   /** H2 rate limit: timestamps of recent messages in the rolling window. */
@@ -494,6 +507,7 @@ export class FilamentRoom extends Room<FilamentState> {
     guarded<CraftIntent>(MSG.craft, (client, msg) => this.handleCraft(client, msg));
     guarded<RepairIntent>(MSG.repair, (client, msg) => this.handleRepair(client, msg));
     guarded<QuestIntent>(MSG.quest, (client, msg) => this.handleQuest(client, msg));
+    guarded<StoryIntent>(MSG.story, (client, msg) => this.handleStory(client, msg));
     guarded<DonateIntent>(MSG.donate, (client, msg) => this.handleDonate(client, msg));
     guarded<TravelIntent>(MSG.travel, (client, msg) => this.handleTravel(client, msg));
     guarded<DeliveryIntent>(MSG.delivery, (client, msg) => this.handleDelivery(client, msg));
@@ -602,6 +616,7 @@ export class FilamentRoom extends Room<FilamentState> {
       session: null,
       drinkUntilMs: null,
       idlePose: null,
+      story: character.story,
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -671,6 +686,7 @@ export class FilamentRoom extends Room<FilamentState> {
     });
     client.send(MSG.prices, { buy: merchant.prices(Date.now()) });
     client.send(MSG.quests, { log: runtime.quests });
+    this.sendStorySync(client, runtime);
     // Stall mail: expired-stall returns + the "sold while you were away"
     // toast (Filament only — the stalls live on this lane).
     if (this.map.shopStalls.length > 0) void this.deliverShopMail(client, runtime);
@@ -757,6 +773,7 @@ export class FilamentRoom extends Room<FilamentState> {
       session: null,
       drinkUntilMs: null,
       idlePose: null,
+      story: emptyStoryLog(),
       lastChatAtMs: 0,
       chatWindow: [],
       chatCooldownNoticed: false,
@@ -3298,6 +3315,78 @@ export class FilamentRoom extends Room<FilamentState> {
     }
   }
 
+  // ── S2: THE LONG DARK (private story questline) ────────────────────────
+
+  /**
+   * Story state to THE OWNING CLIENT ONLY (privacy rule, locked): always
+   * client.send, never broadcast — dialogue renders client-side from the
+   * shared chapter defs, so no other Spark can ever see it.
+   */
+  private sendStorySync(client: Client, rt: PlayerRuntime): void {
+    if (rt.spectator) return;
+    const offered = STORY_CHAPTERS.filter((c) =>
+      chapterAvailable(rt.story, c.id, (s) => levelForXp(rt.skills[s])),
+    ).map((c) => c.id);
+    client.send(MSG.storySync, { chapters: rt.story.chapters, offered });
+  }
+
+  /** Feed the story the same seams the quest log rides; notice on READY. */
+  private storyEvent(client: Client, rt: PlayerRuntime, event: StoryEvent): void {
+    const readyBefore = STORY_CHAPTERS.filter((c) => chapterReady(rt.story, c.id)).length;
+    if (!advanceStory(rt.story, event)) return;
+    this.sendStorySync(client, rt);
+    const readyNow = STORY_CHAPTERS.filter((c) => chapterReady(rt.story, c.id));
+    if (readyNow.length > readyBefore) {
+      const def = readyNow[readyNow.length - 1];
+      if (def !== undefined) {
+        const who =
+          def.npc === 'merchant' ? 'Sable' : def.npc === 'dispatcher' ? 'the Dispatcher' : 'the Charge Warden';
+        client.send(MSG.notice, { text: `That's done — ${who} will want to see you.` });
+      }
+    }
+  }
+
+  /**
+   * Begin a chapter's task / hand a finished one in — both at the
+   * chapter's own NPC. The keepsake is a story curio: granted once, into
+   * the Pack, never sold anywhere, absent from every drop path.
+   */
+  private handleStory(client: Client, msg: StoryIntent): void {
+    const rt = this.runtimes.get(client.sessionId);
+    if (rt === undefined || rt.spectator || typeof msg.id !== 'string') return;
+    const def = storyChapter(msg.id);
+    if (def === undefined) return;
+    if (!this.nearProp(rt, def.npc, CONFIG.story.npcRadiusTiles)) {
+      client.send(MSG.notice, { text: 'Come closer — stories are told, not shouted.' });
+      return;
+    }
+    if (msg.action === 'begin') {
+      if (!chapterAvailable(rt.story, def.id, (s) => levelForXp(rt.skills[s]))) return;
+      rt.story.chapters[def.id] = { state: 'task', progress: 0 };
+      this.sendStorySync(client, rt);
+      return;
+    }
+    // complete
+    if (!chapterReady(rt.story, def.id)) return;
+    const add = addItem(rt.pack, def.keepsake.itemId as ItemId, 1);
+    if (add.added < 1) {
+      client.send(MSG.notice, { text: 'Make room in your Pack — keepsakes are for keeping.' });
+      return;
+    }
+    rt.pack = add.inv;
+    const st = rt.story.chapters[def.id];
+    if (st !== undefined) st.state = 'done';
+    this.recordManifest(client, rt, def.keepsake.itemId);
+    ledger.log({
+      type: 'quest',
+      account: rt.accountId,
+      data: { story: def.id, keepsake: def.keepsake.itemId },
+    });
+    client.send(MSG.inventory, this.inventorySync(rt));
+    this.sendStorySync(client, rt);
+    void this.persist(rt);
+  }
+
   private nearProp(rt: PlayerRuntime, kind: string, radius: number): boolean {
     const prop = this.map.props.find((p) => p.kind === kind);
     if (prop === undefined) return false;
@@ -3409,6 +3498,7 @@ export class FilamentRoom extends Room<FilamentState> {
     client.send(MSG.inventory, this.inventorySync(rt));
     this.goalEvent(client, rt.accountId, { kind: 'donate', qty });
     this.questProgress(client, rt, { type: 'donate', itemId: msg.itemId, qty });
+    this.storyEvent(client, rt, { type: 'donate', itemId: msg.itemId, qty });
     if (msg.itemId === 'amperite') {
       // The communal loop: the donation climbs the week's meter (rewards
       // are regalia only — no Bolts, nothing tradeable; shared/charge.ts).
@@ -3518,6 +3608,7 @@ export class FilamentRoom extends Room<FilamentState> {
           : `${d.recipient} signs for it. The day's purse is flat — the thanks are real though.`,
     });
     this.goalEvent(client, rt.accountId, { kind: 'deliver', qty: 1 });
+    this.storyEvent(client, rt, { type: 'deliver' });
   }
 
   /** U1b: the channel ran its course — bloom for everyone, roll the herb. */
@@ -3639,6 +3730,7 @@ export class FilamentRoom extends Room<FilamentState> {
       });
     }
     this.goalEvent(client, rt.accountId, { kind: 'travel', qty: 1, district: msg.to });
+    this.storyEvent(client, rt, { type: 'travel', to: msg.to });
     client.send(MSG.inventory, this.inventorySync(rt));
     // Commit the new district BEFORE the go-ahead: the arrival room's join
     // must see it (it charges the toll itself on any district mismatch).
@@ -4692,6 +4784,7 @@ export class FilamentRoom extends Room<FilamentState> {
         qty: added,
         skill: SKILL_BY_NODE[(ledgerData.kind ?? 'junkHeap') as keyof typeof SKILL_BY_NODE],
       });
+      this.storyEvent(client, rt, { type: 'gather', itemId, qty: added });
     }
     // Every faucet writes to the economy ledger (golden rule 9 habit).
     ledger.log({
@@ -4768,6 +4861,7 @@ export class FilamentRoom extends Room<FilamentState> {
       titles: rt.titles,
       restedMsUsed: rt.restedMsUsed,
       restedDate: rt.restedDate,
+      story: rt.story,
     });
   }
 }

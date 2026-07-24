@@ -13,6 +13,7 @@ import { ContextMenu } from '../ui/ContextMenu';
 import { BenchPanel } from '../ui/BenchPanel';
 import { BarPanel } from '../ui/BarPanel';
 import { BillboardPanel } from '../ui/BillboardPanel';
+import { StoryPanel } from '../ui/StoryPanel';
 import { MerchantPanel } from '../ui/MerchantPanel';
 import { QuestPanel } from '../ui/QuestPanel';
 import { SkillsPanel } from '../ui/SkillsPanel';
@@ -61,6 +62,7 @@ export class UIScene extends Phaser.Scene {
   private benchPanel!: BenchPanel;
   private barPanel!: BarPanel;
   private billboardPanel!: BillboardPanel;
+  private storyPanel!: StoryPanel;
   private questPanel!: QuestPanel;
   private tradePanel!: TradePanel;
   private inspectCard!: InspectCard;
@@ -526,6 +528,7 @@ export class UIScene extends Phaser.Scene {
     this.skillsPanel = new SkillsPanel(this);
     this.barPanel = new BarPanel(this);
     this.billboardPanel = new BillboardPanel(this);
+    this.storyPanel = new StoryPanel(this);
     this.barPanel.onTakeSeat = () => session.events.emit(SessionEvents.takeSeat);
     this.merchantPanel = new MerchantPanel(this);
     this.benchPanel = new BenchPanel(this);
@@ -1111,6 +1114,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.merchantPanel.visible) this.merchantPanel.setVisible(false);
       else if (this.barPanel.visible) this.barPanel.setVisible(false);
       else if (this.billboardPanel.visible) this.billboardPanel.setVisible(false);
+      else if (this.storyPanel.visible) this.storyPanel.setVisible(false);
       else if (this.questPanel.visible) this.questPanel.setVisible(false);
       else if (this.benchPanel.visible) this.benchPanel.setVisible(false);
       else if (this.inventoryPanel.visible) this.inventoryPanel.setVisible(false);
@@ -1249,6 +1253,7 @@ export class UIScene extends Phaser.Scene {
       this.merchantPanel.visible ||
       this.barPanel.visible ||
       this.billboardPanel.visible ||
+      this.storyPanel.visible ||
       this.benchPanel.visible ||
       this.questPanel.visible ||
       this.tradePanel.visible ||

@@ -46,6 +46,7 @@ import type {
   CityPresenceEvent,
   LootEvent,
   MarketSyncEvent,
+  StorySync,
   MoveAcceptedEvent,
   PricesSync,
   QuestsSync,
@@ -63,6 +64,7 @@ import type {
   TendStateEvent,
   MoveIntent,
 } from '@shared/protocol';
+import { STORY_CHAPTERS } from '@shared/story';
 import { makeRng, type Rng } from '@shared/rng';
 import { levelForXp, type SkillId } from '@shared/mastery';
 import { AmbientScuttlebot } from '../entities/AmbientScuttlebot';
@@ -190,6 +192,8 @@ export class WorldScene extends Phaser.Scene {
   /** Latest market snapshot (T1 seed + slow-sweep relays); null pre-seed. */
   private market: MarketSyncEvent | null = null;
   private boardSparks: number | null = null;
+  /** S2: this Spark's PRIVATE story state (server → own client only). */
+  private storyState: StorySync | null = null;
   private boardCharge: { tier: number; tierMax: number } | null = null;
   /** Last Charge mirror — re-emitted when the Board opens, so a panel
    *  constructed after the join-time sync still gets the tier. */
@@ -1121,6 +1125,12 @@ export class WorldScene extends Phaser.Scene {
       };
       apply();
       (proxy(chargeState as unknown as object) as unknown as { onChange(cb: () => void): void }).onChange(apply);
+    });
+
+    // S2: PRIVATE story state — cache for NPC precedence, hand to the panel.
+    room.onMessage(MSG.storySync, (e: StorySync) => {
+      this.storyState = e;
+      session.events.emit(SessionEvents.storySync, e);
     });
 
     // T1/T2: the City Board's market snapshot — cache for the face + panel.
@@ -3069,6 +3079,18 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Anchor world position for a prop: bottom corner of its footprint. */
+  /** S2: does this NPC hold story business for ME right now? (offered,
+   *  mid-task or ready — anything that should open the story panel first.) */
+  private storyAtNpc(npc: 'merchant' | 'dispatcher' | 'warden'): boolean {
+    const st = this.storyState;
+    if (st === null) return false;
+    return STORY_CHAPTERS.some((c) => {
+      if (c.npc !== npc) return false;
+      if (st.offered.includes(c.id)) return true;
+      return st.chapters[c.id]?.state === 'task';
+    });
+  }
+
   private propAnchor(p: Prop): { x: number; y: number } {
     const nw = tileToWorld(p.x, p.y);
     const se = tileToWorld(p.x + p.w - 1, p.y + p.h - 1);
@@ -3882,7 +3904,11 @@ export class WorldScene extends Phaser.Scene {
             'Trade',
             () => {
               this.greetNpc('merchant', img);
-              session.events.emit(SessionEvents.openMerchant);
+              if (this.storyAtNpc('merchant')) {
+                session.events.emit(SessionEvents.openStory, 'merchant');
+              } else {
+                session.events.emit(SessionEvents.openMerchant);
+              }
             },
             { hint: 'step closer to trade' },
           );
@@ -3935,7 +3961,11 @@ export class WorldScene extends Phaser.Scene {
             'Board',
             () => {
               this.greetNpc('dispatcher', img);
-              session.events.emit(SessionEvents.openQuests);
+              if (this.storyAtNpc('dispatcher')) {
+                session.events.emit(SessionEvents.openStory, 'dispatcher');
+              } else {
+                session.events.emit(SessionEvents.openQuests);
+              }
             },
             { hint: 'step up to the board' },
           );
@@ -3960,7 +3990,11 @@ export class WorldScene extends Phaser.Scene {
             'Charge',
             () => {
               this.greetNpc('warden', img);
-              if (this.room !== null) send.chargeInfo(this.room);
+              if (this.storyAtNpc('warden')) {
+                session.events.emit(SessionEvents.openStory, 'warden');
+              } else if (this.room !== null) {
+                send.chargeInfo(this.room);
+              }
             },
             { hint: 'the Warden is by the Dynamo' },
           );

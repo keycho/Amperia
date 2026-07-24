@@ -103,6 +103,8 @@ model Character {
   /// City-life L4: logged out mid-idle-loop — the Spark stays in the world
   /// as scenery ('' = not resting) until return or restingUntil passes.
   restingPose    String    @default("")
+  /// S2 — the Long Dark story log: chapters taken/done + facts (rodeTram).
+  storyJson      Json      @default("{}")
   restingUntil   DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

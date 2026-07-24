@@ -2,6 +2,7 @@ import { CONFIG } from '@shared/config';
 import type { Inventory, InventorySlot } from '@shared/inventory';
 import { fullDurability, makeInventory } from '@shared/inventory';
 import { makeSkillXp, SKILLS, type SkillXp } from '@shared/mastery';
+import { emptyStoryLog, type StoryLog } from '@shared/story';
 import type { TilePoint } from '@shared/pathfinding';
 import { prisma } from './db.js';
 
@@ -40,6 +41,27 @@ export interface CharacterSnapshot {
   /** Rested Charge (S3): gathering ms burned + which UTC day they belong to. */
   restedMsUsed: number;
   restedDate: string;
+  /** S2 — the Long Dark story log. */
+  story: StoryLog;
+}
+
+/** Parse a stored story log defensively — bad JSON = a fresh log. */
+function parseStory(raw: unknown): StoryLog {
+  const log = emptyStoryLog();
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return log;
+  const rec = raw as Record<string, unknown>;
+  if (rec['rodeTram'] === true) log.rodeTram = true;
+  const ch = rec['chapters'];
+  if (typeof ch === 'object' && ch !== null && !Array.isArray(ch)) {
+    for (const [id, st] of Object.entries(ch as Record<string, unknown>)) {
+      if (typeof st !== 'object' || st === null) continue;
+      const s = st as Record<string, unknown>;
+      if ((s['state'] === 'task' || s['state'] === 'done') && typeof s['progress'] === 'number') {
+        log.chapters[id] = { state: s['state'], progress: Math.max(0, Math.floor(s['progress'])) };
+      }
+    }
+  }
+  return log;
 }
 
 function parseSkills(raw: unknown): SkillXp {
@@ -121,6 +143,7 @@ export async function loadCharacter(characterId: string): Promise<CharacterSnaps
     goalTokens: c.goalTokens,
     restedMsUsed: c.restedMsUsed,
     restedDate: c.restedDate,
+    story: parseStory(c.storyJson),
   };
 }
 
@@ -148,6 +171,7 @@ export async function persistCharacter(
     titles: string[];
     restedMsUsed: number;
     restedDate: string;
+    story: StoryLog;
   },
 ): Promise<void> {
   try {
@@ -176,6 +200,7 @@ export async function persistCharacter(
         titlesJson: data.titles,
         restedMsUsed: data.restedMsUsed,
         restedDate: data.restedDate,
+        storyJson: data.story as unknown as object,
       },
     });
   } catch (err) {
