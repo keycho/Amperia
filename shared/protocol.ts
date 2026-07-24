@@ -80,6 +80,7 @@ export const MSG = {
   coilShow: 'coilShow',
   coilState: 'coilState',
   bankSync: 'bankSync',
+  marketSync: 'marketSync',
 } as const;
 
 export interface MoveIntent {
@@ -282,6 +283,31 @@ export interface TravelGo {
  *  Presence facts only — no value, no identities. */
 export interface CityPresenceEvent {
   counts: Partial<Record<DistrictId, number>>;
+}
+
+/**
+ * T1 server → all: the City Board's market snapshot. REPORTING ONLY — plain
+ * backward-looking numbers, comms rules apply to every consumer (never
+ * "buy"/"earn"/APY/price talk in copy; the board shows figures, it never
+ * sells). Fail-soft: `live` is false whenever the feed is unconfigured,
+ * unreachable, or stale — a resting ticker, never stale-as-fresh.
+ */
+export interface MarketSyncEvent {
+  /** True only while a FRESH quote is in hand (configured + recent fetch). */
+  live: boolean;
+  /** False before launch (no feed/token address configured) — T3 state. */
+  configured: boolean;
+  /** Last trade price in USD, or null while not live. */
+  priceUsd: number | null;
+  /** 24h change in percent (may be negative), or null while not live. */
+  change24hPct: number | null;
+  /** Market capitalization in USD, or null while not live. */
+  marketCapUsd: number | null;
+  /** $AMP burned to date — null until the token ledger reports it; the
+   *  board hides the panel rather than show a guess. */
+  burnedAmp: number | null;
+  /** Server clock (ms) of the quote's fetch — display "as of" honesty. */
+  asOfMs: number;
 }
 
 /** U1a player → server: take a parcel at the post / drop it at the landing. */

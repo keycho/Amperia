@@ -108,6 +108,20 @@ export const CONFIG = {
     resting: { capPerDistrict: 10, hours: 8 },
   },
 
+  /** T1/T2 — the City Board: the plaza ticker. Market figures ride a
+   *  server-side cache and FAIL SOFT — the ticker rests rather than show
+   *  a stale or zero number. The board reports; it never sells. */
+  billboard: {
+    /** Seconds each dot-matrix panel holds before the next (no flashing). */
+    rotateSeconds: 8,
+    /** Server-side market fetch cadence (also the broadcast cadence). */
+    refreshSeconds: 60,
+    /** A quote older than this is NOT shown — the ticker rests instead. */
+    staleAfterSeconds: 300,
+    /** Chebyshev tiles from the board footprint for E — Inspect. */
+    reachTiles: 3,
+  },
+
   /** Rested Charge (S3): the first N minutes of GATHERING each UTC day
    *  boost gather XP only — never resources, never combat XP; the faucet
    *  is untouched. Missing days never punishes; it just refills daily. */

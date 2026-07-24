@@ -133,6 +133,7 @@ import {
 import { charge, type ChargeMeter } from '../services/charge.js';
 import { ledger } from '../services/ledger.js';
 import { presence } from '../services/presence.js';
+import { marketData } from '../services/marketdata.js';
 import { merchant } from '../services/merchant.js';
 import { moderation } from '../services/moderation.js';
 import { shops, type StallView } from '../services/shops.js';
@@ -681,6 +682,8 @@ export class FilamentRoom extends Room<FilamentState> {
     // World map M3: report the new seated count + seed this client's tally.
     this.reportPresence();
     client.send(MSG.cityPresence, { counts: presence.counts() });
+    // T1: seed the City Board's market snapshot (fail-soft — may be resting).
+    client.send(MSG.marketSync, marketData.snapshot());
   }
 
   /** L4: seed resting Sparks from the DB (room create — survives room
@@ -1813,6 +1816,9 @@ export class FilamentRoom extends Room<FilamentState> {
           .catch((err) => console.error('[shops] sweep failed', err));
       }
       void this.refreshCharge(true);
+      // T1: re-broadcast the City Board's market snapshot on the same slow
+      // sweep — the service refreshes on its own cadence; rooms just relay.
+      this.broadcast(MSG.marketSync, marketData.snapshot());
     }
   }
 
