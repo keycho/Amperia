@@ -803,6 +803,8 @@ export const CONFIG = {
     },
     /** Tinkerbench recipes: Bolts + resources → gear. */
     recipes: [
+      /** U1: the Underworks lamp — cheap to make, hungry for Cellwax. */
+      { id: 'lamp1', output: 'wicklamp', bolts: 25, materials: { salvage: 10, brass: 6 } },
       { id: 'wrench1', output: 'sparkwrench', bolts: 30, materials: { salvage: 12, brass: 4 } },
       { id: 'wrench2', output: 'brassSparkwrench', bolts: 90, materials: { salvage: 24, brass: 14 } },
       { id: 'wrench3', output: 'coilSparkwrench', bolts: 240, materials: { salvage: 40, brass: 26, amperite: 14 } },

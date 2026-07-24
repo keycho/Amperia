@@ -6,6 +6,7 @@ import { PALETTE, PALETTE_INT, UI_TEXT_WARM, type PaletteKey } from '@shared/pal
 import { addWarmAmbience } from '../render/ambience';
 import { send } from '../net/NetClient';
 import { session, SessionEvents } from '../net/session';
+import { countItem } from '@shared/inventory';
 import { gameState, GameEvents } from '../state/GameState';
 import { sound } from '../audio/sound';
 import { ChatUI } from '../ui/ChatUI';
@@ -91,6 +92,7 @@ export class UIScene extends Phaser.Scene {
   private toastQueue: string[] = [];
   private toastRunning = false;
   private lastRested: RestedSync | null = null;
+  private lampText!: Phaser.GameObjects.Text;
   private banner: Phaser.GameObjects.Container | null = null;
   private lastBannerAt = -Infinity;
   /** S3: F9 clean-shot mode — a dark warm vignette that masks the HUD/world
@@ -558,6 +560,9 @@ export class UIScene extends Phaser.Scene {
     // Rested Charge HUD (S3): a warm line while the daily boost has time
     // left; fades out once it's spent. XP pacing only — never resources.
     this.restedText = kitText(this, 12, 58, '', 'caption', { color: PALETTE.warmGlow });
+    // U1: the Wicklamp fuel gauge — underworks only, refreshed on a slow tick.
+    this.lampText = kitText(this, 12, 58, '', 'caption', { color: PALETTE.warmGlow });
+    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.refreshLampGauge() });
     this.restedText.setDepth(900);
     this.restedText.setShadow(0, 0, PALETTE.neonAmber, 4, true, true);
     session.events.on(SessionEvents.rested, (e: RestedSync) => {
@@ -736,6 +741,39 @@ export class UIScene extends Phaser.Scene {
    * checklist is up it takes the slot AND the separate quest-tracker line is
    * suppressed entirely (the checklist IS the tracker).
    */
+  /** U1: lamp state + Cellwax on hand. Only the Underworks shows it. */
+  private refreshLampGauge(): void {
+    const room = session.room;
+    if (room === null || room.name !== 'underworks') {
+      if (this.lampText.text !== '') {
+        this.lampText.setText('');
+        this.layoutLeftColumn();
+      }
+      return;
+    }
+    const me = room.state.players.get(room.sessionId);
+    const wax =
+      countItem(gameState.inventory, 'cellwax') + countItem(gameState.hotbar, 'cellwax');
+    const hasLamp =
+      countItem(gameState.inventory, 'wicklamp') + countItem(gameState.hotbar, 'wicklamp') > 0;
+    let line: string;
+    let color: string = PALETTE.warmGlow;
+    if (!hasLamp) {
+      line = '◌ No Wicklamp — craft one at the Tinkerbench';
+      color = PALETTE.neonRose;
+    } else if (me?.lampLit === true) {
+      line = `◉ Wicklamp lit · Cellwax ×${wax}`;
+    } else {
+      line = wax > 0 ? '◌ Wicklamp catching…' : '◌ Wicklamp dark — the guide-glow leads to the lift';
+      color = PALETTE.neonRose;
+    }
+    if (this.lampText.text !== line) {
+      this.lampText.setText(line);
+      this.lampText.setColor(color);
+      this.layoutLeftColumn();
+    }
+  }
+
   private layoutLeftColumn(): void {
     const x = 12;
     const GAP = 6;
@@ -764,6 +802,7 @@ export class UIScene extends Phaser.Scene {
     );
     row(this.buffChip, this.buffChip.text !== '', this.buffChip.height);
     row(this.restedText, this.restedText.text !== '', this.restedText.height);
+    row(this.lampText, this.lampText.text !== '', this.lampText.height);
   }
 
   /** Gear button + a small panel with the master volume slider. */

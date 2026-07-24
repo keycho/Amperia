@@ -194,6 +194,7 @@ const BUILDERS: Record<string, (accent: number) => Voxel[]> = {
   'icon-dead-filament': () => deadFilamentModel(),
   'icon-punched-ticket': () => punchedTicketModel(),
   'icon-makers-rubbing': () => makersRubbingModel(),
+  'icon-wicklamp': () => wicklampModel(),
   'icon-bar-chalk': () => barChalkModel(),
   'icon-unclaimed-lamp': () => unclaimedLampModel(),
 };
@@ -221,6 +222,17 @@ function punchedTicketModel(): Voxel[] {
 }
 
 /** S2 ch3: wax-crayon rubbing — pale sheet, a glyph nobody reads. */
+/** U1: the Wicklamp — brass collar, salvage cage, a lit wick. */
+function wicklampModel(): Voxel[] {
+  const v = box(1, 1, 0, 3, 3, 1, C.metal); // salvage base
+  v.push(...box(2, 2, 1, 1, 1, 1, C.rust)); // fuel cup
+  v.push({ x: 2, y: 2, z: 2, c: C.amber }); // the flame
+  v.push({ x: 2, y: 2, z: 3, c: C.glow }); // flame tip
+  v.push(...box(1, 1, 3, 3, 3, 1, C.ochre)); // brass collar
+  v.push({ x: 2, y: 2, z: 4, c: shade(C.metal, -0.2) }); // carry loop
+  return v;
+}
+
 /** S2c ch4: a worn chalk stub — flat side from the wall, dust at the foot. */
 function barChalkModel(): Voxel[] {
   const chalk = blendInt(C.glow, 0xffffff, 0.55);

@@ -27,6 +27,7 @@ export type ItemId =
   | 'deadFilament'
   | 'punchedTicket'
   | 'makersRubbing'
+  | 'wicklamp'
   | 'barChalk'
   | 'unclaimedLamp'
   | 'silverfern'
@@ -260,6 +261,14 @@ export const ITEMS: Readonly<Record<ItemId, ItemDef>> = {
     stack: 1,
     icon: 'icon-punched-ticket',
     rare: true,
+  },
+  wicklamp: {
+    id: 'wicklamp',
+    name: 'Wicklamp',
+    flavor: 'Brass collar, salvage cage, honest wick. Burns Cellwax; lights the dark under the deck.',
+    category: 'tool',
+    stack: 1,
+    icon: 'icon-wicklamp',
   },
   barChalk: {
     id: 'barChalk',

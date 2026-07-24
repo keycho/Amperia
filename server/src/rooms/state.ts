@@ -25,6 +25,10 @@ export class PlayerState extends Schema {
   trim = '';
   /** The drink riding in hand ('' = none) — presentation only (L2). */
   drink = '';
+  /** U1: the Wicklamp is lit (full radius). Public — light is social (U2). */
+  lampLit = false;
+  /** U1: ember decay 1 -> 0 after fuel runs out (radius interpolant). */
+  emberT = 0;
 }
 defineTypes(PlayerState, {
   sparkName: 'string',
@@ -38,6 +42,8 @@ defineTypes(PlayerState, {
   equipped: 'string',
   trim: 'string',
   drink: 'string',
+  lampLit: 'boolean',
+  emberT: 'float32',
 });
 
 /**

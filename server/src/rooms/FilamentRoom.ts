@@ -15,6 +15,7 @@ import { ITEMS, type ItemId } from '@shared/items';
 import { MANIFEST_BY_ID } from '@shared/manifest';
 import { buildDistrictMap, type DistrictId, type WorldMap } from '@shared/map';
 import { softFilter } from '@shared/profanity';
+import { freshLamp, lampTick, withinLight, type WicklampState } from '@shared/underworks';
 import { tramHops, tramToll } from '@shared/travel';
 import {
   amperiteStrikeYield,
@@ -259,6 +260,8 @@ interface PlayerRuntime {
   equipped: EquippedMap;
   /** Untradeable Manifest titles (S1), earn order. */
   titles: string[];
+  /** U1: the Wicklamp burn state (underworks only; pure math in shared). */
+  lamp: WicklampState;
   /** Weekly-goal regalia tokens toward the seasonal cosmetic (S2). */
   goalTokens: number;
   /** Rested Charge (S3): boosted-gathering ms burned + their UTC day. */
@@ -611,6 +614,7 @@ export class FilamentRoom extends Room<FilamentState> {
               character.cosmetics,
             ),
       titles: character.titles,
+      lamp: freshLamp(),
       goalTokens: character.goalTokens,
       restedMsUsed: character.restedMsUsed,
       restedDate: character.restedDate,
@@ -768,6 +772,7 @@ export class FilamentRoom extends Room<FilamentState> {
       appearance: '',
       equipped: {},
       titles: [],
+      lamp: freshLamp(),
       goalTokens: 0,
       restedMsUsed: 0,
       restedDate: '',
@@ -916,6 +921,17 @@ export class FilamentRoom extends Room<FilamentState> {
     if (rt === undefined || node === undefined || nodeState === undefined) return;
     if (nodeState.depleted) return;
     if (rt.session?.nodeId === msg.nodeId) return;
+
+    // U1: down here you touch only what your light touches (server truth —
+    // the client can't reach past its lamp no matter what it sends).
+    if (this.districtId === 'underworks') {
+      const ps = this.state.players.get(client.sessionId);
+      const d = Math.max(Math.abs(rt.move.tile.x - node.x), Math.abs(rt.move.tile.y - node.y));
+      if (ps === undefined || !withinLight(d, ps.lampLit, ps.emberT)) {
+        client.send(MSG.notice, { text: 'Too dark beyond your lamp.' });
+        return;
+      }
+    }
 
     // The right tool KIND must be in the ACTIVE hotbar slot (tiers all
     // qualify), and broken gear refuses to work (never lost, though).
@@ -1758,6 +1774,35 @@ export class FilamentRoom extends Room<FilamentState> {
           ps.tileY = rt.move.tile.y;
         }
       }
+      // U1: the lamp burns only down here — light is the district's rule.
+      if (this.districtId === 'underworks') {
+        const hasLamp =
+          countItem(rt.pack, 'wicklamp') > 0 || countItem(rt.hotbar, 'wicklamp') > 0;
+        const wax = countItem(rt.pack, 'cellwax') + countItem(rt.hotbar, 'cellwax');
+        const burn = lampTick(rt.lamp, dt, hasLamp, wax);
+        rt.lamp = burn.state;
+        if (burn.consumed > 0) {
+          // Burn from the pack first, the hotbar second — a real sink.
+          const fromPack = removeItem(rt.pack, 'cellwax', 1);
+          if (fromPack.removed > 0) rt.pack = fromPack.inv;
+          else {
+            const fromBar = removeItem(rt.hotbar, 'cellwax', 1);
+            rt.hotbar = fromBar.inv;
+          }
+          ledger.log({
+            type: 'spend',
+            account: rt.accountId,
+            data: { sink: 'lampFuel', cellwax: 1 },
+          });
+          const lampClient = this.clients.find((c) => c.sessionId === sessionId);
+          lampClient?.send(MSG.inventory, this.inventorySync(rt));
+        }
+        const psL = this.state.players.get(sessionId);
+        if (psL !== undefined) {
+          psL.lampLit = burn.lit;
+          psL.emberT = burn.state.emberT;
+        }
+      }
       // U1b: advance a live tend channel.
       if (rt.tend !== null) {
         rt.tend.elapsed += dt;
@@ -1931,6 +1976,16 @@ export class FilamentRoom extends Room<FilamentState> {
     const now = Date.now();
     if (now - rt.lastAttackAtMs < cfg.attackCooldownSeconds * 1000) return;
     if (chebyshev(rt.move.tile, m.move.tile) > cfg.attackRangeTiles) return;
+    // U1: no swinging at what your light can't reach (wisps glow — they
+    // are visible in the black, but your reach is still your lamp's).
+    if (this.districtId === 'underworks') {
+      const psA = this.state.players.get(client.sessionId);
+      const dA = chebyshev(rt.move.tile, m.move.tile);
+      if (psA === undefined || !withinLight(dA, psA.lampLit, psA.emberT)) {
+        client.send(MSG.notice, { text: 'Too dark beyond your lamp.' });
+        return;
+      }
+    }
     rt.lastAttackAtMs = now;
 
     // Sparkwrench tiers multiply the swing (bare hands still work).

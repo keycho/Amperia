@@ -738,6 +738,10 @@ export interface PlayerStateShape {
   equipped: string;
   /** Name-glow trim id ('' = none) — Charge regalia, never gameplay. */
   trim: string;
+  /** U1: the Wicklamp is lit (full light radius). Light is social (U2). */
+  lampLit: boolean;
+  /** U1: ember decay 1 -> 0 after fuel runs out (radius interpolant). */
+  emberT: number;
 }
 
 /** L4: a resting Spark — logged out mid-idle-loop, left as scenery.

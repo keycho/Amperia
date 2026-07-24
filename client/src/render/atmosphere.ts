@@ -55,6 +55,29 @@ export function makeAtmosphereTextures(scene: Phaser.Scene): void {
     g.generateTexture('fx-pool', R * 2, R * 2);
     g.destroy();
   }
+  if (!scene.textures.exists('fx-lamp-brush')) {
+    // U1: the darkness eraser — a STRONG banded disc (the voxel falloff
+    // language at full alpha) that punches lamp pools out of the dark.
+    const R = 64;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    const BANDS = POOL_BANDS;
+    for (let band = BANDS; band >= 1; band--) {
+      const t = band / BANDS;
+      const a2 = Math.min(1, 0.3 + (1 - t) * 0.9);
+      g.fillStyle(0xffffff, a2);
+      g.fillCircle(R, R, R * (t - 0.5 / BANDS));
+      const CELL = 4;
+      for (let py = 0; py < R * 2; py += CELL) {
+        for (let px = 0; px < R * 2; px += CELL) {
+          if (((px + py) / CELL) % 2 !== 0) continue;
+          const d = Math.hypot(px + CELL / 2 - R, py + CELL / 2 - R);
+          if (d > R * (t - 0.5 / BANDS) && d <= R * t) g.fillRect(px, py, CELL, CELL);
+        }
+      }
+    }
+    g.generateTexture('fx-lamp-brush', R * 2, R * 2);
+    g.destroy();
+  }
   if (!scene.textures.exists('fx-grain')) {
     const S = 192;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);

@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { CONFIG, type NodeKind } from '@shared/config';
 import { ITEMS, type ItemId } from '@shared/items';
 import { addItem } from '@shared/inventory';
+import { lightRadiusTiles } from '@shared/underworks';
+import { findPath } from '@shared/pathfinding';
 import { buildDistrictMap, DISTRICT_NAMES, type DistrictId, type Prop, type WorldMap } from '@shared/map';
 import { tramToll } from '@shared/travel';
 import { settings } from '../settings';
@@ -226,6 +228,11 @@ export class WorldScene extends Phaser.Scene {
   /** G4: every standing light source (tile coords) — the darkness gradient
    *  and prop dimming both key off distance to the nearest of these. */
   private lightSpots: Array<{ x: number; y: number; cool: boolean }> = [];
+  /** U1 (underworks): the darkness overlay + the always-findable way out. */
+  private darknessRT: Phaser.GameObjects.RenderTexture | null = null;
+  private lampBrush: Phaser.GameObjects.Image | null = null;
+  private guideDots: Phaser.GameObjects.Graphics | null = null;
+  private guideAcc = 0;
   private lampViews = new Map<string, Phaser.GameObjects.Image[]>();
   private cacheViews = new Map<string, Phaser.GameObjects.Image[]>();
   private ambientBots: AmbientScuttlebot[] = [];
@@ -321,6 +328,7 @@ export class WorldScene extends Phaser.Scene {
     this.map = buildDistrictMap(this.district);
     // U5a: the district's ambient bed (crossfades if we rode in on a tram).
     sound.setDistrictAmbient(this.district);
+    if (this.district === 'underworks') this.createDarkness();
     // Elevation-aware projection (R4): every tile-derived world position
     // lifts by the tile's level from here on.
     setElevationLookup((tx, ty) => this.map.elevation[ty]?.[tx] ?? 0);
@@ -659,6 +667,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(time: number, deltaMs: number): void {
+    if (this.district === 'underworks') this.updateDarkness(deltaMs);
     this.cameraCtl.update(deltaMs);
     this.updateHoverMarker();
     this.gatherView.update();
@@ -2651,6 +2660,15 @@ export class WorldScene extends Phaser.Scene {
 
         // Coolant canal: baked coolant tiles (the one zone that stays dark).
         if (this.map.canal[ty]?.[tx] === true) {
+          if (this.map.district === 'underworks') {
+            // U4/U1: down here `canal` is a CHASM — a black drop, no water.
+            const g2 = this.add.graphics();
+            g2.setDepth(DEPTH_FLOOR + 1);
+            g2.fillStyle(MATERIAL_INT.voidBlack, 0.92);
+            this.traceDiamond(g2, x, y);
+            g2.fillPath();
+            continue;
+          }
           const tile = this.add.image(x, y, floorTileKey('coolant', (tx * 7 + ty * 13) | 0));
           tile.setScale(floorTileScale());
           tile.setDepth(DEPTH_FLOOR);
@@ -5192,6 +5210,89 @@ export class WorldScene extends Phaser.Scene {
       this.markers?.setZoomScale(k);
       this.ePrompt?.setScale(k);
     });
+  }
+
+  /**
+   * U1 — THE DARKNESS: near-zero ambient light; you see what your light
+   * touches. A screen-space warm-black sheet with BANDED erase pools at
+   * every lit Spark (light is social — U2 merging comes free), a small
+   * courtesy pool around each Sparkwisp (the one thing visible in the
+   * black), and — when your own lamp dies — a guide-glow of amber dots
+   * along the walkable path back to the lift. Never a softlock.
+   */
+  private createDarkness(): void {
+    this.darknessRT = this.add.renderTexture(0, 0, this.scale.width, this.scale.height);
+    this.darknessRT.setOrigin(0, 0);
+    this.darknessRT.setScrollFactor(0);
+    this.darknessRT.setDepth(7e5);
+    this.lampBrush = this.add.image(-9999, -9999, 'fx-lamp-brush');
+    this.lampBrush.setVisible(false);
+    this.guideDots = this.add.graphics();
+    this.guideDots.setDepth(7e5 + 1);
+    this.scale.on('resize', () => {
+      this.darknessRT?.setSize(this.scale.width, this.scale.height);
+    });
+  }
+
+  private updateDarkness(deltaMs: number): void {
+    const rt = this.darknessRT;
+    const brush = this.lampBrush;
+    const room = this.room;
+    if (rt === null || brush === null || room === null) return;
+    // Colyseus: the join promise can resolve BEFORE the first state decode —
+    // the collections may not exist yet. Hold the full dark until they do.
+    if (room.state.players?.forEach === undefined || room.state.mobs?.forEach === undefined) {
+      rt.clear();
+      rt.fill(PALETTE_INT.ink, 0.93, 0, 0, rt.width, rt.height);
+      return;
+    }
+    const cam = this.cameras.main;
+    rt.clear();
+    rt.fill(PALETTE_INT.ink, 0.93, 0, 0, rt.width, rt.height);
+    const erase = (wx: number, wy: number, radiusTiles: number) => {
+      const sx = (wx - cam.worldView.x) * cam.zoom;
+      const sy = (wy - cam.worldView.y) * cam.zoom;
+      const scale = (radiusTiles * TILE_W * cam.zoom) / 64;
+      brush.setScale(scale);
+      brush.setPosition(sx, sy);
+      rt.erase(brush);
+    };
+    room.state.players.forEach((ps: PlayerStateShape, sid: string) => {
+      const view = this.sparks.get(sid);
+      const w = view !== undefined ? { x: view.image.x, y: view.image.y - 12 } : tileToWorld(ps.tileX, ps.tileY);
+      erase(w.x, w.y, lightRadiusTiles(ps.lampLit, ps.emberT));
+    });
+    // Sparkwisps glow — a small pool so they read OUTSIDE your radius.
+    room.state.mobs.forEach((m: MobStateShape) => {
+      if (m.kind !== 'sparkwisp') return;
+      const w = tileToWorld(m.tileX, m.tileY);
+      erase(w.x, w.y - 10, 1.2);
+    });
+    // The way out is ALWAYS findable: when your lamp is out, a guide-glow
+    // marks the walkable path back to the freight lift.
+    this.guideAcc += deltaMs;
+    const me = room.state.players.get(room.sessionId);
+    const dots = this.guideDots;
+    if (dots !== null && me !== undefined) {
+      if (me.lampLit) {
+        dots.clear();
+      } else if (this.guideAcc >= 1000) {
+        this.guideAcc = 0;
+        dots.clear();
+        const path = findPath(this.map, { x: me.tileX, y: me.tileY }, CONFIG.travel.underworksSpawn);
+        if (path !== null) {
+          dots.fillStyle(PALETTE_INT.warmGlow, 0.85);
+          for (let i = 0; i < path.length; i += 2) {
+            const p = path[i];
+            if (p === undefined) continue;
+            const w = tileToWorld(p.x, p.y);
+            const sx = (w.x - cam.worldView.x) * cam.zoom;
+            const sy = (w.y - cam.worldView.y) * cam.zoom;
+            dots.fillCircle(sx, sy, 2.5 * cam.zoom);
+          }
+        }
+      }
+    }
   }
 
   /**
